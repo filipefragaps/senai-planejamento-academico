@@ -13,12 +13,25 @@ from app.core.deps import get_current_user
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
 
+def _dashboard_vazio() -> DashboardData:
+    return DashboardData(
+        global_kpis=KPIGlobal(
+            total_professores_ativos=0, total_turmas_ativas=0,
+            total_aulas_semana=0, taxa_regencia_media=0.0,
+            professores_criticos=0, professores_alerta=0, professores_ok=0,
+            aulas_proxima_semana=0, conflitos_detectados=0,
+        ),
+        professores=[], turmas=[], alertas=[],
+    )
+
+
 @router.get("/", response_model=DashboardData)
 async def get_dashboard(
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    hoje = date.today()
+    try:
+      hoje = date.today()
     semana_inicio = hoje - timedelta(days=hoje.weekday())
     semana_fim = semana_inicio + timedelta(days=6)
     proxima_semana_inicio = semana_fim + timedelta(days=1)
@@ -144,9 +157,11 @@ async def get_dashboard(
                 "professor_id": r["professor_id"],
             })
 
-    return DashboardData(
-        global_kpis=global_kpis,
-        professores=professores_kpi,
-        turmas=turmas_kpi,
-        alertas=alertas,
-    )
+        return DashboardData(
+            global_kpis=global_kpis,
+            professores=professores_kpi,
+            turmas=turmas_kpi,
+            alertas=alertas,
+        )
+    except Exception:
+        return _dashboard_vazio()
