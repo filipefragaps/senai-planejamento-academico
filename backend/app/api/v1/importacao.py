@@ -1,7 +1,9 @@
+import io
+import pandas as pd
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
-from app.services.excel_import import excel_import_service
+from app.services.excel_import import excel_import_service, _norm_col
 from app.core.deps import get_current_user
 from app.config import settings
 
@@ -42,6 +44,35 @@ async def importar_excel(
             f"{resultado['calendario']} eventos no calendário."
         ),
     }
+
+
+@router.post("/diagnostico")
+async def diagnosticar_excel(
+    arquivo: UploadFile = File(...),
+    _=Depends(get_current_user),
+):
+    """Lê a planilha e retorna abas + colunas detectadas (sem importar nada)."""
+    if not arquivo.filename.endswith((".xlsx", ".xls")):
+        raise HTTPException(status_code=400, detail="Arquivo deve ser .xlsx ou .xls")
+    conteudo = await arquivo.read()
+    try:
+        xls = pd.ExcelFile(io.BytesIO(conteudo))
+        resultado = {}
+        for sheet in xls.sheet_names:
+            try:
+                df = pd.read_excel(xls, sheet_name=sheet, nrows=3, dtype=str)
+                colunas_orig = list(df.columns)
+                colunas_norm = [_norm_col(c) for c in colunas_orig]
+                resultado[sheet] = {
+                    "colunas_originais": colunas_orig,
+                    "colunas_normalizadas": colunas_norm,
+                    "linhas_amostra": df.head(2).fillna("").to_dict(orient="records"),
+                }
+            except Exception as e:
+                resultado[sheet] = {"erro": str(e)}
+        return {"abas": list(xls.sheet_names), "detalhe": resultado}
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Erro ao ler planilha: {str(e)}")
 
 
 @router.get("/template")

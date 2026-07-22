@@ -8,7 +8,7 @@ Abas e colunas reais:
   DISPONIBILIDADE DETALHADA: PROFESSOR | DIA_SEMANA | HORA_INICIO | HORA_FIM |
                               DISPONIVEL | TIPO_BLOQUEIO | OBSERVAÇÃO
   CALENDÁRIO ACADÊMICO   : DATA | TIPO | LETIVO | TURNO | DESCRIÇÃO
-  CURSOS                 : (colunas variáveis — cursos extraídos da aba ATUAÇÃO)
+  CURSOS                 : (colunas variáveis — cursos extraídos da aba ATUAÇÃO se não existir)
 """
 import io
 from datetime import time, date, datetime
@@ -16,7 +16,7 @@ from typing import Any
 
 import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.models.curso import Curso
 from app.models.unidade_curricular import UnidadeCurricular
@@ -38,7 +38,6 @@ DIAS_SEMANA_MAP = {
 
 
 def _norm_col(name: str) -> str:
-    """Normaliza nome de coluna: lower, sem acentos, espaços/separadores → _"""
     n = str(name).strip().lower()
     for src, dst in [
         ("ã","a"),("á","a"),("â","a"),("à","a"),("ä","a"),
@@ -53,8 +52,15 @@ def _norm_col(name: str) -> str:
     return n.strip("_")
 
 
-def _norm_df(df: pd.DataFrame) -> pd.DataFrame:
+def _norm_df(df: pd.DataFrame, ffill_cols: list[str] | None = None) -> pd.DataFrame:
+    """Normaliza colunas e aplica forward-fill em colunas com células mescladas."""
     df = df.rename(columns={c: _norm_col(c) for c in df.columns})
+    # Remove linhas completamente vazias
+    df = df.dropna(how="all")
+    if ffill_cols:
+        for col in ffill_cols:
+            if col in df.columns:
+                df[col] = df[col].ffill()
     return df
 
 
@@ -128,6 +134,14 @@ def _get(row: pd.Series, *keys: str, default: str = "") -> str:
     return default
 
 
+def _col_first(df: pd.DataFrame, *candidates: str) -> str | None:
+    """Retorna o primeiro nome de coluna que existe no DataFrame."""
+    for c in candidates:
+        if c in df.columns:
+            return c
+    return None
+
+
 class ExcelImportService:
 
     async def importar(self, file_bytes: bytes, db: AsyncSession) -> dict:
@@ -145,14 +159,17 @@ class ExcelImportService:
             resultado["professores"] = await self._professores(xls, prof_sheet, db)
             await db.flush()
 
-        # 2. Cursos: PASTA = código da matriz (PPC); cada PASTA é um Curso no BD.
-        #    Deve vir ANTES de ATUAÇÃO para que os curso_ids existam.
-        if "cursos" in sheets:
-            resultado["cursos"] = await self._cursos(xls, sheets["cursos"], db)
-            await db.flush()
-
-        # 3. Atuação: mapeia professor → disciplina → PASTA (curso_id já no BD)
+        # 2. Cursos: tenta aba dedicada; senão extrai da aba ATUAÇÃO
         atua_sheet = next((v for k, v in sheets.items() if "atua" in k), None)
+        cursos_sheet = next((v for k, v in sheets.items() if "cursos" in k or "curso" in k), None)
+
+        if cursos_sheet:
+            resultado["cursos"] = await self._cursos(xls, cursos_sheet, db)
+        elif atua_sheet:
+            resultado["cursos"] = await self._cursos_da_atuacao(xls, atua_sheet, db)
+        await db.flush()
+
+        # 3. Atuação
         if atua_sheet:
             resultado["atuacoes"] = await self._atuacoes(xls, atua_sheet, db)
             await db.flush()
@@ -171,7 +188,6 @@ class ExcelImportService:
         return resultado
 
     # ─── PROFESSORES ─────────────────────────────────────────────────────────────
-    # Colunas: PROFESSOR | ÁREA | TIPO | CH | S | T | Q | Q | S
     async def _professores(self, xls: pd.ExcelFile, sheet: str, db: AsyncSession) -> int:
         df = _norm_df(pd.read_excel(xls, sheet_name=sheet, dtype=str))
         count = 0
@@ -183,13 +199,12 @@ class ExcelImportService:
             tipo_raw = _get(row, "tipo", default="Mensalista")
             tipo = "Horista" if "horista" in tipo_raw.lower() else "Mensalista"
 
-            # CH = Carga Horária semanal (coluna "ch" ou "horas_contratadas")
             horas = _parse_float(_get(row, "ch", "horas_contratadas", "carga_horaria"), 40.0)
-
-            # ÁREA → especialidades
             especialidade = _get(row, "area", "area_de_atuacao", "especialidades") or None
 
-            res = await db.execute(select(Professor).where(Professor.nome == nome))
+            res = await db.execute(
+                select(Professor).where(func.lower(Professor.nome) == nome.lower())
+            )
             existing = res.scalar_one_or_none()
             dados = {
                 "nome": nome,
@@ -206,20 +221,197 @@ class ExcelImportService:
             count += 1
         return count
 
+    # ─── CURSOS (aba dedicada) ────────────────────────────────────────────────────
+    async def _cursos(self, xls: pd.ExcelFile, sheet: str, db: AsyncSession) -> int:
+        # Aplica ffill nas colunas que costumam ter células mescladas
+        df = _norm_df(
+            pd.read_excel(xls, sheet_name=sheet, dtype=str),
+            ffill_cols=["pasta", "curso", "cod_curso", "codigo", "nome"],
+        )
+
+        cod_col  = _col_first(df, "pasta", "cod_curso", "codigo_curso", "codigo")
+        nome_col = _col_first(df, "curso", "nome_curso", "nome", "habilitacao")
+        if not cod_col or not nome_col:
+            return 0
+
+        ch_col      = next((c for c in df.columns if "carga" in c), None)
+        uc_seq_col  = _col_first(df, "uc")
+        tipo_col    = _col_first(df, "tipo")
+        modulo_col  = next((c for c in df.columns if "modulo" in c or "etapa" in c), None)
+        cod_uc_col  = next((c for c in df.columns if "cod_uc" in c), None)
+        nome_uc_col = next((c for c in df.columns if "unidade" in c), None)
+
+        cursos_map: dict[str, dict] = {}
+        for _, row in df.iterrows():
+            cod  = _str(row.get(cod_col))
+            nome = _str(row.get(nome_col))
+            if not cod or not nome:
+                continue
+            if cod not in cursos_map:
+                cursos_map[cod] = {"nome": nome, "carga": 0.0}
+            if ch_col:
+                cursos_map[cod]["carga"] += _parse_float(row.get(ch_col))
+
+        count = 0
+        curso_id_map: dict[str, int] = {}
+        for cod, info in cursos_map.items():
+            carga_total = int(info["carga"]) if info["carga"] > 0 else 0
+            res = await db.execute(select(Curso).where(Curso.codigo == cod))
+            existing = res.scalar_one_or_none()
+            if not existing:
+                novo = Curso(
+                    codigo=cod,
+                    nome=info["nome"],
+                    carga_horaria_total=carga_total,
+                    modalidade="Presencial",
+                    ativo=True,
+                )
+                db.add(novo)
+                await db.flush()
+                curso_id_map[cod] = novo.id
+                count += 1
+            else:
+                existing.nome = info["nome"]
+                if carga_total > 0:
+                    existing.carga_horaria_total = carga_total
+                curso_id_map[cod] = existing.id
+
+        await db.flush()
+
+        if nome_uc_col and cod_uc_col:
+            for _, row in df.iterrows():
+                cod_pasta = _str(row.get(cod_col))
+                curso_id  = curso_id_map.get(cod_pasta)
+                if not curso_id:
+                    continue
+                codigo_uc = _str(row.get(cod_uc_col))
+                nome_uc   = _str(row.get(nome_uc_col))
+                if not codigo_uc or not nome_uc:
+                    continue
+                res_uc = await db.execute(
+                    select(UnidadeCurricular).where(
+                        UnidadeCurricular.curso_id == curso_id,
+                        UnidadeCurricular.codigo_uc == codigo_uc,
+                    )
+                )
+                existing_uc = res_uc.scalar_one_or_none()
+                dados_uc = {
+                    "nome":        nome_uc,
+                    "tipo":        _str(row.get(tipo_col), "Presencial").capitalize() if tipo_col else "Presencial",
+                    "modulo_etapa": _str(row.get(modulo_col)) if modulo_col else None,
+                    "sequencia":   int(_parse_float(row.get(uc_seq_col))) if uc_seq_col else None,
+                    "carga_horaria": int(_parse_float(row.get(ch_col))) if ch_col else 0,
+                }
+                if not existing_uc:
+                    db.add(UnidadeCurricular(curso_id=curso_id, codigo_uc=codigo_uc, **dados_uc))
+                else:
+                    for k, v in dados_uc.items():
+                        setattr(existing_uc, k, v)
+
+        return count
+
+    # ─── CURSOS (extraídos da aba ATUAÇÃO) ───────────────────────────────────────
+    async def _cursos_da_atuacao(self, xls: pd.ExcelFile, sheet: str, db: AsyncSession) -> int:
+        """Extrai cursos únicos da aba ATUAÇÃO (PASTA=código, CURSO=nome)."""
+        df = _norm_df(
+            pd.read_excel(xls, sheet_name=sheet, dtype=str),
+            ffill_cols=["professor", "pasta", "curso", "modalidade", "modulo_etapa"],
+        )
+
+        cod_col  = _col_first(df, "pasta", "cod_curso", "codigo")
+        nome_col = _col_first(df, "curso", "nome_curso", "nome")
+        ch_col   = next((c for c in df.columns if "carga" in c), None)
+
+        # Colunas de UC para criar UnidadeCurricular junto com o Curso
+        cod_uc_col  = next((c for c in df.columns if "cod_uc" in c), None)
+        nome_uc_col = next((c for c in df.columns if "unidade" in c), None)
+        modulo_col  = next((c for c in df.columns if "modulo" in c or "etapa" in c), None)
+        uc_seq_col  = _col_first(df, "uc")
+        tipo_col    = _col_first(df, "tipo")
+
+        if not cod_col or not nome_col:
+            return 0
+
+        # Acumula CH total por PASTA
+        cursos_map: dict[str, dict] = {}
+        for _, row in df.iterrows():
+            cod  = _str(row.get(cod_col))
+            nome = _str(row.get(nome_col))
+            if not cod or not nome:
+                continue
+            if cod not in cursos_map:
+                cursos_map[cod] = {"nome": nome, "carga": 0.0}
+            if ch_col:
+                cursos_map[cod]["carga"] += _parse_float(row.get(ch_col))
+
+        count = 0
+        curso_id_map: dict[str, int] = {}
+        for cod, info in cursos_map.items():
+            carga_total = int(info["carga"]) if info["carga"] > 0 else 0
+            res = await db.execute(select(Curso).where(Curso.codigo == cod))
+            existing = res.scalar_one_or_none()
+            if not existing:
+                novo = Curso(
+                    codigo=cod,
+                    nome=info["nome"],
+                    carga_horaria_total=carga_total,
+                    modalidade="Presencial",
+                    ativo=True,
+                )
+                db.add(novo)
+                await db.flush()
+                curso_id_map[cod] = novo.id
+                count += 1
+            else:
+                existing.nome = info["nome"]
+                if carga_total > 0:
+                    existing.carga_horaria_total = carga_total
+                curso_id_map[cod] = existing.id
+
+        await db.flush()
+
+        # Cria UnidadeCurricular se colunas existirem
+        if nome_uc_col and cod_uc_col:
+            for _, row in df.iterrows():
+                cod_pasta = _str(row.get(cod_col))
+                curso_id  = curso_id_map.get(cod_pasta)
+                if not curso_id:
+                    continue
+                codigo_uc = _str(row.get(cod_uc_col))
+                nome_uc   = _str(row.get(nome_uc_col))
+                if not codigo_uc or not nome_uc:
+                    continue
+                res_uc = await db.execute(
+                    select(UnidadeCurricular).where(
+                        UnidadeCurricular.curso_id == curso_id,
+                        UnidadeCurricular.codigo_uc == codigo_uc,
+                    )
+                )
+                existing_uc = res_uc.scalar_one_or_none()
+                dados_uc = {
+                    "nome":        nome_uc,
+                    "tipo":        _str(row.get(tipo_col), "Presencial").capitalize() if tipo_col else "Presencial",
+                    "modulo_etapa": _str(row.get(modulo_col)) if modulo_col else None,
+                    "sequencia":   int(_parse_float(row.get(uc_seq_col))) if uc_seq_col else None,
+                    "carga_horaria": int(_parse_float(row.get(ch_col))) if ch_col else 0,
+                }
+                if not existing_uc:
+                    db.add(UnidadeCurricular(curso_id=curso_id, codigo_uc=codigo_uc, **dados_uc))
+                else:
+                    for k, v in dados_uc.items():
+                        setattr(existing_uc, k, v)
+
+        return count
+
     # ─── ATUAÇÃO ─────────────────────────────────────────────────────────────────
-    # Colunas: PROFESSOR | CURSO | PASTA | MODALIDADE | MÓDULO/ETAPA |
-    #          UC | TIPO | cod UC | UNIDADE CURRICULAR | CARGA HORÁRIA | AT
-    #
-    # PASTA identifica a matriz curricular (PPC). Cursos já devem existir no BD
-    # (importados da aba CURSOS antes desta). O mesmo professor pode ensinar a
-    # mesma disciplina em PASTAs diferentes — são registros distintos.
     async def _atuacoes(self, xls: pd.ExcelFile, sheet: str, db: AsyncSession) -> int:
-        df = _norm_df(pd.read_excel(xls, sheet_name=sheet, dtype=str))
+        # ffill em colunas que costumam ter células mescladas
+        df = _norm_df(
+            pd.read_excel(xls, sheet_name=sheet, dtype=str),
+            ffill_cols=["professor", "pasta", "curso", "modalidade", "modulo_etapa"],
+        )
 
-        # Cache PASTA → curso_id para evitar queries repetidas
         cache_curso: dict[str, int | None] = {}
-
-        # Rastreia o que já foi inserido nesta transação (evita duplicata dentro da importação)
         inseridos: set[tuple] = set()
         cnt = 0
 
@@ -229,17 +421,19 @@ class ExcelImportService:
             if not nome_prof or not disciplina:
                 continue
 
-            # AT = NÃO → professor não está habilitado nesta disciplina/pasta
-            at_val = _get(row, "at").upper()
-            if at_val in ("NÃO", "NAO", "N", "NO"):
+            # AT = NÃO → professor explicitamente marcado como inapto
+            at_val = _get(row, "at").strip().upper()
+            if at_val in ("NÃO", "NAO", "N", "NO", "INAPTO", "NAO_APTO"):
                 continue
 
-            res_p = await db.execute(select(Professor).where(Professor.nome == nome_prof))
+            # Busca case-insensitive para tolerar variações de capitalização
+            res_p = await db.execute(
+                select(Professor).where(func.lower(Professor.nome) == nome_prof.lower())
+            )
             professor = res_p.scalar_one_or_none()
             if not professor:
                 continue
 
-            # Resolve curso_id pelo código PASTA
             cod_pasta = _get(row, "pasta", "cod_curso")
             if cod_pasta not in cache_curso:
                 res_c = await db.execute(select(Curso).where(Curso.codigo == cod_pasta))
@@ -271,112 +465,18 @@ class ExcelImportService:
                 ))
                 cnt += 1
             else:
-                # Atualiza a modalidade mesmo que o registro já exista
                 existente.modalidade = modalidade
 
             inseridos.add(chave)
 
         return cnt
 
-    # ─── CURSOS ───────────────────────────────────────────────────────────────────
-    # Colunas: A=CURSO (nome) | B=PASTA (código PPC) | C=MODALIDADE |
-    #          D=MÓDULO/ETAPA | E=UC (seq) | F=TIPO | G=cod UC | H=UNIDADE CURRICULAR | I=CARGA HORÁRIA
-    # Cada linha é uma UC. Agrupamos por PASTA para criar/atualizar o Curso e
-    # salvamos cada UC individualmente na tabela unidades_curriculares.
-    async def _cursos(self, xls: pd.ExcelFile, sheet: str, db: AsyncSession) -> int:
-        df = _norm_df(pd.read_excel(xls, sheet_name=sheet, dtype=str))
-
-        cod_col  = next((c for c in df.columns if c in ("pasta","cod_curso","codigo_curso","codigo")), None)
-        nome_col = next((c for c in df.columns if c in ("curso","nome_curso","nome","habilitacao")), None)
-        if not cod_col or not nome_col:
-            return 0
-
-        ch_col      = next((c for c in df.columns if "carga" in c), None)
-        uc_seq_col  = next((c for c in df.columns if c == "uc"), None)
-        tipo_col    = next((c for c in df.columns if c == "tipo"), None)
-        modulo_col  = next((c for c in df.columns if "modulo" in c or "etapa" in c), None)
-        cod_uc_col  = next((c for c in df.columns if "cod_uc" in c or c == "cod_uc"), None)
-        nome_uc_col = next((c for c in df.columns if "unidade" in c), None)
-
-        # Passe 1: agrupa por PASTA para calcular totais e criar Cursos
-        cursos_map: dict[str, dict] = {}
-        for _, row in df.iterrows():
-            cod  = _str(row.get(cod_col))
-            nome = _str(row.get(nome_col))
-            if not cod or not nome:
-                continue
-            if cod not in cursos_map:
-                cursos_map[cod] = {"nome": nome, "carga": 0.0}
-            if ch_col:
-                cursos_map[cod]["carga"] += _parse_float(row.get(ch_col))
-
-        count = 0
-        curso_id_map: dict[str, int] = {}
-        for cod, info in cursos_map.items():
-            carga_total = int(info["carga"])
-            res = await db.execute(select(Curso).where(Curso.codigo == cod))
-            existing = res.scalar_one_or_none()
-            if not existing:
-                novo = Curso(
-                    codigo=cod,
-                    nome=info["nome"],
-                    carga_horaria_total=carga_total,
-                    modalidade="Presencial",
-                    ativo=True,
-                )
-                db.add(novo)
-                await db.flush()
-                curso_id_map[cod] = novo.id
-                count += 1
-            else:
-                existing.nome = info["nome"]
-                if carga_total > 0:
-                    existing.carga_horaria_total = carga_total
-                curso_id_map[cod] = existing.id
-
-        await db.flush()
-
-        # Passe 2: salva cada UC individualmente
-        if nome_uc_col and cod_uc_col:
-            for _, row in df.iterrows():
-                cod_pasta = _str(row.get(cod_col))
-                curso_id  = curso_id_map.get(cod_pasta)
-                if not curso_id:
-                    continue
-
-                codigo_uc = _str(row.get(cod_uc_col))
-                nome_uc   = _str(row.get(nome_uc_col))
-                if not codigo_uc or not nome_uc:
-                    continue
-
-                res_uc = await db.execute(
-                    select(UnidadeCurricular).where(
-                        UnidadeCurricular.curso_id == curso_id,
-                        UnidadeCurricular.codigo_uc == codigo_uc,
-                    )
-                )
-                existing_uc = res_uc.scalar_one_or_none()
-                dados_uc = {
-                    "nome":        nome_uc,
-                    "tipo":        _str(row.get(tipo_col), "Presencial").capitalize() if tipo_col else "Presencial",
-                    "modulo_etapa": _str(row.get(modulo_col)) if modulo_col else None,
-                    "sequencia":   int(_parse_float(row.get(uc_seq_col))) if uc_seq_col else None,
-                    "carga_horaria": int(_parse_float(row.get(ch_col))) if ch_col else 0,
-                }
-                if not existing_uc:
-                    db.add(UnidadeCurricular(curso_id=curso_id, codigo_uc=codigo_uc, **dados_uc))
-                else:
-                    for k, v in dados_uc.items():
-                        setattr(existing_uc, k, v)
-
-        return count
-
     # ─── DISPONIBILIDADE DETALHADA ────────────────────────────────────────────────
-    # Colunas: PROFESSOR | DIA_SEMANA | HORA_INICIO | HORA_FIM |
-    #          DISPONIVEL | TIPO_BLOQUEIO | OBSERVAÇÃO
     async def _disponibilidades(self, xls: pd.ExcelFile, sheet: str, db: AsyncSession) -> int:
-        df = _norm_df(pd.read_excel(xls, sheet_name=sheet))
-        # Cache professor_nome → id para evitar queries repetidas
+        df = _norm_df(
+            pd.read_excel(xls, sheet_name=sheet),
+            ffill_cols=["professor"],
+        )
         cache_prof: dict[str, int] = {}
         count = 0
 
@@ -386,7 +486,9 @@ class ExcelImportService:
                 continue
 
             if nome_prof not in cache_prof:
-                res = await db.execute(select(Professor).where(Professor.nome == nome_prof))
+                res = await db.execute(
+                    select(Professor).where(func.lower(Professor.nome) == nome_prof.lower())
+                )
                 p = res.scalar_one_or_none()
                 cache_prof[nome_prof] = p.id if p else -1
             prof_id = cache_prof[nome_prof]
@@ -423,8 +525,6 @@ class ExcelImportService:
         return count
 
     # ─── CALENDÁRIO ACADÊMICO ─────────────────────────────────────────────────────
-    # Colunas: DATA | TIPO | LETIVO | TURNO | DESCRIÇÃO
-    # Todos os registros são dias NÃO-letivos (feriados, recessos, férias dos alunos etc.)
     async def _calendario(self, xls: pd.ExcelFile, sheet: str, db: AsyncSession) -> int:
         df = _norm_df(pd.read_excel(xls, sheet_name=sheet))
         count = 0
@@ -435,25 +535,27 @@ class ExcelImportService:
             "nao letivo", "não letivo",
         }
 
+        # Detecta coluna de data (pode ter nomes variados)
+        data_col = _col_first(df, "data", "date", "dt")
+        tipo_col = _col_first(df, "tipo", "type", "evento", "descricao_tipo")
+
         for _, row in df.iterrows():
-            data_val = _parse_date(row.get("data"))
-            tipo_raw = _str(row.get("tipo"))
+            data_val = _parse_date(row.get(data_col) if data_col else row.get("data"))
+            tipo_raw = _str(row.get(tipo_col) if tipo_col else row.get("tipo"))
             if data_val is None or not tipo_raw:
                 continue
 
             tipo = tipo_raw
 
-            # Campo LETIVO da planilha (SIM/NÃO) — tem prioridade sobre o tipo
             letivo_raw = _str(row.get("letivo", "")).upper().strip()
             if letivo_raw in ("NAO", "NÃO", "N", "0", "FALSE", "NO"):
                 letivo = False
             elif letivo_raw in ("SIM", "S", "1", "TRUE", "YES"):
                 letivo = True
             else:
-                # Infere pelo tipo quando coluna LETIVO não preenchida
                 letivo = tipo_raw.lower().strip() not in _TIPOS_NAO_LETIVOS
 
-            descricao = _get(row, "descricao", "descricao_1") or tipo_raw.replace("_", " ").capitalize()
+            descricao = _get(row, "descricao", "descricao_1", "observacao") or tipo_raw.replace("_", " ").capitalize()
             periodo = _get(row, "turno", "periodo") or None
 
             res = await db.execute(
