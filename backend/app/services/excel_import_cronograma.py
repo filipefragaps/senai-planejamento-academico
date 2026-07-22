@@ -33,22 +33,41 @@ def _norm_col(col: str) -> str:
 def _get(row: pd.Series, *keys: str) -> str:
     for k in keys:
         v = row.get(k, "")
-        if v != "" and not (isinstance(v, float) and pd.isna(v)):
-            return str(v).strip()
+        if v is None or v is pd.NaT:
+            continue
+        if isinstance(v, float) and pd.isna(v):
+            continue
+        s = str(v).strip()
+        if s and s not in ("nan", "NaT", "None", "<NA>"):
+            return s
     return ""
 
 
 def _parse_date(val) -> date | None:
-    if val == "" or (isinstance(val, float) and pd.isna(val)):
+    """Converte qualquer representação de data para date.
+    Prioriza formatos brasileiros (DD/MM/YYYY) para strings.
+    Células Excel de tipo Data chegam como pd.Timestamp — convertidas direto, sem ambiguidade.
+    """
+    if val is None or val is pd.NaT:
         return None
-    if isinstance(val, (datetime, pd.Timestamp)):
+    if isinstance(val, float) and pd.isna(val):
+        return None
+    if val == "":
+        return None
+    # Célula de data nativa do Excel → pd.Timestamp ou datetime (sem ambiguidade)
+    if isinstance(val, pd.Timestamp):
+        try:
+            return val.date()
+        except Exception:
+            return None
+    if isinstance(val, datetime):
         return val.date()
     if isinstance(val, date):
         return val
     s = str(val).strip()
-    if not s or s in ("nan", "NaT", "None", "NaTType"):
+    if not s or s in ("nan", "NaT", "None", "NaTType", "<NA>"):
         return None
-    # Tenta formatos explícitos antes do parser genérico (evita ambiguidade DD vs MM)
+    # Formatos explícitos — DD/MM primeiro (padrão brasileiro)
     for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
         try:
             return datetime.strptime(s, fmt).date()
@@ -226,9 +245,10 @@ async def _lookup_uc(nome_uc: str, curso_id: int | None, db: AsyncSession) -> in
 async def importar_historico(conteudo: bytes, db: AsyncSession) -> dict:
     xls = pd.ExcelFile(conteudo)
     sheet = xls.sheet_names[0]
-    df = pd.read_excel(xls, sheet_name=sheet, dtype=str)
+    # Sem dtype=str: células de data chegam como pd.Timestamp (sem ambiguidade DD/MM vs MM/DD).
+    # _get e _parse_date tratam NaN/NaT nativamente.
+    df = pd.read_excel(xls, sheet_name=sheet)
     df.columns = [_norm_col(c) for c in df.columns]
-    df = df.fillna("")
 
     inseridas = 0
     atualizadas = 0
@@ -311,7 +331,10 @@ async def importar_historico(conteudo: bytes, db: AsyncSession) -> dict:
             obs = _get(row, "obs", "observacoes", "observacao")
             tipo_contrato = _get(row, "contrato", "tipo_contrato")
             num_aula_raw = _get(row, "aula", "numero_aula")
-            numero_aula = int(num_aula_raw) if num_aula_raw.isdigit() else None
+            try:
+                numero_aula = int(float(num_aula_raw)) if num_aula_raw else None
+            except (ValueError, TypeError):
+                numero_aula = None
 
             # Upsert: verifica se já existe aula nesse evento/data/horário
             res_ex = await db.execute(
