@@ -159,15 +159,21 @@ class ExcelImportService:
             resultado["professores"] = await self._professores(xls, prof_sheet, db)
             await db.flush()
 
-        # 2. Cursos: tenta aba dedicada; senão extrai da aba ATUAÇÃO
+        # 2. Cursos: extrai SEMPRE da aba ATUAÇÃO (garante colunas PASTA e CURSO).
+        #    Aba CURSOS, se existir, é usada depois apenas para suplementar UCs.
         atua_sheet = next((v for k, v in sheets.items() if "atua" in k), None)
         cursos_sheet = next((v for k, v in sheets.items() if "cursos" in k or "curso" in k), None)
 
-        if cursos_sheet:
-            resultado["cursos"] = await self._cursos(xls, cursos_sheet, db)
-        elif atua_sheet:
+        if atua_sheet:
             resultado["cursos"] = await self._cursos_da_atuacao(xls, atua_sheet, db)
+        elif cursos_sheet:
+            resultado["cursos"] = await self._cursos(xls, cursos_sheet, db)
         await db.flush()
+
+        # 2b. Suplementa UCs da aba CURSOS (se existir e tiver colunas de UC)
+        if cursos_sheet and atua_sheet:
+            await self._ucs_da_aba_cursos(xls, cursos_sheet, db)
+            await db.flush()
 
         # 3. Atuação
         if atua_sheet:
@@ -402,6 +408,76 @@ class ExcelImportService:
                         setattr(existing_uc, k, v)
 
         return count
+
+    # ─── UCs da aba CURSOS (suplemento) ─────────────────────────────────────────
+    async def _ucs_da_aba_cursos(self, xls: pd.ExcelFile, sheet: str, db: AsyncSession) -> None:
+        """Atualiza/cria UCs usando a aba CURSOS (complementa o que ATUAÇÃO não tem)."""
+        all_cols_ffill = None  # detectaremos após normalizar
+        df_raw = pd.read_excel(xls, sheet_name=sheet, dtype=str)
+        # Normaliza e descobre todas as colunas string para ffill
+        df = df_raw.rename(columns={c: _norm_col(c) for c in df_raw.columns})
+        df = df.dropna(how="all")
+        # Forward-fill em colunas que provavelmente têm células mescladas
+        str_cols = [c for c in df.columns if df[c].dtype == object]
+        for col in str_cols:
+            df[col] = df[col].ffill()
+
+        cod_uc_col  = next((c for c in df.columns if "cod_uc" in c or c == "cod_uc"), None)
+        nome_uc_col = next((c for c in df.columns if "unidade" in c), None)
+        ch_col      = next((c for c in df.columns if "carga" in c), None)
+        tipo_col    = _col_first(df, "tipo")
+        modulo_col  = next((c for c in df.columns if "modulo" in c or "etapa" in c), None)
+        uc_seq_col  = _col_first(df, "uc")
+        # Tenta detectar coluna de código de curso (PASTA ou similar)
+        pasta_col   = _col_first(df, "pasta", "cod_curso", "codigo", "cod_ppc")
+
+        if not cod_uc_col or not nome_uc_col:
+            return  # sem dados de UC reconhecíveis
+
+        for _, row in df.iterrows():
+            codigo_uc = _str(row.get(cod_uc_col))
+            nome_uc   = _str(row.get(nome_uc_col))
+            if not codigo_uc or not nome_uc:
+                continue
+
+            curso_id: int | None = None
+            if pasta_col:
+                cod_pasta = _str(row.get(pasta_col))
+                if cod_pasta:
+                    res_c = await db.execute(select(Curso).where(Curso.codigo == cod_pasta))
+                    c = res_c.scalar_one_or_none()
+                    curso_id = c.id if c else None
+
+            if not curso_id:
+                # Tenta achar pela UC já existente
+                res_uc = await db.execute(
+                    select(UnidadeCurricular).where(UnidadeCurricular.codigo_uc == codigo_uc)
+                )
+                existing_uc = res_uc.scalar_one_or_none()
+                if existing_uc:
+                    curso_id = existing_uc.curso_id
+                else:
+                    continue  # sem curso identificado, não cria UC órfã
+
+            dados_uc = {
+                "nome":          nome_uc,
+                "tipo":          _str(row.get(tipo_col), "Presencial").capitalize() if tipo_col else "Presencial",
+                "modulo_etapa":  _str(row.get(modulo_col)) if modulo_col else None,
+                "sequencia":     int(_parse_float(row.get(uc_seq_col))) if uc_seq_col else None,
+                "carga_horaria": int(_parse_float(row.get(ch_col))) if ch_col else 0,
+            }
+            res_uc = await db.execute(
+                select(UnidadeCurricular).where(
+                    UnidadeCurricular.curso_id == curso_id,
+                    UnidadeCurricular.codigo_uc == codigo_uc,
+                )
+            )
+            existing_uc = res_uc.scalar_one_or_none()
+            if not existing_uc:
+                db.add(UnidadeCurricular(curso_id=curso_id, codigo_uc=codigo_uc, **dados_uc))
+            else:
+                for k, v in dados_uc.items():
+                    setattr(existing_uc, k, v)
 
     # ─── ATUAÇÃO ─────────────────────────────────────────────────────────────────
     async def _atuacoes(self, xls: pd.ExcelFile, sheet: str, db: AsyncSession) -> int:
