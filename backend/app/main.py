@@ -33,7 +33,7 @@ async def _aplicar_migracoes(engine) -> None:
         "ALTER TABLE eventos ADD COLUMN oferta_id INTEGER REFERENCES ofertas_cursos(id) ON DELETE SET NULL",
         "ALTER TABLE eventos ADD COLUMN professores_preferidos JSON",
         "ALTER TABLE eventos ADD COLUMN modulo_etapa_inicial VARCHAR(50)",
-        "ALTER TABLE calendario_academico ADD COLUMN letivo BOOLEAN NOT NULL DEFAULT 1",
+        "ALTER TABLE calendario_academico ADD COLUMN letivo BOOLEAN NOT NULL DEFAULT true",
     ]
 
     # Cada ALTER TABLE em transação própria — PostgreSQL aborta toda a transação
@@ -74,8 +74,8 @@ async def _seed_admin(engine) -> None:
         if row.fetchone():
             return
         await conn.execute(
-            text("INSERT INTO usuarios (nome, email, hashed_password, perfil, ativo) VALUES (:n, :e, :h, 'admin', 1)"),
-            {"n": "Administrador", "e": admin_email, "h": hash_password(admin_senha)},
+            text("INSERT INTO usuarios (nome, email, hashed_password, perfil, ativo) VALUES (:n, :e, :h, 'admin', :a)"),
+            {"n": "Administrador", "e": admin_email, "h": hash_password(admin_senha), "a": True},
         )
 
 
