@@ -149,6 +149,7 @@ class ExcelImportService:
         resultado: dict = {
             "cursos": 0, "professores": 0, "atuacoes": 0,
             "disponibilidades": 0, "calendario": 0, "erros": [],
+            "abas_encontradas": list(xls.sheet_names),
         }
 
         sheets = {s.strip().lower(): s for s in xls.sheet_names}
@@ -275,12 +276,12 @@ class ExcelImportService:
                 db.add(novo)
                 await db.flush()
                 curso_id_map[cod] = novo.id
-                count += 1
             else:
                 existing.nome = info["nome"]
                 if carga_total > 0:
                     existing.carga_horaria_total = carga_total
                 curso_id_map[cod] = existing.id
+            count += 1
 
         await db.flush()
 
@@ -367,12 +368,12 @@ class ExcelImportService:
                 db.add(novo)
                 await db.flush()
                 curso_id_map[cod] = novo.id
-                count += 1
             else:
                 existing.nome = info["nome"]
                 if carga_total > 0:
                     existing.carga_horaria_total = carga_total
                 curso_id_map[cod] = existing.id
+            count += 1
 
         await db.flush()
 
@@ -539,10 +540,9 @@ class ExcelImportService:
                     modalidade=modalidade,
                     nivel_competencia=3,
                 ))
-                cnt += 1
             else:
                 existente.modalidade = modalidade
-
+            cnt += 1
             inseridos.add(chave)
 
         return cnt

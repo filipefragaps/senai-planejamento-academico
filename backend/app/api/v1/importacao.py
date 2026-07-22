@@ -36,6 +36,7 @@ async def importar_excel(
     return {
         "sucesso": True,
         "importados": resultado,
+        "abas_encontradas": resultado.get("abas_encontradas", []),
         "mensagem": (
             f"Importação concluída: {resultado['cursos']} cursos, "
             f"{resultado['professores']} professores, "

@@ -81,16 +81,12 @@ async def limpar_dados(
     tabelas = _TABELAS[tipo]
     contagens: dict[str, int] = {}
 
-    # Desativa FK constraints temporariamente (SQLite)
-    await db.execute(text("PRAGMA foreign_keys = OFF"))
-
     for tabela in tabelas:
         result = await db.execute(text(f"SELECT COUNT(*) FROM {tabela}"))
         total = result.scalar() or 0
         await db.execute(text(f"DELETE FROM {tabela}"))
         contagens[tabela] = total
 
-    await db.execute(text("PRAGMA foreign_keys = ON"))
     await db.commit()
 
     total_removido = sum(contagens.values())
