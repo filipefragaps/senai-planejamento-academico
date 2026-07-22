@@ -7,44 +7,58 @@ from app.api.v1.router import api_router
 
 
 async def _aplicar_migracoes(engine) -> None:
-    """Aplica ALTER TABLE incrementais e preenche dados ausentes no SQLite."""
+    """Aplica ALTER TABLE incrementais compatível com PostgreSQL e SQLite."""
     from sqlalchemy import text
-    async with engine.begin() as conn:
-        # Adiciona colunas novas (ignora erro se já existirem)
-        for stmt in [
-            "ALTER TABLE atuacoes ADD COLUMN modalidade VARCHAR(50)",
-            "ALTER TABLE ofertas_cursos ADD COLUMN previsao_inicio VARCHAR(100)",
-            "ALTER TABLE ofertas_cursos ADD COLUMN execucao VARCHAR(100)",
-            "ALTER TABLE ofertas_cursos ADD COLUMN status_cronograma VARCHAR(100)",
-            # Planejamento — novos campos em aulas
-            "ALTER TABLE aulas ADD COLUMN unidade_curricular_id INTEGER REFERENCES unidades_curriculares(id) ON DELETE SET NULL",
-            "ALTER TABLE aulas ADD COLUMN numero_aula INTEGER",
-            "ALTER TABLE aulas ADD COLUMN subturma VARCHAR(20)",
-            "ALTER TABLE aulas ADD COLUMN etapa VARCHAR(50)",
-            "ALTER TABLE aulas ADD COLUMN turno VARCHAR(20)",
-            "ALTER TABLE aulas ADD COLUMN tipo_contrato VARCHAR(20)",
-            "ALTER TABLE aulas ADD COLUMN ambiente VARCHAR(100)",
-            # Planejamento — novos campos em eventos
-            "ALTER TABLE eventos ADD COLUMN oferta_id INTEGER REFERENCES ofertas_cursos(id) ON DELETE SET NULL",
-            "ALTER TABLE eventos ADD COLUMN professores_preferidos JSON",
-            "ALTER TABLE eventos ADD COLUMN modulo_etapa_inicial VARCHAR(50)",
-            # Calendário acadêmico — campo letivo explícito
-            "ALTER TABLE calendario_academico ADD COLUMN letivo BOOLEAN NOT NULL DEFAULT 1",
-        ]:
-            try:
-                await conn.execute(text(stmt))
-            except Exception:
-                pass
-        # Preenche registros existentes sem modalidade com valor padrão
-        await conn.execute(text(
-            "UPDATE atuacoes SET modalidade = 'Habilitação Técnica' WHERE modalidade IS NULL OR modalidade = ''"
-        ))
-        # Retrocompatibilidade: marca tipos já conhecidos como não-letivos
-        await conn.execute(text(
+
+    is_postgres = "postgresql" in str(engine.url)
+
+    def _col_stmt(stmt: str) -> str:
+        # PostgreSQL suporta ADD COLUMN IF NOT EXISTS — evita abortar a transação
+        if is_postgres:
+            return stmt.replace("ADD COLUMN ", "ADD COLUMN IF NOT EXISTS ", 1)
+        return stmt
+
+    alter_stmts = [
+        "ALTER TABLE atuacoes ADD COLUMN modalidade VARCHAR(50)",
+        "ALTER TABLE ofertas_cursos ADD COLUMN previsao_inicio VARCHAR(100)",
+        "ALTER TABLE ofertas_cursos ADD COLUMN execucao VARCHAR(100)",
+        "ALTER TABLE ofertas_cursos ADD COLUMN status_cronograma VARCHAR(100)",
+        "ALTER TABLE aulas ADD COLUMN unidade_curricular_id INTEGER REFERENCES unidades_curriculares(id) ON DELETE SET NULL",
+        "ALTER TABLE aulas ADD COLUMN numero_aula INTEGER",
+        "ALTER TABLE aulas ADD COLUMN subturma VARCHAR(20)",
+        "ALTER TABLE aulas ADD COLUMN etapa VARCHAR(50)",
+        "ALTER TABLE aulas ADD COLUMN turno VARCHAR(20)",
+        "ALTER TABLE aulas ADD COLUMN tipo_contrato VARCHAR(20)",
+        "ALTER TABLE aulas ADD COLUMN ambiente VARCHAR(100)",
+        "ALTER TABLE eventos ADD COLUMN oferta_id INTEGER REFERENCES ofertas_cursos(id) ON DELETE SET NULL",
+        "ALTER TABLE eventos ADD COLUMN professores_preferidos JSON",
+        "ALTER TABLE eventos ADD COLUMN modulo_etapa_inicial VARCHAR(50)",
+        "ALTER TABLE calendario_academico ADD COLUMN letivo BOOLEAN NOT NULL DEFAULT 1",
+    ]
+
+    # Cada ALTER TABLE em transação própria — PostgreSQL aborta toda a transação
+    # se um comando falha; assim apenas o comando problemático é revertido.
+    for stmt in alter_stmts:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(_col_stmt(stmt)))
+        except Exception:
+            pass
+
+    # Retrocompatibilidade: dados padrão
+    for stmt in [
+        "UPDATE atuacoes SET modalidade = 'Habilitação Técnica' WHERE modalidade IS NULL OR modalidade = ''",
+        (
             "UPDATE calendario_academico SET letivo = 0 "
             "WHERE LOWER(tipo) IN ('feriado','recesso','ferias','férias','folga',"
             "'compensacao','compensação','sem aula') AND letivo = 1"
-        ))
+        ),
+    ]:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(stmt))
+        except Exception:
+            pass
 
 
 async def _seed_admin(engine) -> None:
