@@ -42,7 +42,7 @@ export const authApi = {
 // Cursos
 export const cursosApi = {
   listar: (ativo?: boolean) =>
-    api.get("/cursos", { params: { ativo } }).then((r) => r.data),
+    api.get("/cursos/", { params: { ativo } }).then((r) => r.data),
   criar: (data: any) => api.post("/cursos", data).then((r) => r.data),
   atualizar: (id: number, data: any) =>
     api.put(`/cursos/${id}`, data).then((r) => r.data),
@@ -53,7 +53,7 @@ export const cursosApi = {
 // Professores
 export const professoresApi = {
   listar: (params?: { ativo?: boolean; tipo?: string }) =>
-    api.get("/professores", { params }).then((r) => r.data),
+    api.get("/professores/", { params }).then((r) => r.data),
   obter: (id: number) => api.get(`/professores/${id}`).then((r) => r.data),
   detalhes: (id: number) => api.get(`/professores/${id}/detalhes`).then((r) => r.data),
   criar: (data: any) => api.post("/professores", data).then((r) => r.data),
@@ -90,7 +90,7 @@ export const professoresApi = {
 // Eventos
 export const eventosApi = {
   listar: (params?: any) =>
-    api.get("/eventos", { params }).then((r) => r.data),
+    api.get("/eventos/", { params }).then((r) => r.data),
   criar: (data: any) => api.post("/eventos", data).then((r) => r.data),
   obter: (id: number) => api.get(`/eventos/${id}`).then((r) => r.data),
   atualizar: (id: number, data: any) =>
@@ -102,7 +102,7 @@ export const eventosApi = {
 
 // Aulas
 export const aulasApi = {
-  listar: (params?: any) => api.get("/aulas", { params }).then((r) => r.data),
+  listar: (params?: any) => api.get("/aulas/", { params }).then((r) => r.data),
   alterar: (id: number, data: any) =>
     api.put(`/aulas/${id}`, data).then((r) => r.data),
   alternativas: (id: number) =>
@@ -111,7 +111,7 @@ export const aulasApi = {
 
 // Dashboard
 export const dashboardApi = {
-  get: () => api.get("/dashboard").then((r) => r.data),
+  get: () => api.get("/dashboard/").then((r) => r.data),
 };
 
 // Ofertas / Eventos SENAI
@@ -119,7 +119,7 @@ export const ofertasApi = {
   listar: (params?: {
     semestre?: number; status?: string; modalidade?: string;
     area?: string; turno?: string; busca?: string; skip?: number; limit?: number;
-  }) => api.get("/ofertas", { params }).then((r) => r.data),
+  }) => api.get("/ofertas/", { params }).then((r) => r.data),
   stats: (semestre?: number) =>
     api.get("/ofertas/stats", { params: { semestre } }).then((r) => r.data),
   criar: (dados: Record<string, unknown>) =>

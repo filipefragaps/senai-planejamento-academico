@@ -649,11 +649,11 @@ class ExcelImportService:
                     descricao=descricao or None,
                     periodo=periodo,
                 ))
-                count += 1
             else:
                 existing.letivo = letivo
                 existing.descricao = descricao or None
                 existing.periodo = periodo
+            count += 1
         return count
 
 
