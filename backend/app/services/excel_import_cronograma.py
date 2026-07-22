@@ -45,8 +45,17 @@ def _parse_date(val) -> date | None:
         return val.date()
     if isinstance(val, date):
         return val
+    s = str(val).strip()
+    if not s or s in ("nan", "NaT", "None", "NaTType"):
+        return None
+    # Tenta formatos explícitos antes do parser genérico (evita ambiguidade DD vs MM)
+    for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            pass
     try:
-        return pd.to_datetime(str(val), dayfirst=True).date()
+        return pd.to_datetime(s, dayfirst=True).date()
     except Exception:
         return None
 
