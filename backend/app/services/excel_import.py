@@ -159,20 +159,20 @@ class ExcelImportService:
             resultado["professores"] = await self._professores(xls, prof_sheet, db)
             await db.flush()
 
-        # 2. Cursos: extrai SEMPRE da aba ATUAÇÃO (garante colunas PASTA e CURSO).
-        #    Aba CURSOS, se existir, é usada depois apenas para suplementar UCs.
+        # 2. Cursos: usa aba CURSOS (catálogo completo) como fonte primária.
+        #    Aba ATUAÇÃO é fallback se não houver aba CURSOS.
         atua_sheet = next((v for k, v in sheets.items() if "atua" in k), None)
         cursos_sheet = next((v for k, v in sheets.items() if "cursos" in k or "curso" in k), None)
 
-        if atua_sheet:
-            resultado["cursos"] = await self._cursos_da_atuacao(xls, atua_sheet, db)
-        elif cursos_sheet:
+        if cursos_sheet:
             resultado["cursos"] = await self._cursos(xls, cursos_sheet, db)
+        elif atua_sheet:
+            resultado["cursos"] = await self._cursos_da_atuacao(xls, atua_sheet, db)
         await db.flush()
 
-        # 2b. Suplementa UCs da aba CURSOS (se existir e tiver colunas de UC)
+        # 2b. Garante cursos da ATUAÇÃO que não estão na aba CURSOS
         if cursos_sheet and atua_sheet:
-            await self._ucs_da_aba_cursos(xls, cursos_sheet, db)
+            await self._cursos_da_atuacao(xls, atua_sheet, db)
             await db.flush()
 
         # 3. Atuação
@@ -497,8 +497,8 @@ class ExcelImportService:
             if not nome_prof or not disciplina:
                 continue
 
-            # AT = NÃO → professor explicitamente marcado como inapto
-            at_val = _get(row, "at").strip().upper()
+            # ATUA = NÃO → professor não apto para esta UC
+            at_val = _get(row, "atua", "at").strip().upper()
             if at_val in ("NÃO", "NAO", "N", "NO", "INAPTO", "NAO_APTO"):
                 continue
 
