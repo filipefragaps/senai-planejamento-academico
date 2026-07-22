@@ -1,0 +1,22 @@
+# Backend
+backend/.env
+backend/*.db
+backend/uploads/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/.venv/
+backend/.pytest_cache/
+
+# Frontend
+frontend/.next/
+frontend/node_modules/
+frontend/.env.local
+frontend/.env*.local
+
+# Claude Code (memória e configuração local)
+.claude/
+
+# Sistema
+.DS_Store
+Thumbs.db
+*.log
