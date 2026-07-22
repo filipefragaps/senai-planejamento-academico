@@ -17,7 +17,6 @@ from typing import Any
 import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.models.curso import Curso
 from app.models.unidade_curricular import UnidadeCurricular
@@ -403,15 +402,22 @@ class ExcelImportService:
             disp_raw = _str(row.get("disponivel") or row.get("tipo_disponibilidade"), "SIM")
             tipo_disp = "Disponível" if _is_sim(disp_raw) else "Indisponível"
 
-            # INSERT OR IGNORE: duplicatas são ignoradas silenciosamente pelo SQLite
-            stmt = sqlite_insert(DisponibilidadeDetalhada).values(
-                professor_id=prof_id,
-                dia_semana=dia,
-                horario_inicio=h_ini,
-                horario_fim=h_fim,
-                tipo_disponibilidade=tipo_disp,
-            ).on_conflict_do_nothing()
-            await db.execute(stmt)
+            res_d = await db.execute(
+                select(DisponibilidadeDetalhada).where(
+                    DisponibilidadeDetalhada.professor_id == prof_id,
+                    DisponibilidadeDetalhada.dia_semana == dia,
+                    DisponibilidadeDetalhada.horario_inicio == h_ini,
+                    DisponibilidadeDetalhada.horario_fim == h_fim,
+                )
+            )
+            if not res_d.scalar_one_or_none():
+                db.add(DisponibilidadeDetalhada(
+                    professor_id=prof_id,
+                    dia_semana=dia,
+                    horario_inicio=h_ini,
+                    horario_fim=h_fim,
+                    tipo_disponibilidade=tipo_disp,
+                ))
             count += 1
 
         return count
