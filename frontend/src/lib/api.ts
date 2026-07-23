@@ -43,7 +43,7 @@ export const authApi = {
 export const cursosApi = {
   listar: (ativo?: boolean) =>
     api.get("/cursos/", { params: { ativo } }).then((r) => r.data),
-  criar: (data: any) => api.post("/cursos", data).then((r) => r.data),
+  criar: (data: any) => api.post("/cursos/", data).then((r) => r.data),
   atualizar: (id: number, data: any) =>
     api.put(`/cursos/${id}`, data).then((r) => r.data),
   deletar: (id: number) => api.delete(`/cursos/${id}`),
@@ -56,7 +56,7 @@ export const professoresApi = {
     api.get("/professores/", { params }).then((r) => r.data),
   obter: (id: number) => api.get(`/professores/${id}`).then((r) => r.data),
   detalhes: (id: number) => api.get(`/professores/${id}/detalhes`).then((r) => r.data),
-  criar: (data: any) => api.post("/professores", data).then((r) => r.data),
+  criar: (data: any) => api.post("/professores/", data).then((r) => r.data),
   atualizar: (id: number, data: any) =>
     api.put(`/professores/${id}`, data).then((r) => r.data),
   regencias: (params?: { data_inicio?: string; data_fim?: string }) =>
@@ -91,7 +91,7 @@ export const professoresApi = {
 export const eventosApi = {
   listar: (params?: any) =>
     api.get("/eventos/", { params }).then((r) => r.data),
-  criar: (data: any) => api.post("/eventos", data).then((r) => r.data),
+  criar: (data: any) => api.post("/eventos/", data).then((r) => r.data),
   obter: (id: number) => api.get(`/eventos/${id}`).then((r) => r.data),
   atualizar: (id: number, data: any) =>
     api.put(`/eventos/${id}`, data).then((r) => r.data),
@@ -123,7 +123,7 @@ export const ofertasApi = {
   stats: (semestre?: number) =>
     api.get("/ofertas/stats", { params: { semestre } }).then((r) => r.data),
   criar: (dados: Record<string, unknown>) =>
-    api.post("/ofertas", dados).then((r) => r.data),
+    api.post("/ofertas/", dados).then((r) => r.data),
   atualizar: (id: number, dados: Record<string, unknown>) =>
     api.patch(`/ofertas/${id}`, dados).then((r) => r.data),
   atualizarStatus: (id: number, status: string) =>

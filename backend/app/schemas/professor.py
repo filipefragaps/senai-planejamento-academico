@@ -63,8 +63,8 @@ class RegenciaInfo(BaseModel):
 
 class ProfessorOut(ProfessorBase):
     id: int
-    criado_em: datetime
-    atualizado_em: datetime
+    criado_em: datetime | None = None
+    atualizado_em: datetime | None = None
 
     model_config = {"from_attributes": True}
 
