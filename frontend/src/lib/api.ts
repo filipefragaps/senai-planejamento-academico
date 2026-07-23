@@ -48,6 +48,14 @@ export const cursosApi = {
     api.put(`/cursos/${id}`, data).then((r) => r.data),
   deletar: (id: number) => api.delete(`/cursos/${id}`),
   ucs: (id: number) => api.get(`/cursos/${id}/ucs`).then((r) => r.data),
+  criarUc: (cursoId: number, data: any) =>
+    api.post(`/cursos/${cursoId}/ucs`, data).then((r) => r.data),
+  atualizarUc: (cursoId: number, ucId: number, data: any) =>
+    api.put(`/cursos/${cursoId}/ucs/${ucId}`, data).then((r) => r.data),
+  deletarUc: (cursoId: number, ucId: number) =>
+    api.delete(`/cursos/${cursoId}/ucs/${ucId}`),
+  reordenarUcs: (cursoId: number, items: { id: number; sequencia: number; modulo_etapa?: string | null }[]) =>
+    api.patch(`/cursos/${cursoId}/ucs/reorder`, items),
 };
 
 // Professores

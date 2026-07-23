@@ -19,6 +19,7 @@ async def _aplicar_migracoes(engine) -> None:
         return stmt
 
     alter_stmts = [
+        "ALTER TABLE cursos ADD COLUMN tipo VARCHAR(50) DEFAULT 'Habilitação Técnica'",
         "ALTER TABLE atuacoes ADD COLUMN modalidade VARCHAR(50)",
         "ALTER TABLE ofertas_cursos ADD COLUMN previsao_inicio VARCHAR(100)",
         "ALTER TABLE ofertas_cursos ADD COLUMN execucao VARCHAR(100)",
