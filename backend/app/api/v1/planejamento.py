@@ -78,6 +78,7 @@ class UCOrdenada(BaseModel):
     uc_id: int
     ordem: int
     professor_preferido_id: Optional[int] = None
+    data_inicio: Optional[str] = None
 
 
 class GerarRequest(BaseModel):

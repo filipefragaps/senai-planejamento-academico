@@ -61,7 +61,6 @@ interface UCItem {
   sequencia: number | null;
   carga_horaria: number;
   professor_preferido_id?: number;
-  data_inicio?: string;
 }
 
 const DIAS_LABELS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
@@ -713,12 +712,11 @@ function OfertaPickerModal({ onClose, onEventoCriado }: OfertaPickerProps) {
 // ── UC Row with per-UC candidatos ─────────────────────────────────────────────
 
 function UCRowWithCandidatos({
-  uc, idx, total, eventoId, onMover, onSetPreferido, onSetDataInicio,
+  uc, idx, total, eventoId, onMover, onSetPreferido,
 }: {
   uc: UCItem; idx: number; total: number; eventoId: number;
   onMover: (idx: number, dir: "up" | "down") => void;
   onSetPreferido: (ucId: number, profId: number | undefined) => void;
-  onSetDataInicio: (ucId: number, data: string | undefined) => void;
 }) {
   const { data: candidatos = [], isLoading } = useQuery({
     queryKey: ["candidatos", eventoId, uc.id],
@@ -745,25 +743,6 @@ function UCRowWithCandidatos({
           <span>{uc.carga_horaria}h</span>
           {uc.modulo_etapa && <span>· {uc.modulo_etapa}</span>}
           <span className="text-gray-300">#{uc.codigo_uc}</span>
-        </div>
-        {/* Data de início opcional */}
-        <div className="mt-2 flex items-center gap-1.5">
-          <label className="text-[10px] text-gray-400 shrink-0">Início:</label>
-          <input
-            type="date"
-            className="input text-xs py-0.5 px-1.5 w-34"
-            value={uc.data_inicio ?? ""}
-            onChange={(e) => onSetDataInicio(uc.id, e.target.value || undefined)}
-            title="Data de início deste módulo (opcional — deixe em branco para continuar do módulo anterior)"
-          />
-          {uc.data_inicio && (
-            <button
-              type="button"
-              onClick={() => onSetDataInicio(uc.id, undefined)}
-              className="text-[10px] text-gray-400 hover:text-red-500"
-              title="Remover data"
-            >✕</button>
-          )}
         </div>
       </div>
       <div className="shrink-0 w-44">
@@ -804,6 +783,7 @@ export default function EventosPage() {
   const [ofertaPickerAberto, setOfertaPickerAberto] = useState(false);
   const [ucsOrdenadas, setUcsOrdenadas] = useState<UCItem[]>([]);
   const [moduloSelecionado, setModuloSelecionado] = useState<string | null>(null);
+  const [moduloDataInicio, setModuloDataInicio] = useState<string>("");
   const [ucFormAberto, setUcFormAberto] = useState(false);
   const [ucForm, setUcForm] = useState({ nome: "", carga_horaria: "" });
 
@@ -945,12 +925,6 @@ export default function EventosPage() {
     );
   }
 
-  function setDataInicioUc(ucId: number, data: string | undefined) {
-    setUcsOrdenadas((prev) =>
-      prev.map((u) => (u.id === ucId ? { ...u, data_inicio: data } : u))
-    );
-  }
-
   function handleEventoCriado(ev: Evento) {
     qc.invalidateQueries({ queryKey: ["eventos"] });
     setOfertaPickerAberto(false);
@@ -970,7 +944,8 @@ export default function EventosPage() {
     carga_horaria: u.carga_horaria,
     ordem: i + 1,
     professor_preferido_id: u.professor_preferido_id,
-    data_inicio: u.data_inicio,
+    // Apenas a 1ª UC recebe data_inicio — as demais encadeiam automaticamente
+    data_inicio: i === 0 && moduloDataInicio ? moduloDataInicio : undefined,
   }));
 
   const abas = [
@@ -1073,6 +1048,7 @@ export default function EventosPage() {
                       setAbaAtiva("cronograma");
                       setUcsOrdenadas([]);
                       setModuloSelecionado(null);
+                      setModuloDataInicio("");
                       setDiaSel(null);
                     }}
                   />
@@ -1145,6 +1121,7 @@ export default function EventosPage() {
                           setEventoSelecionado(ev);
                           setUcsOrdenadas([]);
                           setModuloSelecionado(null);
+                          setModuloDataInicio("");
                         }
                         setDiaSel(null);
                       }}
@@ -1172,7 +1149,10 @@ export default function EventosPage() {
                                 value={moduloSelecionado ?? ""}
                                 onChange={(e) => {
                                   const val = e.target.value || null;
-                                  if (val !== moduloSelecionado) setUcsOrdenadas([]);
+                                  if (val !== moduloSelecionado) {
+                                    setUcsOrdenadas([]);
+                                    setModuloDataInicio("");
+                                  }
                                   setModuloSelecionado(val);
                                 }}
                               >
@@ -1199,6 +1179,30 @@ export default function EventosPage() {
                               </div>
                             ) : (
                               <>
+                                {/* Data de início do módulo */}
+                                <div className="flex flex-wrap items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                                  <label className="text-sm font-medium text-amber-900 shrink-0 whitespace-nowrap">
+                                    Início do {moduloSelecionado ? `módulo "${moduloSelecionado}"` : "planejamento"}:
+                                  </label>
+                                  <input
+                                    type="date"
+                                    className="input text-sm py-1 px-2"
+                                    value={moduloDataInicio}
+                                    onChange={(e) => setModuloDataInicio(e.target.value)}
+                                    title="Data de início do módulo. As UCs serão encadeadas sequencialmente a partir desta data, respeitando o calendário acadêmico."
+                                  />
+                                  {moduloDataInicio && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setModuloDataInicio("")}
+                                      className="text-xs text-amber-700 hover:text-red-600"
+                                    >✕ Limpar</button>
+                                  )}
+                                  <span className="text-xs text-amber-700 ml-auto">
+                                    As UCs serão encadeadas automaticamente a partir desta data
+                                  </span>
+                                </div>
+
                                 {/* Cabeçalho com botão Gerar */}
                                 <div className="flex justify-between items-center">
                                   <p className="text-xs text-gray-500">
@@ -1249,7 +1253,6 @@ export default function EventosPage() {
                                         eventoId={eventoSelecionado.id}
                                         onMover={moverUc}
                                         onSetPreferido={setPreferidoUc}
-                                        onSetDataInicio={setDataInicioUc}
                                       />
                                     ))}
                                   </div>
