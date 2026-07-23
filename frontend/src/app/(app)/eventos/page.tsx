@@ -61,6 +61,7 @@ interface UCItem {
   sequencia: number | null;
   carga_horaria: number;
   professor_preferido_id?: number;
+  nao_agendar?: boolean;
 }
 
 const DIAS_LABELS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
@@ -712,11 +713,12 @@ function OfertaPickerModal({ onClose, onEventoCriado }: OfertaPickerProps) {
 // ── UC Row with per-UC candidatos ─────────────────────────────────────────────
 
 function UCRowWithCandidatos({
-  uc, idx, total, eventoId, onMover, onSetPreferido,
+  uc, idx, total, eventoId, onMover, onSetPreferido, onSetNaoAgendar,
 }: {
   uc: UCItem; idx: number; total: number; eventoId: number;
   onMover: (idx: number, dir: "up" | "down") => void;
   onSetPreferido: (ucId: number, profId: number | undefined) => void;
+  onSetNaoAgendar: (ucId: number, valor: boolean) => void;
 }) {
   const { data: candidatos = [], isLoading } = useQuery({
     queryKey: ["candidatos", eventoId, uc.id],
@@ -724,8 +726,14 @@ function UCRowWithCandidatos({
     staleTime: 120_000,
   });
 
+  const isEad = uc.tipo === "EaD" || uc.tipo === "ead" || uc.tipo?.toLowerCase() === "ead";
+  const naoAgendar = uc.nao_agendar ?? false;
+
   return (
-    <div className="border rounded-lg p-3 bg-white flex gap-3">
+    <div className={cn(
+      "border rounded-lg p-3 flex gap-3 transition-colors",
+      naoAgendar ? "bg-blue-50 border-blue-200 opacity-75" : "bg-white"
+    )}>
       <div className="flex flex-col gap-0.5 shrink-0 mt-1">
         <button onClick={() => onMover(idx, "up")} disabled={idx === 0}
           className="p-0.5 text-gray-300 hover:text-gray-600 disabled:opacity-30">
@@ -738,30 +746,62 @@ function UCRowWithCandidatos({
       </div>
       <span className="text-xs font-mono text-gray-400 w-5 text-right shrink-0 mt-1">{idx + 1}</span>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-900 truncate">{uc.nome}</p>
+        <div className="flex items-center gap-2">
+          <p className={cn("text-sm font-medium truncate", naoAgendar ? "text-gray-400 line-through" : "text-gray-900")}>
+            {uc.nome}
+          </p>
+          {isEad && (
+            <span className="shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 uppercase tracking-wide">
+              EaD
+            </span>
+          )}
+        </div>
         <div className="flex gap-2 text-[10px] text-gray-400 mt-0.5">
           <span>{uc.carga_horaria}h</span>
           {uc.modulo_etapa && <span>· {uc.modulo_etapa}</span>}
           <span className="text-gray-300">#{uc.codigo_uc}</span>
         </div>
+        {/* Toggle "Não agendar" — disponível para EaD mas pode ser usado em qualquer UC */}
+        <label className="mt-1.5 flex items-center gap-1.5 cursor-pointer w-fit group">
+          <input
+            type="checkbox"
+            checked={naoAgendar}
+            onChange={(e) => onSetNaoAgendar(uc.id, e.target.checked)}
+            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-3 w-3"
+          />
+          <span className={cn(
+            "text-[10px] select-none",
+            naoAgendar ? "text-blue-700 font-medium" : "text-gray-400 group-hover:text-gray-600"
+          )}>
+            {naoAgendar ? "EaD paralelo — sem agendamento" : "Não agendar (EaD paralelo)"}
+          </span>
+        </label>
       </div>
       <div className="shrink-0 w-44">
-        <select
-          className="input w-full text-xs py-1.5"
-          value={uc.professor_preferido_id ?? ""}
-          onChange={(e) => onSetPreferido(uc.id, e.target.value ? +e.target.value : undefined)}
-          disabled={isLoading}
-        >
-          <option value="">Auto (sistema escolhe)</option>
-          {(candidatos as any[]).map((c: any) => (
-            <option key={c.professor_id} value={c.professor_id}>
-              {c.nome}{c.nivel_competencia ? ` ★${c.nivel_competencia}` : ""}
-            </option>
-          ))}
-        </select>
-        {isLoading && <p className="text-[10px] text-gray-400 mt-0.5">Buscando aptos...</p>}
-        {!isLoading && (candidatos as any[]).length === 0 && (
-          <p className="text-[10px] text-amber-600 mt-0.5">Nenhum apto cadastrado</p>
+        {naoAgendar ? (
+          <div className="flex items-center justify-center h-full text-[10px] text-blue-500 text-center py-2">
+            Sem alocação de professor
+          </div>
+        ) : (
+          <>
+            <select
+              className="input w-full text-xs py-1.5"
+              value={uc.professor_preferido_id ?? ""}
+              onChange={(e) => onSetPreferido(uc.id, e.target.value ? +e.target.value : undefined)}
+              disabled={isLoading}
+            >
+              <option value="">Auto (sistema escolhe)</option>
+              {(candidatos as any[]).map((c: any) => (
+                <option key={c.professor_id} value={c.professor_id}>
+                  {c.nome}{c.nivel_competencia ? ` ★${c.nivel_competencia}` : ""}
+                </option>
+              ))}
+            </select>
+            {isLoading && <p className="text-[10px] text-gray-400 mt-0.5">Buscando aptos...</p>}
+            {!isLoading && (candidatos as any[]).length === 0 && (
+              <p className="text-[10px] text-amber-600 mt-0.5">Nenhum apto cadastrado</p>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -925,6 +965,12 @@ export default function EventosPage() {
     );
   }
 
+  function setNaoAgendarUc(ucId: number, valor: boolean) {
+    setUcsOrdenadas((prev) =>
+      prev.map((u) => (u.id === ucId ? { ...u, nao_agendar: valor } : u))
+    );
+  }
+
   function handleEventoCriado(ev: Evento) {
     qc.invalidateQueries({ queryKey: ["eventos"] });
     setOfertaPickerAberto(false);
@@ -946,6 +992,7 @@ export default function EventosPage() {
     professor_preferido_id: u.professor_preferido_id,
     // Apenas a 1ª UC recebe data_inicio — as demais encadeiam automaticamente
     data_inicio: i === 0 && moduloDataInicio ? moduloDataInicio : undefined,
+    nao_agendar: u.nao_agendar ?? false,
   }));
 
   const abas = [
@@ -1253,6 +1300,7 @@ export default function EventosPage() {
                                         eventoId={eventoSelecionado.id}
                                         onMover={moverUc}
                                         onSetPreferido={setPreferidoUc}
+                                        onSetNaoAgendar={setNaoAgendarUc}
                                       />
                                     ))}
                                   </div>

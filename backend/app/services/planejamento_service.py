@@ -207,12 +207,31 @@ async def gerar_planejamento(
         uc_id = item["uc_id"]
         prof_preferido_uc = item.get("professor_preferido_id")
         data_inicio_uc = item.get("data_inicio")   # data de início opcional para este módulo
+        nao_agendar = item.get("nao_agendar", False)
         preferidos = list(set(preferidos_global + ([prof_preferido_uc] if prof_preferido_uc else [])))
 
         res_uc = await db.execute(select(UnidadeCurricular).where(UnidadeCurricular.id == uc_id))
         uc = res_uc.scalar_one_or_none()
         if not uc:
             conflitos.append({"uc_id": uc_id, "motivo": "UC não encontrada"})
+            continue
+
+        # UC EaD marcada como "não agendar": inclui no resultado sem gerar aulas
+        if nao_agendar:
+            alocacoes.append(AlocacaoUC(
+                uc_id=uc_id,
+                uc_nome=uc.nome,
+                uc_codigo=uc.codigo_uc or "",
+                etapa=uc.modulo_etapa,
+                carga_horaria=uc.carga_horaria or 0,
+                professor_id=None,
+                professor_nome=None,
+                aulas_necessarias=0,
+                datas_aulas=[],
+                justificativa="EaD — realizada de forma paralela sem necessidade de agendamento.",
+                alerta=None,
+                score=0.0,
+            ))
             continue
 
         aulas_necessarias = math.ceil((uc.carga_horaria or 0) / horas_por_aula) if horas_por_aula > 0 else 0

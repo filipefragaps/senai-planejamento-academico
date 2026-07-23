@@ -19,6 +19,7 @@ export interface UCParaPlanejar {
   ordem: number;
   professor_preferido_id?: number;
   data_inicio?: string;
+  nao_agendar?: boolean;
 }
 
 interface AlocacaoResult {
@@ -93,15 +94,31 @@ const AVALIACAO_CLS: Record<string, string> = {
 
 function AlocacaoCard({ a }: { a: AlocacaoResult }) {
   const [expandido, setExpandido] = useState(false);
+  const isNaoAgendada = a.aulas_necessarias === 0 && !a.professor_id;
   return (
-    <div className={cn("border rounded-lg p-3", a.alerta ? "border-amber-200 bg-amber-50/40" : "border-gray-200")}>
+    <div className={cn(
+      "border rounded-lg p-3",
+      isNaoAgendada ? "border-blue-200 bg-blue-50/40" :
+      a.alerta ? "border-amber-200 bg-amber-50/40" : "border-gray-200"
+    )}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <p className="font-medium text-sm text-gray-900 truncate">{a.uc_nome}</p>
-          <p className="text-xs text-gray-500 mt-0.5">{a.carga_horaria}h · {a.aulas_necessarias} aulas</p>
+          <div className="flex items-center gap-2">
+            <p className="font-medium text-sm text-gray-900 truncate">{a.uc_nome}</p>
+            {isNaoAgendada && (
+              <span className="shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 uppercase tracking-wide">
+                EaD
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {a.carga_horaria}h{!isNaoAgendada && ` · ${a.aulas_necessarias} aulas`}
+          </p>
         </div>
         <div className="text-right shrink-0">
-          {a.professor_nome ? (
+          {isNaoAgendada ? (
+            <p className="text-sm text-blue-600 italic">Sem agendamento</p>
+          ) : a.professor_nome ? (
             <p className="text-sm font-medium text-blue-700">{a.professor_nome}</p>
           ) : (
             <p className="text-sm font-medium text-red-600 italic">Sem professor</p>
@@ -162,6 +179,7 @@ export function PlanejamentoModal({ eventoId, nomeEvento, ucs, onClose, onConfir
         ordem: u.ordem,
         professor_preferido_id: u.professor_preferido_id,
         data_inicio: u.data_inicio,
+        nao_agendar: u.nao_agendar ?? false,
       }));
       return planejamentoApi.gerar(eventoId, ucsOrdenadas);
     },
