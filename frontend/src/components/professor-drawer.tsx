@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { professoresApi, cursosApi } from "@/lib/api";
 import { toast } from "sonner";
@@ -248,7 +248,7 @@ export function ProfessorDrawer({ professor, onClose, onSaved }: Props) {
   const [gradeAtiva, setGradeAtiva] = useState<Set<GradeKey>>(() => new Set());
 
   // Sincroniza grade quando disponibilidades carregam
-  useMemo(() => {
+  useEffect(() => {
     const ativas = new Set<GradeKey>();
     for (const d of disponibilidades) {
       TURNOS.forEach((t, ti) => {
@@ -258,6 +258,7 @@ export function ProfessorDrawer({ professor, onClose, onSaved }: Props) {
       });
     }
     setGradeAtiva(ativas);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [disponibilidades.length]);
 
   function toggleGrade(dia: number, turnoIdx: number) {
