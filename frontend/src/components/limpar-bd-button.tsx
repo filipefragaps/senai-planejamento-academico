@@ -34,9 +34,6 @@ interface Props {
 }
 
 export function LimparBdButton({ tipo, label, className, onLimpou }: Props) {
-  const me = getCurrentUser();
-  if (me?.perfil !== "admin") return null;
-
   const qc = useQueryClient();
   const [confirmando, setConfirmando] = useState(false);
 
@@ -53,6 +50,9 @@ export function LimparBdButton({ tipo, label, className, onLimpou }: Props) {
       setConfirmando(false);
     },
   });
+
+  const me = getCurrentUser();
+  if (me?.perfil !== "admin") return null;
 
   if (confirmando) {
     return (
