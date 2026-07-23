@@ -220,7 +220,12 @@ export function ProfessorDrawer({ professor, onClose, onSaved }: Props) {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     try {
-      const prof = await criarProf.mutateAsync(basic);
+      const payload = {
+        ...basic,
+        // valor_hora vazio ("") deve virar null — Pydantic rejeita string vazia para float
+        valor_hora: basic.valor_hora !== "" ? Number(basic.valor_hora) : null,
+      };
+      const prof = await criarProf.mutateAsync(payload);
       // adiciona pendingDisps
       await Promise.all(
         pendingDisps.map((d) =>
@@ -237,7 +242,13 @@ export function ProfessorDrawer({ professor, onClose, onSaved }: Props) {
       qc.invalidateQueries({ queryKey: ["professores"] });
       onSaved(prof);
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || "Erro ao cadastrar professor");
+      const detail = err?.response?.data?.detail;
+      const msg = typeof detail === "string"
+        ? detail
+        : Array.isArray(detail)
+          ? detail.map((d: any) => d.msg || d.message || "campo inválido").join("; ")
+          : "Erro ao cadastrar professor";
+      toast.error(msg);
     }
   }
 
@@ -431,7 +442,10 @@ export function ProfessorDrawer({ professor, onClose, onSaved }: Props) {
               {isEdit && (
                 <button
                   type="button"
-                  onClick={() => atualizarProf.mutate(basic)}
+                  onClick={() => atualizarProf.mutate({
+                    ...basic,
+                    valor_hora: basic.valor_hora !== "" ? Number(basic.valor_hora) : null,
+                  })}
                   disabled={atualizarProf.isPending}
                   className="btn-primary mt-4 flex items-center gap-2 text-sm"
                 >
