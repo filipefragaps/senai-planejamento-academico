@@ -162,12 +162,12 @@ function CalendarioMes({
   // Cores por UC
   const ucColorMap = useMemo(() => buildUcColorMap(aulas), [aulas]);
 
-  // Legenda de UCs (ordem de primeiro aparecimento)
+  // Legenda de UCs (ordem de primeiro aparecimento) — inclui UCs sem nome usando etapa ou ID
   const ucLegend = useMemo(() => {
     const visto = new Map<number, string>();
     for (const a of aulas) {
-      if (a.unidade_curricular_id && a.uc_nome && !visto.has(a.unidade_curricular_id)) {
-        visto.set(a.unidade_curricular_id, a.uc_nome);
+      if (a.unidade_curricular_id && !visto.has(a.unidade_curricular_id)) {
+        visto.set(a.unidade_curricular_id, a.uc_nome || a.etapa || `UC ${a.unidade_curricular_id}`);
       }
     }
     return Array.from(visto.entries()).map(([id, nome]) => ({ id, nome, cor: ucCor(id, ucColorMap) }));
@@ -309,7 +309,7 @@ function CalendarioMes({
                       {aulasAqui.slice(0, 3).map((a, ai) => {
                         const cor = ucCor(a.unidade_curricular_id, ucColorMap);
                         const dot = STATUS_DOT_HEX[a.status];
-                        const label = (a.uc_nome || a.nome_evento || "Aula").split(" ").slice(0, 2).join(" ");
+                        const label = (a.uc_nome || a.etapa || "Aula").split(" ").slice(0, 2).join(" ");
                         const prof = a.professor_nome?.split(" ")[0] ?? "";
                         return (
                           <div key={ai} className="rounded overflow-hidden" style={{ backgroundColor: cor }}>
@@ -412,6 +412,14 @@ function CalendarioMes({
 function EventoCard({
   ev, selecionado, onClick,
 }: { ev: Evento; selecionado: boolean; onClick: () => void }) {
+  // Split "123456 – Course Name" into [code, name]; if no separator, whole string is treated as code
+  const sepIdx = ev.nome_turma.indexOf(" – ");
+  const sepIdx2 = sepIdx >= 0 ? sepIdx : ev.nome_turma.indexOf(" - ");
+  const codigo = sepIdx2 >= 0 ? ev.nome_turma.slice(0, sepIdx2).trim() : ev.nome_turma;
+  const nomeCurso = sepIdx2 >= 0
+    ? ev.nome_turma.slice(sepIdx2 + 3).trim()
+    : (ev.disciplina && ev.disciplina !== ev.nome_turma ? ev.disciplina : null);
+
   return (
     <button
       onClick={onClick}
@@ -422,12 +430,14 @@ function EventoCard({
           : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
       )}
     >
-      <div className="flex items-start justify-between gap-2 mb-1">
-        <p className="font-medium text-sm text-gray-900 line-clamp-2 leading-tight">{ev.nome_turma}</p>
+      <div className="flex items-start justify-between gap-2 mb-0.5">
+        <p className="text-[10px] font-mono text-blue-700 font-semibold leading-none">{codigo}</p>
         <StatusBadge status={ev.status} />
       </div>
-      <p className="text-xs text-gray-500 truncate">{ev.disciplina}</p>
-      <p className="text-[10px] text-gray-400 mt-1">
+      {nomeCurso && (
+        <p className="font-medium text-sm text-gray-900 line-clamp-2 leading-tight mb-1">{nomeCurso}</p>
+      )}
+      <p className="text-[10px] text-gray-400">
         {formatDate(ev.data_inicio)} – {formatDate(ev.data_fim)}
       </p>
     </button>

@@ -821,10 +821,6 @@ async def apagar_planejamento(
     - Com uc_id: remove apenas as aulas da UC especificada.
     O evento em si não é removido.
     """
-    res_ev = await db.execute(select(Evento).where(Evento.id == evento_id))
-    if not res_ev.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Evento não encontrado")
-
     filters = [Aula.evento_id == evento_id]
     if uc_id is not None:
         filters.append(Aula.unidade_curricular_id == uc_id)
