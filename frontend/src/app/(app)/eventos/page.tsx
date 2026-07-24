@@ -413,15 +413,16 @@ function CalendarioMes({
 function EventoCard({
   ev, selecionado, onClick,
 }: { ev: Evento; selecionado: boolean; onClick: () => void }) {
-  // nome_curso from API (joined from Curso table) is the authoritative course name.
-  // For events created from oferta, nome_turma follows "CODE – Course Name" pattern.
+  // nome_curso (from Curso table join) is authoritative.
+  // For oferta events: nome_turma = "CODE – Course Name".
+  // For imported events: nome_turma = event code only; disciplina may be a UC name (data issue).
   const sepIdx = ev.nome_turma.indexOf(" – ");
   const sepIdx2 = sepIdx >= 0 ? sepIdx : ev.nome_turma.indexOf(" - ");
   const codigo = sepIdx2 >= 0 ? ev.nome_turma.slice(0, sepIdx2).trim() : ev.nome_turma;
-  const nomeCurso =
-    ev.nome_curso ||
-    (sepIdx2 >= 0 ? ev.nome_turma.slice(sepIdx2 + 3).trim() : null) ||
-    (ev.disciplina !== ev.nome_turma ? ev.disciplina : null);
+  const nomeFromTurma = sepIdx2 >= 0 ? ev.nome_turma.slice(sepIdx2 + 3).trim() : null;
+  // Use nome_curso from API if available; else name parsed from nome_turma; else nothing
+  // (avoid showing disciplina as course name since it may contain a UC name for old imports)
+  const nomeCurso = ev.nome_curso || nomeFromTurma || null;
 
   return (
     <button
@@ -437,8 +438,10 @@ function EventoCard({
         <p className="text-[10px] font-mono text-blue-700 font-semibold leading-none">{codigo}</p>
         <StatusBadge status={ev.status} />
       </div>
-      {nomeCurso && (
+      {nomeCurso ? (
         <p className="font-medium text-sm text-gray-900 line-clamp-2 leading-tight mb-1">{nomeCurso}</p>
+      ) : (
+        <p className="text-xs text-gray-500 italic line-clamp-1 mb-1">{ev.disciplina}</p>
       )}
       <p className="text-[10px] text-gray-400">
         {formatDate(ev.data_inicio)} – {formatDate(ev.data_fim)}

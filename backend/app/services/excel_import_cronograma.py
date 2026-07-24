@@ -181,12 +181,19 @@ async def _lookup_professor(nome: str, db: AsyncSession) -> int | None:
 async def _lookup_ou_criar_evento(
     nome_turma: str, disciplina: str, curso_id: int | None, db: AsyncSession
 ) -> Evento:
-    """Busca evento por nome; cria um rascunho se não existir."""
+    """Busca evento por nome; cria um rascunho se não existir.
+    Em reimportação, atualiza disciplina e curso_id se tiver valores melhores."""
     result = await db.execute(
         select(Evento).where(Evento.nome_turma.ilike(f"%{nome_turma.strip()}%"))
     )
     evento = result.scalars().first()
     if evento:
+        # Atualiza disciplina se tiver valor melhor (nome do curso, não código/UC)
+        if disciplina and disciplina != nome_turma.strip():
+            evento.disciplina = disciplina
+        # Atualiza curso_id se ainda não estava vinculado
+        if curso_id and not evento.curso_id:
+            evento.curso_id = curso_id
         return evento
 
     # Cria um rascunho mínimo para agrupar as aulas importadas
