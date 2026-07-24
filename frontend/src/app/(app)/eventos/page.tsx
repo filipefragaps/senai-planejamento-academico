@@ -12,7 +12,7 @@ import { PlanejamentoModal, UCParaPlanejar } from "@/components/planejamento-mod
 import { toast } from "sonner";
 import {
   Search, Plus, Upload, Loader2, RefreshCw, ArrowUp, ArrowDown, X, Download,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, Trash2,
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 import { downloadModeloHistorico } from "@/lib/templates";
@@ -826,6 +826,7 @@ export default function EventosPage() {
   const [moduloDataInicio, setModuloDataInicio] = useState<string>("");
   const [ucFormAberto, setUcFormAberto] = useState(false);
   const [ucForm, setUcForm] = useState({ nome: "", carga_horaria: "" });
+  const [limparAberto, setLimparAberto] = useState(false);
 
   // ── Calendário state ────────────────────────────────────────────────────────
   const _hoje = new Date();
@@ -843,7 +844,7 @@ export default function EventosPage() {
   const { data: cronograma = [], isLoading: loadingCronograma } = useQuery({
     queryKey: ["cronograma", eventoSelecionado?.id],
     queryFn: () => planejamentoApi.cronograma({ evento_id: eventoSelecionado!.id, limit: 1000 }),
-    enabled: !!eventoSelecionado && abaAtiva === "cronograma",
+    enabled: !!eventoSelecionado && (abaAtiva === "cronograma" || limparAberto),
   });
 
   const {
@@ -941,6 +942,18 @@ export default function EventosPage() {
     onError: (err: any) => toast.error(err?.response?.data?.detail || "Erro ao importar"),
   });
 
+  const apagarPlanejamentoMut = useMutation({
+    mutationFn: ({ ucId }: { ucId?: number }) =>
+      planejamentoApi.apagarPlanejamento(eventoSelecionado!.id, ucId),
+    onSuccess: (res: any) => {
+      toast.success(`${res.removidas} aula(s) removida(s) com sucesso.`);
+      setLimparAberto(false);
+      qc.invalidateQueries({ queryKey: ["cronograma", eventoSelecionado?.id] });
+      qc.invalidateQueries({ queryKey: ["regencia-projetada", eventoSelecionado?.id] });
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.detail || "Erro ao remover aulas"),
+  });
+
   // ── Handlers ───────────────────────────────────────────────────────────────
 
   function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -976,6 +989,26 @@ export default function EventosPage() {
     setOfertaPickerAberto(false);
     setEventoSelecionado(ev);
     setAbaAtiva("ucs");
+  }
+
+  const ucsDoCronograma = useMemo(() => {
+    const visto = new Map<number, string>();
+    for (const a of cronograma as AulaRow[]) {
+      if (a.unidade_curricular_id && a.uc_nome && !visto.has(a.unidade_curricular_id)) {
+        visto.set(a.unidade_curricular_id, a.uc_nome);
+      }
+    }
+    return Array.from(visto.entries()).map(([id, nome]) => ({ id, nome }));
+  }, [cronograma]);
+
+  function handleApagarTudo() {
+    if (!window.confirm(`Remover TODAS as aulas do planejamento de "${eventoSelecionado?.nome_turma}"?\n\nEsta ação não pode ser desfeita.`)) return;
+    apagarPlanejamentoMut.mutate({});
+  }
+
+  function handleApagarUc(ucId: number, ucNome: string) {
+    if (!window.confirm(`Remover as aulas de "${ucNome}" do evento "${eventoSelecionado?.nome_turma}"?\n\nEsta ação não pode ser desfeita.`)) return;
+    apagarPlanejamentoMut.mutate({ ucId });
   }
 
   const filtrados = (eventos as Evento[]).filter(
@@ -1120,12 +1153,61 @@ export default function EventosPage() {
             ) : (
               <>
                 {/* Panel header */}
-                <div className="px-5 py-3 border-b shrink-0">
-                  <p className="font-semibold text-gray-900 truncate">{eventoSelecionado.nome_turma}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {eventoSelecionado.disciplina} · {formatDate(eventoSelecionado.data_inicio)} –{" "}
-                    {formatDate(eventoSelecionado.data_fim)}
-                  </p>
+                <div className="px-5 py-3 border-b shrink-0 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-900 truncate">{eventoSelecionado.nome_turma}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {eventoSelecionado.disciplina} · {formatDate(eventoSelecionado.data_inicio)} –{" "}
+                      {formatDate(eventoSelecionado.data_fim)}
+                    </p>
+                  </div>
+                  <div className="relative shrink-0">
+                    <button
+                      onClick={() => setLimparAberto(!limparAberto)}
+                      disabled={apagarPlanejamentoMut.isPending}
+                      className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-medium border border-red-200 hover:border-red-300 rounded px-2 py-1 bg-red-50 hover:bg-red-100 transition-colors disabled:opacity-50"
+                    >
+                      {apagarPlanejamentoMut.isPending
+                        ? <Loader2 className="h-3 w-3 animate-spin" />
+                        : <Trash2 className="h-3 w-3" />}
+                      Limpar
+                    </button>
+                    {limparAberto && (
+                      <div className="absolute right-0 top-full mt-1 bg-white border rounded-lg shadow-lg z-20 min-w-[240px] py-1">
+                        <button
+                          onClick={handleApagarTudo}
+                          className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 font-medium"
+                        >
+                          Apagar todo o planejamento
+                        </button>
+                        {ucsDoCronograma.length > 0 && (
+                          <>
+                            <div className="border-t my-1" />
+                            <p className="px-4 py-1.5 text-[11px] text-gray-400 font-semibold uppercase tracking-wide">
+                              Apagar por UC:
+                            </p>
+                            {ucsDoCronograma.map((uc) => (
+                              <button
+                                key={uc.id}
+                                onClick={() => handleApagarUc(uc.id, uc.nome)}
+                                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 truncate"
+                              >
+                                {uc.nome}
+                              </button>
+                            ))}
+                          </>
+                        )}
+                        <div className="border-t mt-1 pt-1">
+                          <button
+                            onClick={() => setLimparAberto(false)}
+                            className="w-full text-left px-4 py-2 text-xs text-gray-400 hover:text-gray-600"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Tabs */}

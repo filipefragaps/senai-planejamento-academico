@@ -175,6 +175,8 @@ export const planejamentoApi = {
     api.get(`/planejamento/datas-disponiveis/${aulaId}`).then((r) => r.data),
   remanejo: (aulaId: number, body: { tipo: string; professor_id?: number; nova_data?: string }) =>
     api.post(`/planejamento/remanejo/${aulaId}`, body).then((r) => r.data),
+  apagarPlanejamento: (eventoId: number, ucId?: number) =>
+    api.delete(`/planejamento/apagar/${eventoId}`, { params: ucId != null ? { uc_id: ucId } : undefined }).then((r) => r.data),
   importarHistorico: (file: File) => {
     const form = new FormData();
     form.append("arquivo", file);

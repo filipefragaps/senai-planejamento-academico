@@ -804,3 +804,36 @@ async def remanejo(
 
     else:
         raise HTTPException(status_code=422, detail="tipo deve ser 'substituicao' ou 'remarcacao'")
+
+
+# ── Apagar Planejamento ────────────────────────────────────────────────────────
+
+@router.delete("/apagar/{evento_id}", status_code=200)
+async def apagar_planejamento(
+    evento_id: int,
+    uc_id: Optional[int] = Query(default=None, description="Se informado, remove apenas as aulas desta UC"),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """
+    Remove aulas planejadas de um evento do banco de dados.
+    - Sem uc_id: remove TODAS as aulas do evento.
+    - Com uc_id: remove apenas as aulas da UC especificada.
+    O evento em si não é removido.
+    """
+    res_ev = await db.execute(select(Evento).where(Evento.id == evento_id))
+    if not res_ev.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Evento não encontrado")
+
+    filters = [Aula.evento_id == evento_id]
+    if uc_id is not None:
+        filters.append(Aula.unidade_curricular_id == uc_id)
+
+    result = await db.execute(select(Aula).where(and_(*filters)))
+    aulas = result.scalars().all()
+
+    for a in aulas:
+        await db.delete(a)
+    await db.commit()
+
+    return {"removidas": len(aulas)}
