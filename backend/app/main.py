@@ -31,6 +31,7 @@ async def _aplicar_migracoes(engine) -> None:
         "ALTER TABLE aulas ADD COLUMN turno VARCHAR(20)",
         "ALTER TABLE aulas ADD COLUMN tipo_contrato VARCHAR(20)",
         "ALTER TABLE aulas ADD COLUMN ambiente VARCHAR(100)",
+        "ALTER TABLE aulas ADD COLUMN uc_nome_original VARCHAR(300)",
         "ALTER TABLE eventos ADD COLUMN oferta_id INTEGER REFERENCES ofertas_cursos(id) ON DELETE SET NULL",
         "ALTER TABLE eventos ADD COLUMN professores_preferidos JSON",
         "ALTER TABLE eventos ADD COLUMN modulo_etapa_inicial VARCHAR(50)",

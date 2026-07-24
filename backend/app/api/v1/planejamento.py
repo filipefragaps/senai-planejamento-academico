@@ -134,7 +134,7 @@ def _serializar_aula(a: Aula, nome_prof: str | None = None, nome_uc: str | None 
         "horario_inicio": str(a.horario_inicio)[:5] if a.horario_inicio else None,
         "horario_fim": str(a.horario_fim)[:5] if a.horario_fim else None,
         "unidade_curricular_id": a.unidade_curricular_id,
-        "uc_nome": nome_uc,
+        "uc_nome": nome_uc or a.uc_nome_original,
         "numero_aula": a.numero_aula,
         "subturma": a.subturma,
         "professor_id": a.professor_id,

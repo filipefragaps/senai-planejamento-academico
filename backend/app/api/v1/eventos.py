@@ -5,6 +5,7 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models.evento import Evento
 from app.models.aula import Aula
+from app.models.curso import Curso
 from app.schemas.evento import EventoCreate, EventoUpdate, EventoOut, EventoComAulas
 from app.algorithms.constraint_solver import gerar_aulas_evento
 from app.core.deps import get_current_user
@@ -12,7 +13,7 @@ from app.core.deps import get_current_user
 router = APIRouter(prefix="/eventos", tags=["Eventos / Turmas"])
 
 
-@router.get("/", response_model=list[EventoOut])
+@router.get("/")
 async def listar_eventos(
     status: str | None = None,
     professor_id: int | None = None,
@@ -28,7 +29,21 @@ async def listar_eventos(
     if curso_id:
         query = query.where(Evento.curso_id == curso_id)
     result = await db.execute(query.order_by(Evento.data_inicio.desc()))
-    return result.scalars().all()
+    eventos_list = result.scalars().all()
+
+    # Batch-fetch course names to include in response
+    ids_curso = {e.curso_id for e in eventos_list if e.curso_id}
+    cursos: dict[int, str] = {}
+    if ids_curso:
+        res = await db.execute(select(Curso).where(Curso.id.in_(ids_curso)))
+        cursos = {c.id: c.nome for c in res.scalars().all()}
+
+    out = []
+    for e in eventos_list:
+        d = EventoOut.model_validate(e).model_dump()
+        d["nome_curso"] = cursos.get(e.curso_id)
+        out.append(d)
+    return out
 
 
 @router.post("/", response_model=EventoComAulas, status_code=201)

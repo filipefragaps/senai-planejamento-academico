@@ -23,6 +23,7 @@ interface Evento {
   id: number;
   nome_turma: string;
   disciplina: string;
+  nome_curso?: string | null;
   status: string;
   data_inicio: string;
   data_fim: string;
@@ -412,13 +413,15 @@ function CalendarioMes({
 function EventoCard({
   ev, selecionado, onClick,
 }: { ev: Evento; selecionado: boolean; onClick: () => void }) {
-  // Split "123456 – Course Name" into [code, name]; if no separator, whole string is treated as code
+  // nome_curso from API (joined from Curso table) is the authoritative course name.
+  // For events created from oferta, nome_turma follows "CODE – Course Name" pattern.
   const sepIdx = ev.nome_turma.indexOf(" – ");
   const sepIdx2 = sepIdx >= 0 ? sepIdx : ev.nome_turma.indexOf(" - ");
   const codigo = sepIdx2 >= 0 ? ev.nome_turma.slice(0, sepIdx2).trim() : ev.nome_turma;
-  const nomeCurso = sepIdx2 >= 0
-    ? ev.nome_turma.slice(sepIdx2 + 3).trim()
-    : (ev.disciplina && ev.disciplina !== ev.nome_turma ? ev.disciplina : null);
+  const nomeCurso =
+    ev.nome_curso ||
+    (sepIdx2 >= 0 ? ev.nome_turma.slice(sepIdx2 + 3).trim() : null) ||
+    (ev.disciplina !== ev.nome_turma ? ev.disciplina : null);
 
   return (
     <button
@@ -1165,10 +1168,12 @@ export default function EventosPage() {
                 {/* Panel header */}
                 <div className="px-5 py-3 border-b shrink-0 flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="font-semibold text-gray-900 truncate">{eventoSelecionado.nome_turma}</p>
+                    <p className="text-[10px] font-mono text-blue-700 font-semibold leading-none mb-0.5">{eventoSelecionado.nome_turma}</p>
+                    <p className="font-semibold text-gray-900 truncate">
+                      {eventoSelecionado.nome_curso || eventoSelecionado.disciplina || eventoSelecionado.nome_turma}
+                    </p>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      {eventoSelecionado.disciplina} · {formatDate(eventoSelecionado.data_inicio)} –{" "}
-                      {formatDate(eventoSelecionado.data_fim)}
+                      {formatDate(eventoSelecionado.data_inicio)} – {formatDate(eventoSelecionado.data_fim)}
                     </p>
                   </div>
                   <div className="relative shrink-0">

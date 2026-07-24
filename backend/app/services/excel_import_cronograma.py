@@ -309,7 +309,8 @@ async def importar_historico(conteudo: bytes, db: AsyncSession) -> dict:
                 cache_curso[nome_curso] = await _lookup_curso(nome_curso, db)
             curso_id = cache_curso[nome_curso]
 
-            disciplina = _get(row, "unidade_c", "unidade_curricular", "uc", "disciplina") or nome_turma
+            # disciplina deve ser o nome do CURSO, não da UC
+            disciplina = nome_curso or _get(row, "unidade_c", "unidade_curricular", "uc") or nome_turma
 
             if nome_turma not in cache_evento:
                 cache_evento[nome_turma] = await _lookup_ou_criar_evento(nome_turma, disciplina, curso_id, db)
@@ -351,6 +352,7 @@ async def importar_historico(conteudo: bytes, db: AsyncSession) -> dict:
             if existente:
                 existente.professor_id = professor_id
                 existente.unidade_curricular_id = uc_id
+                existente.uc_nome_original = uc_nome or existente.uc_nome_original
                 existente.horario_fim = h_fim or existente.horario_fim
                 existente.etapa = etapa or existente.etapa
                 existente.turno = turno_raw or existente.turno
@@ -367,6 +369,7 @@ async def importar_historico(conteudo: bytes, db: AsyncSession) -> dict:
                     evento_id=evento.id,
                     professor_id=professor_id,
                     unidade_curricular_id=uc_id,
+                    uc_nome_original=uc_nome or None,
                     data=data_aula,
                     horario_inicio=h_ini,
                     horario_fim=h_fim or h_ini,
