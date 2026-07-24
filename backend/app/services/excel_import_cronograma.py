@@ -234,9 +234,18 @@ async def _lookup_curso(nome_ou_codigo: str, db: AsyncSession) -> int | None:
     return c2.id if c2 else None
 
 
+def _norm_nome(s: str) -> str:
+    """Minúsculo sem acentos — para comparação flexível de nomes de UCs."""
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+    return s.lower().strip()
+
+
 async def _lookup_uc(nome_uc: str, curso_id: int | None, db: AsyncSession) -> int | None:
     if not nome_uc:
         return None
+
+    # Tentativa 1: ilike direto (funciona quando não há divergência de acentos maiúsculo/minúsculo)
     q = select(UnidadeCurricular).where(
         UnidadeCurricular.nome.ilike(f"%{nome_uc.strip()}%")
     )
@@ -244,7 +253,39 @@ async def _lookup_uc(nome_uc: str, curso_id: int | None, db: AsyncSession) -> in
         q = q.where(UnidadeCurricular.curso_id == curso_id)
     result = await db.execute(q)
     uc = result.scalars().first()
-    return uc.id if uc else None
+    if uc:
+        return uc.id
+
+    # Tentativa 2: comparação normalizada em Python
+    # Resolve acentos maiúsculo/minúsculo (ex: FABRICAÇÃO vs Fabricação)
+    # e variações de singular/plural (ex: REPRESENTAÇÃO vs Representações)
+    busca_norm = _norm_nome(nome_uc)
+    palavras = [p for p in busca_norm.split() if len(p) >= 4]
+
+    q2 = select(UnidadeCurricular)
+    if curso_id:
+        q2 = q2.where(UnidadeCurricular.curso_id == curso_id)
+    result2 = await db.execute(q2)
+    candidatos = result2.scalars().all()
+
+    melhor: UnidadeCurricular | None = None
+    melhor_score = 0.0
+
+    for u in candidatos:
+        u_norm = _norm_nome(u.nome)
+        if u_norm == busca_norm:
+            return u.id  # correspondência exata normalizada
+        if palavras:
+            score = sum(1 for p in palavras if p in u_norm) / len(palavras)
+            if score > melhor_score:
+                melhor_score = score
+                melhor = u
+
+    # Aceita se ≥70% das palavras significativas (≥4 letras) coincidem
+    if melhor and melhor_score >= 0.70:
+        return melhor.id
+
+    return None
 
 
 # ── serviço principal ──────────────────────────────────────────────────────────
