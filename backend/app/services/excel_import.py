@@ -286,6 +286,7 @@ class ExcelImportService:
         await db.flush()
 
         if nome_uc_col and cod_uc_col:
+            ucs_processadas: set[tuple] = set()
             for _, row in df.iterrows():
                 cod_pasta = _str(row.get(cod_col))
                 curso_id  = curso_id_map.get(cod_pasta)
@@ -295,6 +296,10 @@ class ExcelImportService:
                 nome_uc   = _str(row.get(nome_uc_col))
                 if not codigo_uc or not nome_uc:
                     continue
+                chave_uc = (curso_id, codigo_uc)
+                if chave_uc in ucs_processadas:
+                    continue
+                ucs_processadas.add(chave_uc)
                 res_uc = await db.execute(
                     select(UnidadeCurricular).where(
                         UnidadeCurricular.curso_id == curso_id,
@@ -311,6 +316,7 @@ class ExcelImportService:
                 }
                 if not existing_uc:
                     db.add(UnidadeCurricular(curso_id=curso_id, codigo_uc=codigo_uc, **dados_uc))
+                    await db.flush()
                 else:
                     for k, v in dados_uc.items():
                         setattr(existing_uc, k, v)
@@ -409,6 +415,7 @@ class ExcelImportService:
                 }
                 if not existing_uc:
                     db.add(UnidadeCurricular(curso_id=curso_id, codigo_uc=codigo_uc, **dados_uc))
+                    await db.flush()
                 else:
                     for k, v in dados_uc.items():
                         setattr(existing_uc, k, v)
