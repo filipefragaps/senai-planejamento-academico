@@ -58,8 +58,23 @@ async def alterar_aula(
     current_user=Depends(get_current_user),
 ):
     """Altera uma aula e repleja automaticamente as aulas futuras."""
+    # Busca aula para validar status protegido
+    result_check = await db.execute(select(Aula).where(Aula.id == aula_id))
+    aula_check = result_check.scalar_one_or_none()
+    if not aula_check:
+        raise HTTPException(status_code=404, detail="Aula não encontrada")
+
+    STATUS_PROTEGIDOS = {"Remarcada", "Cancelada"}
+    alteracoes_raw = data.alteracoes.model_dump(exclude_unset=True, exclude={"motivo"})
+    novo_status = alteracoes_raw.get("status")
+    if aula_check.status in STATUS_PROTEGIDOS and novo_status and novo_status != aula_check.status:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Não é possível alterar o status de uma aula '{aula_check.status}'.",
+        )
+
     try:
-        alteracoes = data.alteracoes.model_dump(exclude_unset=True, exclude={"motivo"})
+        alteracoes = alteracoes_raw
         resultado = await alterar_aula_e_replaneja(
             aula_id=aula_id,
             alteracoes=alteracoes,

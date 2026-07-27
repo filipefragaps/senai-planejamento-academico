@@ -56,6 +56,12 @@ async def _aplicar_migracoes(engine) -> None:
             "WHERE LOWER(tipo) IN ('feriado','recesso','ferias','férias','folga',"
             "'compensacao','compensação','sem aula') AND letivo = 1"
         ),
+        # Aulas passadas que não foram remarcadas/canceladas → Realizada
+        (
+            "UPDATE aulas SET status = 'Realizada' "
+            "WHERE data < CURRENT_DATE "
+            "AND status NOT IN ('Remarcada', 'Cancelada', 'Realizada')"
+        ),
     ]:
         try:
             async with engine.begin() as conn:

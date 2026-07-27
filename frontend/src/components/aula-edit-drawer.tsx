@@ -259,9 +259,16 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
           </Field>
 
           <Field label="Status">
-            <select className="input w-full text-sm" value={form.status} onChange={(e) => set("status", e.target.value)}>
-              {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
+            {["Remarcada", "Cancelada"].includes(aula.status) ? (
+              <div className="input w-full text-sm bg-gray-50 text-gray-500 flex items-center gap-2 cursor-not-allowed">
+                <Lock className="h-3.5 w-3.5 shrink-0" />
+                {aula.status} <span className="text-xs text-gray-400">(protegido)</span>
+              </div>
+            ) : (
+              <select className="input w-full text-sm" value={form.status} onChange={(e) => set("status", e.target.value)}>
+                {STATUS_OPTIONS.filter((s) => !["Remarcada", "Cancelada"].includes(s)).map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            )}
           </Field>
 
           <Field label="Observações">
