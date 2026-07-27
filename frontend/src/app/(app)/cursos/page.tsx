@@ -14,12 +14,16 @@ import { cn } from "@/lib/utils";
 // ── Constantes ────────────────────────────────────────────────────────────────
 
 const TIPOS_CURSO = [
-  "Habilitação Técnica",
-  "FIC",
-  "Qualificação Profissional",
-  "Aperfeiçoamento",
-  "Especialização Técnica",
-  "Pós-Técnico",
+  "21 - QUALIFICAÇÃO PROFISSIONAL BÁSICA - FORM. INICIAL E CONTINUADA",
+  "3 - INICIAÇÃO PROFISSIONAL - FORM. INICIAL E CONTINUADA",
+  "31 - HABILITAÇÃO TÉCNICA - EDUC. PROF. TÉCNICA",
+  "33 - HABILITAÇÃO TÉCNICA A DISTÂNCIA - EDUC. PROF. TÉCNICA",
+  "41 - GRADUAÇÃO TECNOLÓGICA - EDUCAÇÃO SUPERIOR",
+  "51 - APERFEIÇOAMENTO PROFISSIONAL - FORM. INICIAL E CONTINUADA",
+  "53 - APERFEIÇOAMENTO PROFISSIONAL - EDU. PROF. TEC",
+  "54 - APERFEIÇOAMENTO PROFISSIONAL - AÇÕES MÓVEIS",
+  "81 - GRADUAÇÃO - BACHARELADO (SUPERIOR)",
+  "91 - PÓS-GRADUAÇÃO LATO SENSU ESPECIALIZAÇÃO",
 ];
 
 const MODULOS_PADRAO = [
@@ -69,7 +73,7 @@ interface UC {
 }
 
 const FORM_VAZIO_CURSO = {
-  nome: "", codigo: "", tipo: "Habilitação Técnica",
+  nome: "", codigo: "", tipo: "31 - HABILITAÇÃO TÉCNICA - EDUC. PROF. TÉCNICA",
   carga_horaria_total: 200, modalidade: "Presencial", area: "",
 };
 
