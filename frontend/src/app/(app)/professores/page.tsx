@@ -140,9 +140,14 @@ export default function ProfessoresPage() {
                         <span className="font-semibold text-gray-900 text-sm">{p.nome}</span>
                         <span className={cn(
                           "badge text-xs",
-                          p.tipo === "Mensalista" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"
+                          p.tipo === "Mensalista" ? "bg-blue-100 text-blue-700" :
+                          p.tipo === "Horista"    ? "bg-purple-100 text-purple-700" :
+                          "bg-amber-100 text-amber-700"
                         )}>
                           {p.tipo}
+                          {["PJ","RPA"].includes(p.tipo) && (
+                            <span className="ml-1 text-[9px] font-normal opacity-70">extraquadro</span>
+                          )}
                         </span>
                         {p.especialidades && (
                           <span className="text-xs text-gray-400 truncate">{p.especialidades}</span>
@@ -253,9 +258,14 @@ export default function ProfessoresPage() {
               <div className="flex items-center gap-2 mt-1">
                 <span className={cn(
                   "badge text-xs",
-                  selected.tipo === "Mensalista" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"
+                  selected.tipo === "Mensalista" ? "bg-blue-100 text-blue-700" :
+                  selected.tipo === "Horista"    ? "bg-purple-100 text-purple-700" :
+                  "bg-amber-100 text-amber-700"
                 )}>
                   {selected.tipo}
+                  {["PJ","RPA"].includes(selected.tipo) && (
+                    <span className="ml-1 text-[9px] font-normal opacity-70">extraquadro</span>
+                  )}
                 </span>
                 <span className="text-xs text-gray-500">
                   {selected.horas_contratadas}h contratadas/semana

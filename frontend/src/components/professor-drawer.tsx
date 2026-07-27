@@ -381,12 +381,26 @@ export function ProfessorDrawer({ professor, onClose, onSaved }: Props) {
                     value={basic.tipo}
                     onChange={(e) => setBasic({ ...basic, tipo: e.target.value })}
                   >
-                    <option>Mensalista</option>
-                    <option>Horista</option>
+                    <optgroup label="Quadro efetivo">
+                      <option value="Mensalista">Mensalista</option>
+                      <option value="Horista">Horista</option>
+                    </optgroup>
+                    <optgroup label="Extraquadro (reserva)">
+                      <option value="PJ">PJ</option>
+                      <option value="RPA">RPA</option>
+                    </optgroup>
                   </select>
+                  {["PJ", "RPA"].includes(basic.tipo) && (
+                    <p className="mt-1.5 text-xs text-amber-600 flex items-center gap-1">
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                      Extraquadro — usado apenas quando não há professor disponível no quadro.
+                    </p>
+                  )}
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Horas contratadas / semana</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    {["PJ", "RPA"].includes(basic.tipo) ? "Horas máximas / semana" : "Horas contratadas / semana"}
+                  </label>
                   <input
                     type="number"
                     className="input w-full"
@@ -394,7 +408,7 @@ export function ProfessorDrawer({ professor, onClose, onSaved }: Props) {
                     onChange={(e) => setBasic({ ...basic, horas_contratadas: +e.target.value })}
                   />
                 </div>
-                {basic.tipo === "Horista" && (
+                {["Horista", "PJ", "RPA"].includes(basic.tipo) && (
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Valor por hora (R$)</label>
                     <input
