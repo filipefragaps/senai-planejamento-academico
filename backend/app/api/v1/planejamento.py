@@ -693,13 +693,9 @@ async def datas_disponiveis(
     # Estende até 1 ano à frente para cobrir aulas históricas com data_fim passada
     data_fim = max(evento.data_fim, aula.data + _dt.timedelta(days=365)) if evento.data_fim else aula.data + _dt.timedelta(days=365)
 
-    # Usa o dia da semana da própria aula; se dias_semana do evento estiver vazio, aceita qualquer dia útil
-    dias_semana = evento.dias_semana or []
-    if not dias_semana:
-        dias_semana = [aula.data.weekday()]  # mesmo dia da semana da aula original
-
+    # Remarcação aceita qualquer dia letivo — não filtra por dia da semana
     todas_letivas = await get_datas_letivas(
-        inicio, data_fim, dias_semana, db
+        inicio, data_fim, list(range(7)), db
     )
 
     disponiveis = []
