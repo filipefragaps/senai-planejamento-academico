@@ -345,8 +345,10 @@ class ExcelImportService:
         if not cod_col or not nome_col:
             return 0
 
-        # Acumula CH total por PASTA
+        # Acumula CH total por PASTA, contando cada UC apenas uma vez
+        # (a aba ATUAÇÃO repete a mesma UC para vários professores)
         cursos_map: dict[str, dict] = {}
+        ucs_ch_vistas: set[tuple] = set()
         for _, row in df.iterrows():
             cod  = _str(row.get(cod_col))
             nome = _str(row.get(nome_col))
@@ -355,7 +357,16 @@ class ExcelImportService:
             if cod not in cursos_map:
                 cursos_map[cod] = {"nome": nome, "carga": 0.0}
             if ch_col:
-                cursos_map[cod]["carga"] += _parse_float(row.get(ch_col))
+                # Identificador único da UC nesta pasta (cod_uc ou nome_uc)
+                uc_id_str = (
+                    _str(row.get(cod_uc_col)) if cod_uc_col else None
+                ) or (
+                    _str(row.get(nome_uc_col)) if nome_uc_col else None
+                )
+                chave = (cod, uc_id_str)
+                if uc_id_str and chave not in ucs_ch_vistas:
+                    ucs_ch_vistas.add(chave)
+                    cursos_map[cod]["carga"] += _parse_float(row.get(ch_col))
 
         count = 0
         curso_id_map: dict[str, int] = {}
