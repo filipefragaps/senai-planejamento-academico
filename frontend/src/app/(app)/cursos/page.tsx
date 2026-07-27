@@ -195,6 +195,16 @@ export default function CursosPage() {
     onError: () => toast.error("Erro ao reordenar"),
   });
 
+  const deletarCurso = useMutation({
+    mutationFn: (id: number) => cursosApi.deletar(id),
+    onSuccess: () => {
+      toast.success("Curso excluído.");
+      qc.invalidateQueries({ queryKey: ["cursos"] });
+      setSelected(null);
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.detail || "Erro ao excluir curso"),
+  });
+
   // ── Handlers ──────────────────────────────────────────────────────────────────
 
   const filtered = (cursos as Curso[]).filter((c) =>
@@ -526,6 +536,16 @@ export default function CursosPage() {
                     <button onClick={iniciarEdicaoCurso}
                       className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700" title="Editar curso">
                       <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm(`Excluir o curso "${selected.nome}"?\n\nIsso também remove todas as UCs vinculadas. Esta ação não pode ser desfeita.`)) {
+                          deletarCurso.mutate(selected.id);
+                        }
+                      }}
+                      disabled={deletarCurso.isPending}
+                      className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-600" title="Excluir curso">
+                      {deletarCurso.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                     </button>
                     <button onClick={() => setSelected(null)}
                       className="p-1.5 rounded hover:bg-gray-100 text-gray-400">
