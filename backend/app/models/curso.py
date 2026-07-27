@@ -11,7 +11,7 @@ class Curso(Base):
     nome: Mapped[str] = mapped_column(String(300), nullable=False)
     codigo: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
     carga_horaria_total: Mapped[int] = mapped_column(Integer, nullable=False)
-    tipo: Mapped[str] = mapped_column(String(50), default="Habilitação Técnica")  # Habilitação Técnica | FIC | Qualificação | ...
+    tipo: Mapped[str] = mapped_column(String(100), default="31 - HABILITAÇÃO TÉCNICA - EDUC. PROF. TÉCNICA")
     modalidade: Mapped[str] = mapped_column(String(50), default="Presencial")  # Presencial | EAD | Híbrido
     area: Mapped[str | None] = mapped_column(String(200))
     descricao: Mapped[str | None] = mapped_column(Text)
