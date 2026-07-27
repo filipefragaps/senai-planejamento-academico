@@ -687,11 +687,14 @@ async def datas_disponiveis(
     if not evento:
         raise HTTPException(status_code=404, detail="Evento não encontrado")
 
-    hoje = date.today()
-    inicio = max(aula.data + __import__("datetime").timedelta(days=1), hoje)
+    import datetime as _dt
+    inicio = aula.data + _dt.timedelta(days=1)
+
+    # Usa o maior entre data_fim do evento e 1 ano à frente para não cortar datas históricas
+    data_fim = max(evento.data_fim, aula.data + _dt.timedelta(days=365)) if evento.data_fim else aula.data + _dt.timedelta(days=365)
 
     todas_letivas = await get_datas_letivas(
-        inicio, evento.data_fim, evento.dias_semana or [], db
+        inicio, data_fim, evento.dias_semana or [], db
     )
 
     disponiveis = []

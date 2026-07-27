@@ -438,7 +438,7 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
                 {tipoRemanejo === "remarcacao" && (
                   <div>
                     <p className="text-[10px] text-gray-400 mb-1 uppercase tracking-wide font-semibold">Nova data</p>
-                    {datasDisponiveis?.datas ? (
+                    {datasDisponiveis?.datas?.length > 0 ? (
                       <select
                         className="input w-full text-sm"
                         value={novaData}
