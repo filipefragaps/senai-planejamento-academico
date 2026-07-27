@@ -498,10 +498,8 @@ class ExcelImportService:
             if not nome_prof or not disciplina:
                 continue
 
-            # ATUA = NÃO → professor não apto para esta UC
             at_val = _get(row, "atua", "at").strip().upper()
-            if at_val in ("NÃO", "NAO", "N", "NO", "INAPTO", "NAO_APTO"):
-                continue
+            apto = at_val in ("SIM", "S", "YES", "Y", "1", "APTO")
 
             # Busca case-insensitive para tolerar variações de capitalização
             res_p = await db.execute(
@@ -521,8 +519,7 @@ class ExcelImportService:
             chave = (professor.id, disciplina, curso_id)
             if chave in inseridos:
                 continue
-
-            modalidade = _get(row, "modalidade") or "Habilitação Técnica"
+            inseridos.add(chave)
 
             res_at = await db.execute(
                 select(Atuacao).where(
@@ -532,6 +529,15 @@ class ExcelImportService:
                 )
             )
             existente = res_at.scalar_one_or_none()
+
+            if not apto:
+                # ATUA != SIM → remove atuação existente se houver
+                if existente:
+                    await db.delete(existente)
+                continue
+
+            modalidade = _get(row, "modalidade") or "Habilitação Técnica"
+
             if not existente:
                 db.add(Atuacao(
                     professor_id=professor.id,
@@ -543,7 +549,6 @@ class ExcelImportService:
             else:
                 existente.modalidade = modalidade
             cnt += 1
-            inseridos.add(chave)
 
         return cnt
 
