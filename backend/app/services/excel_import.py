@@ -566,6 +566,7 @@ class ExcelImportService:
                     modalidade=modalidade,
                     nivel_competencia=3,
                 ))
+                await db.flush()
             else:
                 existente.modalidade = modalidade
             cnt += 1
@@ -579,6 +580,7 @@ class ExcelImportService:
             ffill_cols=["professor"],
         )
         cache_prof: dict[str, int] = {}
+        vistos_disp: set[tuple] = set()
         count = 0
 
         for _, row in df.iterrows():
@@ -602,6 +604,11 @@ class ExcelImportService:
             if dia is None or h_ini is None or h_fim is None:
                 continue
 
+            chave_disp = (prof_id, dia, h_ini, h_fim)
+            if chave_disp in vistos_disp:
+                continue
+            vistos_disp.add(chave_disp)
+
             disp_raw = _str(row.get("disponivel") or row.get("tipo_disponibilidade"), "SIM")
             tipo_disp = "Disponível" if _is_sim(disp_raw) else "Indisponível"
 
@@ -613,7 +620,8 @@ class ExcelImportService:
                     DisponibilidadeDetalhada.horario_fim == h_fim,
                 )
             )
-            if not res_d.scalar_one_or_none():
+            existente = res_d.scalar_one_or_none()
+            if not existente:
                 db.add(DisponibilidadeDetalhada(
                     professor_id=prof_id,
                     dia_semana=dia,
@@ -621,6 +629,9 @@ class ExcelImportService:
                     horario_fim=h_fim,
                     tipo_disponibilidade=tipo_disp,
                 ))
+                await db.flush()
+            else:
+                existente.tipo_disponibilidade = tipo_disp
             count += 1
 
         return count
