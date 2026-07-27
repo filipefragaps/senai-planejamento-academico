@@ -84,6 +84,7 @@ async def calcular_regencia_professor(
         "tipo": professor.tipo,
         "horas_contratadas": professor.horas_contratadas,
         "horas_ministradas": horas_ministradas,
+        "horas_periodo": round(horas_periodo, 2),
         "percentual_regencia": round(percentual * 100, 2),
         "meta_regencia": round((meta or 0) * 100, 2),
         "status": calcular_status_regencia(percentual, professor.tipo),

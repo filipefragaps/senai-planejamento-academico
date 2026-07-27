@@ -55,9 +55,28 @@ function mesesNaJanela(inicio: string, fim: string) {
   return lista;
 }
 
+// ── Turnos ────────────────────────────────────────────────────────────────────
+
+const TURNOS = [
+  { key: "todos", label: "Todos", color: "", dot: "" },
+  { key: "manha", label: "Manhã",  color: "bg-amber-500",  dot: "bg-amber-400"  },
+  { key: "tarde", label: "Tarde",  color: "bg-blue-500",   dot: "bg-blue-400"   },
+  { key: "noite", label: "Noite",  color: "bg-indigo-600", dot: "bg-indigo-500" },
+];
+
+function getTurnoKey(horario_inicio: string | null | undefined): string {
+  if (!horario_inicio) return "manha";
+  const h = parseInt(horario_inicio.split(":")[0], 10);
+  if (h < 12) return "manha";
+  if (h < 18) return "tarde";
+  return "noite";
+}
+
 // ── CalendarioMes ─────────────────────────────────────────────────────────────
 
-function CalendarioMes({ ano, mes, dateMap }: { ano: number; mes: number; dateMap: Map<string, any[]> }) {
+function CalendarioMes({ ano, mes, dateMap, turnoFiltro }: {
+  ano: number; mes: number; dateMap: Map<string, any[]>; turnoFiltro: string;
+}) {
   const hoje = new Date();
   const primeiroDia = new Date(ano, mes - 1, 1).getDay();
   const ultimoDia = new Date(ano, mes, 0).getDate();
@@ -73,24 +92,45 @@ function CalendarioMes({ ano, mes, dateMap }: { ano: number; mes: number; dateMa
           <div key={i} className="h-5 flex items-center justify-center text-[10px] text-gray-400 font-medium">{d}</div>
         ))}
         {cells.map((d, i) => {
-          if (!d) return <div key={i} className="h-6" />;
+          if (!d) return <div key={i} className="h-8" />;
           const key = `${ano}-${String(mes).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-          const aulas = dateMap.get(key) ?? [];
+          const todasAulas = dateMap.get(key) ?? [];
+          const aulas = turnoFiltro === "todos" ? todasAulas : todasAulas.filter((a: any) => getTurnoKey(a.horario_inicio) === turnoFiltro);
           const temAula = aulas.length > 0;
           const todasCanceladas = temAula && aulas.every((a: any) => a.status === "Cancelada");
           const temRealizada = aulas.some((a: any) => a.status === "Realizada");
           const isHoje = hoje.getFullYear() === ano && hoje.getMonth()+1 === mes && hoje.getDate() === d;
+
+          // Turnos presentes no dia (para dots)
+          const turnosNoDia = turnoFiltro === "todos"
+            ? Array.from(new Set(todasAulas.map((a: any) => getTurnoKey(a.horario_inicio))))
+            : [];
+
           let cls = "text-gray-500";
           if (todasCanceladas) cls = "bg-red-100 text-red-500";
           else if (temRealizada) cls = "bg-green-500 text-white font-semibold";
           else if (temAula) cls = "bg-blue-500 text-white font-semibold";
           else if (isHoje) cls = "ring-2 ring-blue-400 text-blue-600 font-semibold";
+
+          const turnoInfo = TURNOS.find(t => t.key !== "todos" && todasAulas.some((a: any) => getTurnoKey(a.horario_inicio) === t.key));
+          const title = temAula
+            ? `${aulas.length} aula(s) · ${aulas.map((a: any) => `${a.horario_inicio?.slice(0,5)} ${a.status}`).join(", ")}`
+            : undefined;
+
           return (
-            <div key={i} className="flex items-center justify-center h-6">
-              <span className={cn("h-6 w-6 flex items-center justify-center rounded-full text-[11px]", cls)}
-                title={temAula ? `${aulas.length} aula(s) · ${aulas.map((a: any) => a.status).join(", ")}` : undefined}>
+            <div key={i} className="flex flex-col items-center h-8 gap-0.5">
+              <span className={cn("h-6 w-6 flex items-center justify-center rounded-full text-[11px]", cls)} title={title}>
                 {d}
               </span>
+              {/* Dots de turno (só quando filtro = todos) */}
+              {turnoFiltro === "todos" && turnosNoDia.length > 0 && (
+                <div className="flex gap-0.5">
+                  {turnosNoDia.map(tk => {
+                    const t = TURNOS.find(x => x.key === tk);
+                    return t ? <span key={tk} className={cn("w-1.5 h-1.5 rounded-full", t.dot)} /> : null;
+                  })}
+                </div>
+              )}
             </div>
           );
         })}
@@ -106,6 +146,7 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose }: {
 }) {
   const [inicio, setInicio] = useState(defaultInicio);
   const [fim, setFim] = useState(defaultFim);
+  const [turnoFiltro, setTurnoFiltro] = useState("todos");
   const dataInicio = `${inicio}-01`;
   const dataFim = ultimoDiaMes(fim);
 
@@ -132,9 +173,29 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose }: {
     return map;
   }, [aulasRaw]);
 
-  const totalHoras = (aulasRaw as any[]).reduce((s, a) => s + horasAula(a.horario_inicio, a.horario_fim), 0);
-  const totalAulas = (aulasRaw as any[]).length;
+  // Aulas filtradas pelo turno selecionado
+  const aulasFiltered = useMemo(() =>
+    turnoFiltro === "todos"
+      ? (aulasRaw as any[])
+      : (aulasRaw as any[]).filter(a => getTurnoKey(a.horario_inicio) === turnoFiltro),
+    [aulasRaw, turnoFiltro]
+  );
+
+  // Regência proporcional: horas do turno / horas_periodo total
+  const horasTurno = useMemo(() =>
+    aulasFiltered
+      .filter(a => a.status === "Realizada" || a.status === "Agendada")
+      .reduce((s: number, a: any) => s + horasAula(a.horario_inicio, a.horario_fim), 0),
+    [aulasFiltered]
+  );
+  const horasPeriodo = (regencia as any)?.horas_periodo ?? 0;
+  const percentualTurno = horasPeriodo > 0 ? (horasTurno / horasPeriodo) * 100 : 0;
+
+  const totalHoras = aulasFiltered.reduce((s: number, a: any) => s + horasAula(a.horario_inicio, a.horario_fim), 0);
+  const totalAulas = aulasFiltered.length;
   const gridCols = meses.length <= 1 ? "grid-cols-1" : meses.length <= 2 ? "grid-cols-2" : meses.length <= 4 ? "grid-cols-2" : "grid-cols-3";
+
+  const turnoAtivo = TURNOS.find(t => t.key === turnoFiltro)!;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
@@ -147,6 +208,7 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose }: {
           <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 text-gray-500"><X className="h-5 w-5" /></button>
         </div>
         <div className="overflow-y-auto flex-1 p-6 space-y-5">
+          {/* Período + filtro de turno */}
           <div className="flex items-center gap-4 flex-wrap">
             <span className="text-sm text-gray-600 font-medium">Período:</span>
             <div className="flex items-center gap-2">
@@ -157,40 +219,87 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose }: {
               <span className="text-xs text-gray-500">Até</span>
               <input type="month" value={fim} onChange={e => setFim(e.target.value)} className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
             </div>
+            {/* Botões de turno */}
+            <div className="flex items-center gap-1 ml-auto bg-gray-100 rounded-lg p-1">
+              {TURNOS.map(t => (
+                <button
+                  key={t.key}
+                  onClick={() => setTurnoFiltro(t.key)}
+                  className={cn(
+                    "px-3 py-1 rounded-md text-xs font-medium transition-all",
+                    turnoFiltro === t.key
+                      ? t.key === "todos"
+                        ? "bg-white shadow text-gray-800"
+                        : cn("text-white shadow", t.color)
+                      : "text-gray-500 hover:text-gray-800"
+                  )}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
           </div>
+
+          {/* Stats */}
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-lg bg-blue-50 border border-blue-100 p-4 text-center">
               <p className="text-xs text-blue-600 font-medium">CH no Período</p>
               <p className="text-2xl font-bold text-blue-800 mt-1">{totalHoras.toFixed(1)}h</p>
+              {turnoFiltro !== "todos" && <p className="text-[10px] text-blue-400 mt-0.5">{turnoAtivo.label}</p>}
             </div>
             <div className="rounded-lg bg-green-50 border border-green-100 p-4 text-center">
               <p className="text-xs text-green-600 font-medium">Total de Aulas</p>
               <p className="text-2xl font-bold text-green-800 mt-1">{totalAulas}</p>
+              {turnoFiltro !== "todos" && <p className="text-[10px] text-green-400 mt-0.5">{turnoAtivo.label}</p>}
             </div>
             <div className="rounded-lg bg-indigo-50 border border-indigo-100 p-4 text-center">
               <p className="text-xs text-indigo-600 font-medium">Regência do Período</p>
               <p className="text-2xl font-bold text-indigo-800 mt-1">
-                {regencia ? `${(regencia as any).percentual_regencia?.toFixed(1)}%` : "—"}
+                {turnoFiltro === "todos"
+                  ? (regencia ? `${(regencia as any).percentual_regencia?.toFixed(1)}%` : "—")
+                  : `${percentualTurno.toFixed(1)}%`
+                }
               </p>
+              {turnoFiltro !== "todos" && (
+                <p className="text-[10px] text-indigo-400 mt-0.5">
+                  {horasTurno.toFixed(1)}h / {horasPeriodo.toFixed(0)}h período
+                </p>
+              )}
             </div>
           </div>
+
+          {/* Calendário */}
           <div className="border rounded-lg p-4">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
               <h3 className="text-sm font-semibold text-gray-700">Calendário de Aulas</h3>
-              <div className="flex items-center gap-3 text-xs text-gray-500">
+              <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
                 <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-green-500 inline-block" />Realizada</span>
                 <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-blue-500 inline-block" />Agendada</span>
                 <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-red-100 border border-red-200 inline-block" />Cancelada</span>
+                {turnoFiltro === "todos" && (
+                  <>
+                    <span className="text-gray-300">|</span>
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Manhã</span>
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />Tarde</span>
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-indigo-500 inline-block" />Noite</span>
+                  </>
+                )}
               </div>
             </div>
             {isLoading ? <div className="text-center text-gray-400 py-8 text-sm">Carregando...</div> : (
               <div className={cn("grid gap-3", gridCols)}>
-                {meses.map(({ ano, mes }) => <CalendarioMes key={`${ano}-${mes}`} ano={ano} mes={mes} dateMap={dateMap} />)}
+                {meses.map(({ ano, mes }) => (
+                  <CalendarioMes key={`${ano}-${mes}`} ano={ano} mes={mes} dateMap={dateMap} turnoFiltro={turnoFiltro} />
+                ))}
               </div>
             )}
           </div>
+
+          {/* Tabela de aulas */}
           <div>
-            <h3 className="text-sm font-semibold text-gray-700 mb-2">Aulas no Período ({totalAulas})</h3>
+            <h3 className="text-sm font-semibold text-gray-700 mb-2">
+              Aulas no Período ({totalAulas}{turnoFiltro !== "todos" ? ` · ${turnoAtivo.label}` : ""})
+            </h3>
             {isLoading ? (
               <div className="text-center text-gray-400 py-6 text-sm">Carregando...</div>
             ) : totalAulas === 0 ? (
@@ -200,24 +309,33 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose }: {
                 <table className="w-full text-xs border-collapse">
                   <thead>
                     <tr className="bg-gray-50 border-b">
-                      {["Data","Horário","Evento / Turma","UC / Disciplina","Ambiente","Status"].map(h => (
+                      {["Data","Turno","Horário","Evento / Turma","UC / Disciplina","Ambiente","Status"].map(h => (
                         <th key={h} className="px-3 py-2 text-left font-semibold text-gray-600 whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {(aulasRaw as any[]).slice().sort((a: any, b: any) => a.data > b.data ? 1 : -1).map((a: any, i: number) => (
-                      <tr key={a.id ?? i} className={cn("border-b last:border-0", i % 2 === 0 ? "bg-white" : "bg-gray-50")}>
-                        <td className="px-3 py-2 whitespace-nowrap">{fmtData(a.data)}</td>
-                        <td className="px-3 py-2 whitespace-nowrap text-gray-500">{a.horario_inicio?.slice(0,5)} – {a.horario_fim?.slice(0,5)}</td>
-                        <td className="px-3 py-2 max-w-[180px] truncate">{a.nome_evento || "—"}</td>
-                        <td className="px-3 py-2 max-w-[150px] truncate text-gray-500">{a.uc_nome || "—"}</td>
-                        <td className="px-3 py-2 whitespace-nowrap text-gray-500">{a.ambiente || "—"}</td>
-                        <td className="px-3 py-2">
-                          <span className={cn("px-2 py-0.5 rounded text-xs font-medium", STATUS_CHIP[a.status] ?? "bg-gray-100 text-gray-600")}>{a.status}</span>
-                        </td>
-                      </tr>
-                    ))}
+                    {aulasFiltered.slice().sort((a: any, b: any) => a.data > b.data ? 1 : -1).map((a: any, i: number) => {
+                      const tk = getTurnoKey(a.horario_inicio);
+                      const turnoInfo = TURNOS.find(t => t.key === tk);
+                      return (
+                        <tr key={a.id ?? i} className={cn("border-b last:border-0", i % 2 === 0 ? "bg-white" : "bg-gray-50")}>
+                          <td className="px-3 py-2 whitespace-nowrap">{fmtData(a.data)}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-semibold text-white", turnoInfo?.color ?? "bg-gray-400")}>
+                              {turnoInfo?.label ?? "—"}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap text-gray-500">{a.horario_inicio?.slice(0,5)} – {a.horario_fim?.slice(0,5)}</td>
+                          <td className="px-3 py-2 max-w-[180px] truncate">{a.nome_evento || "—"}</td>
+                          <td className="px-3 py-2 max-w-[150px] truncate text-gray-500">{a.uc_nome || "—"}</td>
+                          <td className="px-3 py-2 whitespace-nowrap text-gray-500">{a.ambiente || "—"}</td>
+                          <td className="px-3 py-2">
+                            <span className={cn("px-2 py-0.5 rounded text-xs font-medium", STATUS_CHIP[a.status] ?? "bg-gray-100 text-gray-600")}>{a.status}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
