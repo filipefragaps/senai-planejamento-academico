@@ -181,15 +181,25 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose }: {
     [aulasRaw, turnoFiltro]
   );
 
-  // Regência proporcional: horas do turno / horas_periodo total
+  // Quantos turnos distintos o professor tem aulas (Realizada ou Agendada)?
+  const turnosAtivos = useMemo(() => {
+    const aptas = (aulasRaw as any[]).filter(a => a.status === "Realizada" || a.status === "Agendada");
+    return new Set(aptas.map(a => getTurnoKey(a.horario_inicio)));
+  }, [aulasRaw]);
+
+  // Horas do turno selecionado (aulas aptas)
   const horasTurno = useMemo(() =>
     aulasFiltered
       .filter(a => a.status === "Realizada" || a.status === "Agendada")
       .reduce((s: number, a: any) => s + horasAula(a.horario_inicio, a.horario_fim), 0),
     [aulasFiltered]
   );
+
+  // Base proporcional: divide horas_periodo pelo nº de turnos ativos quando filtrando por turno
   const horasPeriodo = (regencia as any)?.horas_periodo ?? 0;
-  const percentualTurno = horasPeriodo > 0 ? (horasTurno / horasPeriodo) * 100 : 0;
+  const numTurnos = turnosAtivos.size || 1;
+  const periodoEfetivo = turnoFiltro === "todos" ? horasPeriodo : horasPeriodo / numTurnos;
+  const percentualTurno = periodoEfetivo > 0 ? (horasTurno / periodoEfetivo) * 100 : 0;
 
   const totalHoras = aulasFiltered.reduce((s: number, a: any) => s + horasAula(a.horario_inicio, a.horario_fim), 0);
   const totalAulas = aulasFiltered.length;
@@ -262,7 +272,7 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose }: {
               </p>
               {turnoFiltro !== "todos" && (
                 <p className="text-[10px] text-indigo-400 mt-0.5">
-                  {horasTurno.toFixed(1)}h / {horasPeriodo.toFixed(0)}h período
+                  {horasTurno.toFixed(1)}h / {periodoEfetivo.toFixed(0)}h ({numTurnos} turno{numTurnos > 1 ? "s" : ""})
                 </p>
               )}
             </div>
