@@ -379,6 +379,7 @@ class ExcelImportService:
 
         # Cria UnidadeCurricular se colunas existirem
         if nome_uc_col and cod_uc_col:
+            ucs_processadas: set[tuple] = set()
             for _, row in df.iterrows():
                 cod_pasta = _str(row.get(cod_col))
                 curso_id  = curso_id_map.get(cod_pasta)
@@ -388,6 +389,10 @@ class ExcelImportService:
                 nome_uc   = _str(row.get(nome_uc_col))
                 if not codigo_uc or not nome_uc:
                     continue
+                chave_uc = (curso_id, codigo_uc)
+                if chave_uc in ucs_processadas:
+                    continue
+                ucs_processadas.add(chave_uc)
                 res_uc = await db.execute(
                     select(UnidadeCurricular).where(
                         UnidadeCurricular.curso_id == curso_id,
@@ -435,6 +440,8 @@ class ExcelImportService:
         if not cod_uc_col or not nome_uc_col:
             return  # sem dados de UC reconhecíveis
 
+        ucs_processadas: set[tuple] = set()
+        cache_pasta: dict[str, int | None] = {}
         for _, row in df.iterrows():
             codigo_uc = _str(row.get(cod_uc_col))
             nome_uc   = _str(row.get(nome_uc_col))
@@ -445,12 +452,13 @@ class ExcelImportService:
             if pasta_col:
                 cod_pasta = _str(row.get(pasta_col))
                 if cod_pasta:
-                    res_c = await db.execute(select(Curso).where(Curso.codigo == cod_pasta))
-                    c = res_c.scalar_one_or_none()
-                    curso_id = c.id if c else None
+                    if cod_pasta not in cache_pasta:
+                        res_c = await db.execute(select(Curso).where(Curso.codigo == cod_pasta))
+                        c = res_c.scalar_one_or_none()
+                        cache_pasta[cod_pasta] = c.id if c else None
+                    curso_id = cache_pasta[cod_pasta]
 
             if not curso_id:
-                # Tenta achar pela UC já existente
                 res_uc = await db.execute(
                     select(UnidadeCurricular).where(UnidadeCurricular.codigo_uc == codigo_uc)
                 )
@@ -458,7 +466,12 @@ class ExcelImportService:
                 if existing_uc:
                     curso_id = existing_uc.curso_id
                 else:
-                    continue  # sem curso identificado, não cria UC órfã
+                    continue
+
+            chave_uc = (curso_id, codigo_uc)
+            if chave_uc in ucs_processadas:
+                continue
+            ucs_processadas.add(chave_uc)
 
             dados_uc = {
                 "nome":          nome_uc,
