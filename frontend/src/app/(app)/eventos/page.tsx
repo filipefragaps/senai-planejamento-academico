@@ -24,6 +24,7 @@ interface Evento {
   nome_turma: string;
   disciplina: string;
   nome_curso?: string | null;
+  area?: string | null;
   status: string;
   data_inicio: string;
   data_fim: string;
@@ -832,6 +833,7 @@ export default function EventosPage() {
 
   const [search, setSearch] = useState("");
   const [statusFiltro, setStatusFiltro] = useState("");
+  const [areaFiltro, setAreaFiltro] = useState("");
   const [eventoSelecionado, setEventoSelecionado] = useState<Evento | null>(null);
   const [abaAtiva, setAbaAtiva] = useState<"cronograma" | "ucs" | "regencia">("cronograma");
   const [aulaEditando, setAulaEditando] = useState<AulaRow | null>(null);
@@ -1027,11 +1029,25 @@ export default function EventosPage() {
     apagarPlanejamentoMut.mutate({ ucId });
   }
 
-  const filtrados = (eventos as Evento[]).filter(
-    (e) =>
-      e.nome_turma.toLowerCase().includes(search.toLowerCase()) ||
-      e.disciplina.toLowerCase().includes(search.toLowerCase())
-  );
+  const areasDisponiveis = useMemo(() => {
+    const set = new Set<string>();
+    for (const e of eventos as Evento[]) {
+      if (e.area) set.add(e.area);
+    }
+    return Array.from(set).sort();
+  }, [eventos]);
+
+  const filtrados = useMemo(() => {
+    const q = search.toLowerCase();
+    return (eventos as Evento[]).filter((e) => {
+      const matchSearch = !q || [
+        e.nome_turma, e.disciplina, e.nome_curso ?? "",
+      ].some((s) => s.toLowerCase().includes(q));
+      const matchArea = !areaFiltro || e.area === areaFiltro;
+      const matchStatus = !statusFiltro || e.status === statusFiltro;
+      return matchSearch && matchArea && matchStatus;
+    });
+  }, [eventos, search, areaFiltro, statusFiltro]);
 
   const ucsParaPlanejar: UCParaPlanejar[] = ucsOrdenadas.map((u, i) => ({
     uc_id: u.id,
@@ -1099,15 +1115,23 @@ export default function EventosPage() {
 
         <div className="flex flex-1 min-h-0 gap-4 mt-4">
           {/* ── Left: Event List ─────────────────────────────────────────── */}
-          <div className="w-80 shrink-0 flex flex-col gap-3">
+          <div className="w-80 shrink-0 flex flex-col gap-2">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <input
-                className="input w-full pl-9 text-sm"
-                placeholder="Buscar turma..."
+                className="input w-full pl-9 pr-8 text-sm"
+                placeholder="Buscar evento, turma ou curso..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
+              {search && (
+                <button
+                  onClick={() => setSearch("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
             <select
               className="input w-full text-sm"
@@ -1119,6 +1143,24 @@ export default function EventosPage() {
                 <option key={s}>{s}</option>
               ))}
             </select>
+            <select
+              className="input w-full text-sm"
+              value={areaFiltro}
+              onChange={(e) => setAreaFiltro(e.target.value)}
+            >
+              <option value="">Todas as áreas</option>
+              {areasDisponiveis.map((a) => (
+                <option key={a} value={a}>{a}</option>
+              ))}
+            </select>
+            {(search || areaFiltro) && (
+              <button
+                onClick={() => { setSearch(""); setAreaFiltro(""); }}
+                className="text-xs text-blue-600 hover:text-blue-800 text-left"
+              >
+                Limpar filtros
+              </button>
+            )}
 
             <div className="flex-1 overflow-y-auto space-y-2 pr-1">
               {isLoading ? (

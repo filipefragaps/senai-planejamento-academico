@@ -31,17 +31,19 @@ async def listar_eventos(
     result = await db.execute(query.order_by(Evento.data_inicio.desc()))
     eventos_list = result.scalars().all()
 
-    # Batch-fetch course names to include in response
+    # Batch-fetch course names and areas to include in response
     ids_curso = {e.curso_id for e in eventos_list if e.curso_id}
-    cursos: dict[int, str] = {}
+    cursos: dict[int, dict] = {}
     if ids_curso:
         res = await db.execute(select(Curso).where(Curso.id.in_(ids_curso)))
-        cursos = {c.id: c.nome for c in res.scalars().all()}
+        cursos = {c.id: {"nome": c.nome, "area": c.area} for c in res.scalars().all()}
 
     out = []
     for e in eventos_list:
         d = EventoOut.model_validate(e).model_dump()
-        d["nome_curso"] = cursos.get(e.curso_id)
+        curso_data = cursos.get(e.curso_id) or {}
+        d["nome_curso"] = curso_data.get("nome")
+        d["area"] = curso_data.get("area")
         out.append(d)
     return out
 
