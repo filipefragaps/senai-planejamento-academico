@@ -769,7 +769,9 @@ function UCFormInline({ modulosExistentes, formUc, setFormUc, ucPending, onSalva
   modulosExistentes: string[]; formUc: any; setFormUc: any; ucPending: boolean;
   onSalvar: () => void; onCancelar: () => void;
 }) {
-  const moduloDisplay = formUc.modulo_etapa || "Etapa Única";
+  const [novoModuloMode, setNovoModuloMode] = useState(false);
+
+  const selectValue = novoModuloMode ? "__novo__" : (formUc.modulo_etapa || "");
 
   return (
     <div className="border border-blue-200 rounded-lg p-3 bg-blue-50/50 space-y-2">
@@ -807,12 +809,15 @@ function UCFormInline({ modulosExistentes, formUc, setFormUc, ucPending, onSalva
         <div>
           <label className="block text-[10px] text-gray-500 mb-0.5">Módulo / Etapa</label>
           <select className="input w-full text-sm py-1.5"
-            value={formUc.novoModulo || formUc.modulo_etapa || ""}
+            value={selectValue}
             onChange={(e) => {
               const val = e.target.value;
               if (val === "__novo__") {
-                setFormUc({ ...formUc, modulo_etapa: "", novoModulo: "" });
+                setNovoModuloMode(true);
+                // Não altera modulo_etapa — mantém o formulário na seção atual
+                setFormUc({ ...formUc, novoModulo: "" });
               } else {
+                setNovoModuloMode(false);
                 setFormUc({ ...formUc, modulo_etapa: val, novoModulo: "" });
               }
             }}
@@ -822,17 +827,20 @@ function UCFormInline({ modulosExistentes, formUc, setFormUc, ucPending, onSalva
               .map((m) => <option key={m} value={m}>{m}</option>)}
             <option value="__novo__">+ Digitar novo módulo...</option>
           </select>
-          {(formUc.novoModulo !== undefined && formUc.modulo_etapa === "" && formUc.novoModulo === "") && (
-            <input className="input w-full text-sm py-1 mt-1" placeholder="Nome do novo módulo"
+          {novoModuloMode && (
+            <input
+              className="input w-full text-sm py-1 mt-1"
+              placeholder="Nome do novo módulo"
               autoFocus
-              onChange={(e) => setFormUc({ ...formUc, novoModulo: e.target.value, modulo_etapa: e.target.value })}
+              value={formUc.novoModulo || ""}
+              onChange={(e) => setFormUc({ ...formUc, novoModulo: e.target.value })}
             />
           )}
         </div>
       </div>
       <div className="flex justify-end gap-2 pt-1">
         <button onClick={onCancelar} className="btn-secondary text-xs py-1.5 px-3">Cancelar</button>
-        <button onClick={onSalvar} disabled={ucPending || !formUc.nome}
+        <button onClick={onSalvar} disabled={ucPending || !formUc.nome || (novoModuloMode && !formUc.novoModulo?.trim())}
           className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1 disabled:opacity-50">
           {ucPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
           Salvar UC
