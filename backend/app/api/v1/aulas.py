@@ -85,6 +85,13 @@ async def alterar_aula(
         )
         await db.commit()
 
+        # Refresh after commit so Pydantic can read all attributes without lazy-load
+        aula_alterada = resultado["aula_alterada"]
+        await db.refresh(aula_alterada)
+        aulas_replanejadas = resultado["aulas_replanejadas"]
+        for a in aulas_replanejadas:
+            await db.refresh(a)
+
         # Buscar sugestões de professor alternativo se houve conflitos
         sugestoes_ia = []
         if resultado["conflitos_detectados"]:
@@ -100,8 +107,8 @@ async def alterar_aula(
                 sugestoes_ia = [f"Professor disponível: {n}" for n in nomes]
 
         return ReplanejamentoResponse(
-            aula_alterada=resultado["aula_alterada"],
-            aulas_replanejadas=resultado["aulas_replanejadas"],
+            aula_alterada=aula_alterada,
+            aulas_replanejadas=aulas_replanejadas,
             conflitos_detectados=resultado["conflitos_detectados"],
             sugestoes_ia=sugestoes_ia,
         )
