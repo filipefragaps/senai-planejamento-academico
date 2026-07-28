@@ -6,7 +6,7 @@ import { planejamentoApi, professoresApi, eventosApi, relatoriosApi, downloadBlo
 import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 import {
-  ChevronLeft, ChevronRight, Loader2, X, Printer, CalendarDays, LayoutGrid, Filter, FileDown,
+  ChevronLeft, ChevronRight, Loader2, X, Printer, CalendarDays, LayoutGrid, Filter, FileDown, Search,
 } from "lucide-react";
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -73,6 +73,8 @@ export default function CronogramaPage() {
   const [diaSelecionado, setDiaSelecionado] = useState<string | null>(null);
   const [professorFiltro, setProfessorFiltro] = useState("");
   const [eventoFiltro, setEventoFiltro] = useState("");
+  const [buscaEvento, setBuscaEvento] = useState("");
+  const [areaFiltro, setAreaFiltro] = useState("");
   const tabelaRef = useRef<HTMLDivElement>(null);
 
   // Datas de busca conforme modo
@@ -112,6 +114,22 @@ export default function CronogramaPage() {
     new Map((todosEventos as any[]).map((e: any) => [e.id, e.nome_turma ?? e.disciplina ?? ""])),
     [todosEventos]
   );
+
+  const areasDisponiveis = useMemo(() => {
+    const s = new Set<string>();
+    for (const e of todosEventos as any[]) if (e.area) s.add(e.area);
+    return Array.from(s).sort();
+  }, [todosEventos]);
+
+  const eventosFiltrados = useMemo(() => {
+    const q = buscaEvento.toLowerCase();
+    return (todosEventos as any[]).filter((e: any) => {
+      const matchQ = !q || [e.nome_turma ?? "", e.disciplina ?? "", e.nome_curso ?? ""]
+        .some((s: string) => s.toLowerCase().includes(q));
+      const matchA = !areaFiltro || e.area === areaFiltro;
+      return matchQ && matchA;
+    });
+  }, [todosEventos, buscaEvento, areaFiltro]);
   const profMap = useMemo(() =>
     new Map((professores as any[]).map((p: any) => [p.id, p.nome ?? ""])),
     [professores]
@@ -253,7 +271,40 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
     <div className="space-y-4">
       <PageHeader title="Cronograma" description="Visualização de todas as aulas agendadas">
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Filtro evento */}
+          {/* Busca de evento por texto */}
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+            <input
+              className="input pl-8 pr-7 w-48 text-sm"
+              placeholder="Buscar evento..."
+              value={buscaEvento}
+              onChange={(e) => { setBuscaEvento(e.target.value); setEventoFiltro(""); setDiaSelecionado(null); }}
+            />
+            {buscaEvento && (
+              <button
+                onClick={() => { setBuscaEvento(""); setEventoFiltro(""); }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+
+          {/* Filtro por área (só aparece quando há áreas cadastradas) */}
+          {areasDisponiveis.length > 0 && (
+            <select
+              className="input w-40 text-sm"
+              value={areaFiltro}
+              onChange={(e) => { setAreaFiltro(e.target.value); setEventoFiltro(""); setDiaSelecionado(null); }}
+            >
+              <option value="">Todas as áreas</option>
+              {areasDisponiveis.map((a) => (
+                <option key={a} value={a}>{a}</option>
+              ))}
+            </select>
+          )}
+
+          {/* Select de evento (filtrado pela busca/área acima) */}
           <div className="relative">
             <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
             <select
@@ -261,8 +312,12 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
               value={eventoFiltro}
               onChange={(e) => { setEventoFiltro(e.target.value); setDiaSelecionado(null); }}
             >
-              <option value="">Todos os eventos</option>
-              {(todosEventos as any[]).map((e: any) => (
+              <option value="">
+                {buscaEvento || areaFiltro
+                  ? `${eventosFiltrados.length} evento(s) encontrado(s)`
+                  : "Todos os eventos"}
+              </option>
+              {eventosFiltrados.map((e: any) => (
                 <option key={e.id} value={e.id}>{e.nome_turma}</option>
               ))}
             </select>
