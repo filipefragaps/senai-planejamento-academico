@@ -9,6 +9,14 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+const ESPECIALIDADES_OPTIONS = [
+  "Elétrica", "Automação", "Mecânica", "Corte/Costura", "Design", "Movelaria",
+];
+
+const TITULACAO_OPTIONS = [
+  "Técnico", "Tecnólogo", "Bacharel", "Especialista", "Mestre", "Doutor",
+];
+
 const DIAS = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"];
 const DIAS_GRID = [0, 1, 2, 3, 4, 5]; // Seg–Sáb
 
@@ -351,10 +359,10 @@ export function ProfessorDrawer({ professor, onClose, onSaved }: Props) {
                 <div className="col-span-2">
                   <label className="block text-xs font-medium text-gray-600 mb-1">Nome *</label>
                   <input
-                    className="input w-full"
+                    className="input w-full uppercase"
                     required
                     value={basic.nome}
-                    onChange={(e) => setBasic({ ...basic, nome: e.target.value })}
+                    onChange={(e) => setBasic({ ...basic, nome: e.target.value.toUpperCase() })}
                   />
                 </div>
                 <div>
@@ -422,21 +430,49 @@ export function ProfessorDrawer({ professor, onClose, onSaved }: Props) {
                 )}
                 <div className="col-span-2">
                   <label className="block text-xs font-medium text-gray-600 mb-1">Especialidades / Área</label>
-                  <input
-                    className="input w-full"
-                    placeholder="Ex: Elétrica, Automação, Mecânica"
-                    value={basic.especialidades}
-                    onChange={(e) => setBasic({ ...basic, especialidades: e.target.value })}
-                  />
+                  {(() => {
+                    const selecionadas = basic.especialidades
+                      ? basic.especialidades.split(",").map((s: string) => s.trim()).filter(Boolean)
+                      : [];
+                    const toggle = (esp: string) => {
+                      const next = selecionadas.includes(esp)
+                        ? selecionadas.filter((e: string) => e !== esp)
+                        : [...selecionadas, esp];
+                      setBasic({ ...basic, especialidades: next.join(", ") });
+                    };
+                    return (
+                      <div className="flex flex-wrap gap-2">
+                        {ESPECIALIDADES_OPTIONS.map((esp) => (
+                          <button
+                            key={esp}
+                            type="button"
+                            onClick={() => toggle(esp)}
+                            className={cn(
+                              "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
+                              selecionadas.includes(esp)
+                                ? "bg-primary text-white border-primary shadow-sm"
+                                : "bg-white text-gray-600 border-gray-300 hover:border-primary hover:text-primary"
+                            )}
+                          >
+                            {esp}
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div className="col-span-2">
                   <label className="block text-xs font-medium text-gray-600 mb-1">Titulação</label>
-                  <input
+                  <select
                     className="input w-full"
-                    placeholder="Ex: Especialista, Mestre, Doutor"
-                    value={basic.titulacao}
+                    value={basic.titulacao || ""}
                     onChange={(e) => setBasic({ ...basic, titulacao: e.target.value })}
-                  />
+                  >
+                    <option value="">Selecione...</option>
+                    {TITULACAO_OPTIONS.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="col-span-2 flex items-center gap-3">
                   <label className="relative inline-flex items-center cursor-pointer">
