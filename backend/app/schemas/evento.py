@@ -89,7 +89,6 @@ class AulaOut(AulaBase):
 
 
 class ReplanejamentoRequest(BaseModel):
-    aula_id: int
     alteracoes: AulaUpdate
     replaneja_futuras: bool = True
     motivo: str | None = None

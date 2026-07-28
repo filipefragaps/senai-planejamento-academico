@@ -9,6 +9,14 @@ import type { AulaRow } from "@/components/cronograma-table";
 
 const STATUS_OPTIONS = ["Agendada", "Realizada", "Cancelada", "Substituída", "Remarcada"];
 
+function extractErrorMsg(err: any, fallback = "Erro desconhecido"): string {
+  const detail = err?.response?.data?.detail;
+  if (!detail) return fallback;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) return detail.map((d: any) => d.msg || d.message || "campo inválido").join("; ");
+  return fallback;
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
@@ -91,7 +99,7 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
       onClose();
     },
     onError: (err: any) => {
-      toast.error(err?.response?.data?.detail || "Erro no remanejo");
+      toast.error(extractErrorMsg(err, "Erro no remanejo"));
     },
   });
 
@@ -124,7 +132,7 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
       onClose();
     },
     onError: (err: any) => {
-      toast.error(err?.response?.data?.detail || "Erro ao trocar componente");
+      toast.error(extractErrorMsg(err, "Erro ao trocar componente"));
     },
   });
 
@@ -173,7 +181,7 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
       onClose();
     },
     onError: (err: any) => {
-      toast.error(err?.response?.data?.detail || "Erro ao salvar");
+      toast.error(extractErrorMsg(err, "Erro ao salvar"));
     },
   });
 
