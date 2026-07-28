@@ -157,6 +157,26 @@ function CalendarioMes({
   mes, ano, aulas, loading, diaSelecionado, onDiaClick, onMes, onAno, onAulaClick,
   eventos, eventoAtualId, onEventoChange,
 }: CalendarioProps) {
+  const [buscaEvento, setBuscaEvento] = useState("");
+  const [areaLocal, setAreaLocal] = useState("");
+
+  const areasLocais = useMemo(() => {
+    if (!eventos) return [];
+    const s = new Set<string>();
+    for (const e of eventos) if (e.area) s.add(e.area);
+    return Array.from(s).sort();
+  }, [eventos]);
+
+  const eventosFiltrados = useMemo(() => {
+    if (!eventos) return [];
+    const q = buscaEvento.toLowerCase();
+    return eventos.filter((e) => {
+      const matchQ = !q || [e.nome_turma, e.disciplina, e.nome_curso ?? ""].some((s) => s.toLowerCase().includes(q));
+      const matchA = !areaLocal || e.area === areaLocal;
+      return matchQ && matchA;
+    });
+  }, [eventos, buscaEvento, areaLocal]);
+
   const primeiroDia = new Date(ano, mes - 1, 1).getDay();
   const diasNoMes   = new Date(ano, mes, 0).getDate();
   const hojeStr     = new Date().toISOString().slice(0, 10);
@@ -202,24 +222,59 @@ function CalendarioMes({
 
   return (
     <div className="p-4 space-y-3">
-      {/* ── Seletor de evento (quando passado) ── */}
+      {/* ── Seletor de evento com busca e filtro de área ── */}
       {eventos && onEventoChange && (
-        <div className="flex items-center gap-2 pb-1 border-b">
-          <span className="text-xs font-semibold text-gray-500 shrink-0">Evento:</span>
+        <div className="pb-3 border-b space-y-2">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+              <input
+                className="input w-full pl-8 pr-7 text-sm py-1.5"
+                placeholder="Buscar evento ou curso..."
+                value={buscaEvento}
+                onChange={(e) => setBuscaEvento(e.target.value)}
+              />
+              {buscaEvento && (
+                <button
+                  onClick={() => setBuscaEvento("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+            {areasLocais.length > 0 && (
+              <select
+                className="input text-sm py-1.5 shrink-0 max-w-[180px]"
+                value={areaLocal}
+                onChange={(e) => setAreaLocal(e.target.value)}
+              >
+                <option value="">Todas as áreas</option>
+                {areasLocais.map((a) => (
+                  <option key={a} value={a}>{a}</option>
+                ))}
+              </select>
+            )}
+          </div>
           <select
-            className="input flex-1 text-sm py-1.5"
+            className="input w-full text-sm py-1.5"
             value={eventoAtualId ?? ""}
             onChange={(e) => {
               const id = +e.target.value;
-              onEventoChange(eventos.find((ev) => ev.id === id) ?? null);
+              onEventoChange(eventosFiltrados.find((ev) => ev.id === id) ?? null);
               onDiaClick(null);
             }}
           >
-            <option value="" disabled>— Selecione —</option>
-            {eventos.map((ev) => (
-              <option key={ev.id} value={ev.id}>{ev.nome_turma}</option>
+            <option value="" disabled>— Selecione o evento —</option>
+            {eventosFiltrados.map((ev) => (
+              <option key={ev.id} value={ev.id}>
+                {ev.nome_turma}{ev.nome_curso ? ` – ${ev.nome_curso}` : ""}
+              </option>
             ))}
           </select>
+          {eventosFiltrados.length === 0 && (buscaEvento || areaLocal) && (
+            <p className="text-xs text-gray-400 text-center py-1">Nenhum evento encontrado para este filtro.</p>
+          )}
         </div>
       )}
 
