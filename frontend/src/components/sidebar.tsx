@@ -17,6 +17,7 @@ import {
   UserCog,
   UserCircle,
   TrendingUp,
+  DoorOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clearAuth, getCurrentUser } from "@/lib/auth";
@@ -30,6 +31,7 @@ const NAV_PRINCIPAL = [
   { href: "/eventos", label: "Planejamento", icon: Calendar },
   { href: "/cronograma", label: "Cronograma", icon: Calendar },
   { href: "/importacao", label: "Importar Dados", icon: Upload },
+  { href: "/ambientes", label: "Salas e Labs", icon: DoorOpen },
   { href: "/regencia", label: "Regência", icon: TrendingUp },
   { href: "/relatorios", label: "Relatórios", icon: BarChart3 },
   { href: "/historico", label: "Histórico", icon: History },

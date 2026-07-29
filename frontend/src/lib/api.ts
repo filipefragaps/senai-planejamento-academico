@@ -280,6 +280,25 @@ export const usuariosApi = {
     api.post("/auth/alterar-senha", { senha_atual, nova_senha }).then((r) => r.data),
 };
 
+// Ambientes (Salas e Laboratórios)
+export const ambientesApi = {
+  listar: (params?: { busca?: string; bloco?: string; tipo?: string; tag?: string; ativo?: boolean }) =>
+    api.get("/ambientes/", { params }).then((r) => r.data),
+  criar: (data: any) => api.post("/ambientes/", data).then((r) => r.data),
+  atualizar: (id: number, data: any) => api.put(`/ambientes/${id}`, data).then((r) => r.data),
+  deletar: (id: number) => api.delete(`/ambientes/${id}`).then((r) => r.data),
+  deletarTodos: (params: { bloco?: string; tipo?: string; confirmar: true }) =>
+    api.delete("/ambientes/", { params }).then((r) => r.data),
+  template: () => api.get("/ambientes/template/download", { responseType: "blob" }),
+  importar: (file: File) => {
+    const form = new FormData();
+    form.append("arquivo", file);
+    return api.post("/ambientes/importar", form, {
+      transformRequest: (data, headers) => { if (headers) delete headers["Content-Type"]; return data; },
+    }).then((r) => r.data);
+  },
+};
+
 export function downloadBlob(data: Blob, filename: string) {
   const url = window.URL.createObjectURL(data);
   const a = document.createElement("a");
