@@ -251,6 +251,10 @@ async def analisar_otimizacao_global(
                 key = (p.id, ev_id, uc_id)
                 x[key] = pulp.LpVariable(f"x_{p.id}_{ev_id}_{uc_id}", cat="Binary")
 
+    # Guard: sem variáveis → nada a otimizar
+    if not x:
+        return _resultado_vazio("Nenhum professor com atuação e disponibilidade compatíveis com as UCs disponíveis.")
+
     # Constraint 1: cada UC livre recebe exatamente 1 professor
     sem_candidatos: list[dict] = []
     for item in ucs_livres:
@@ -269,32 +273,35 @@ async def analisar_otimizacao_global(
                 "motivo": "Nenhum professor com atuação e disponibilidade compatíveis",
             })
 
-    # Constraint 2: professor não pode estar em dois eventos conflitantes simultaneamente
+    # Constraint 2: sem double-booking entre eventos conflitantes
+    # Pré-cria indicadores y[(prof_id, ev_id)] = 1 se professor leciona alguma UC neste evento.
+    # Feito fora do loop de pares para evitar nomes duplicados de variáveis.
+    y_vars: dict[tuple[int, int], pulp.LpVariable] = {}
+    for p in profs:
+        for ev_id in todos_eventos.keys():
+            ucs_ev = [
+                x[(p.id, ev_id, it["uc_id"])]
+                for it in ucs_livres
+                if it["evento_id"] == ev_id and (p.id, ev_id, it["uc_id"]) in x
+            ]
+            if ucs_ev:
+                yvar = pulp.LpVariable(f"in_{p.id}_{ev_id}", cat="Binary")
+                y_vars[(p.id, ev_id)] = yvar
+                M = len(ucs_ev)
+                # y=1 se professor está em pelo menos 1 UC do evento
+                prob += pulp.lpSum(ucs_ev) <= M * yvar
+                prob += yvar <= pulp.lpSum(ucs_ev)
+
     ev_list = list(todos_eventos.values())
     for i, ev_a in enumerate(ev_list):
         for ev_b in ev_list[i + 1 :]:
             if not _eventos_conflitam(ev_a, ev_b):
                 continue
             for p in profs:
-                ucs_a = [
-                    x[(p.id, ev_a.id, it["uc_id"])]
-                    for it in ucs_livres
-                    if it["evento_id"] == ev_a.id and (p.id, ev_a.id, it["uc_id"]) in x
-                ]
-                ucs_b = [
-                    x[(p.id, ev_b.id, it["uc_id"])]
-                    for it in ucs_livres
-                    if it["evento_id"] == ev_b.id and (p.id, ev_b.id, it["uc_id"]) in x
-                ]
-                if ucs_a and ucs_b:
-                    # Indicadores auxiliares: professor está no evento A ou B?
-                    y_a = pulp.LpVariable(f"in_{p.id}_{ev_a.id}", cat="Binary")
-                    y_b = pulp.LpVariable(f"in_{p.id}_{ev_b.id}", cat="Binary")
-                    M_a = len(ucs_a)
-                    M_b = len(ucs_b)
-                    prob += pulp.lpSum(ucs_a) <= M_a * y_a
-                    prob += pulp.lpSum(ucs_b) <= M_b * y_b
-                    prob += y_a + y_b <= 1
+                ya = y_vars.get((p.id, ev_a.id))
+                yb = y_vars.get((p.id, ev_b.id))
+                if ya is not None and yb is not None:
+                    prob += ya + yb <= 1
 
     # ── 9. Função objetivo ─────────────────────────────────────────────────────
     deficit_terms = []
