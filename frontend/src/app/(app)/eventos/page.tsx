@@ -2,7 +2,7 @@
 
 import { useState, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { eventosApi, ofertasApi, planejamentoApi, cursosApi } from "@/lib/api";
+import { eventosApi, ofertasApi, planejamentoApi } from "@/lib/api";
 import { LimparBdButton } from "@/components/limpar-bd-button";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
@@ -899,7 +899,6 @@ export default function EventosPage() {
   const [ucFormAberto, setUcFormAberto] = useState(false);
   const [ucForm, setUcForm] = useState({ nome: "", carga_horaria: "" });
   const [limparAberto, setLimparAberto] = useState(false);
-  const [vinculandoCursoId, setVinculandoCursoId] = useState<number | null>(null);
 
   // ── Calendário state ────────────────────────────────────────────────────────
   const _hoje = new Date();
@@ -962,29 +961,7 @@ export default function EventosPage() {
     enabled: abaAtiva === "regencia",
   });
 
-  const { data: cursos = [] } = useQuery({
-    queryKey: ["cursos"],
-    queryFn: () => cursosApi.listar(true),
-    staleTime: 300_000,
-    enabled: !!eventoSelecionado && !eventoSelecionado.curso_id && abaAtiva === "ucs",
-  });
-
   // ── Mutations ──────────────────────────────────────────────────────────────
-
-  const vincularCurso = useMutation({
-    mutationFn: (cursoId: number) =>
-      eventosApi.atualizar(eventoSelecionado!.id, { curso_id: cursoId }),
-    onSuccess: (data: any) => {
-      const cursoId = data.curso_id ?? vinculandoCursoId;
-      setEventoSelecionado((prev) => prev ? { ...prev, curso_id: cursoId } : prev);
-      qc.invalidateQueries({ queryKey: ["evento-modulos", eventoSelecionado!.id] });
-      qc.invalidateQueries({ queryKey: ["evento-ucs", eventoSelecionado!.id] });
-      qc.invalidateQueries({ queryKey: ["eventos"] });
-      setVinculandoCursoId(null);
-      toast.success("Curso vinculado com sucesso!");
-    },
-    onError: () => toast.error("Erro ao vincular curso"),
-  });
 
   const adicionarUcAvulsa = useMutation({
     mutationFn: (dados: { nome: string; carga_horaria: number }) =>
@@ -1469,47 +1446,21 @@ export default function EventosPage() {
 
                                 {/* Lista de UCs */}
                                 {ucsOrdenadas.length === 0 ? (
-                                  <div className="border border-dashed rounded-lg p-6 text-gray-400 text-sm space-y-3">
-                                    <p className="text-center">Nenhuma UC cadastrada{moduloSelecionado ? ` para o módulo "${moduloSelecionado}"` : " para este curso"}.</p>
-                                    {!eventoSelecionado.curso_id && (
-                                      <div className="space-y-2">
-                                        <p className="text-center text-xs">O evento não possui curso vinculado. Selecione o curso para carregar as UCs:</p>
-                                        <div className="flex gap-2">
-                                          <select
-                                            className="input flex-1 text-sm"
-                                            value={vinculandoCursoId ?? ""}
-                                            onChange={(e) => setVinculandoCursoId(e.target.value ? Number(e.target.value) : null)}
-                                          >
-                                            <option value="">— Selecione o curso —</option>
-                                            {(cursos as any[]).map((c: any) => (
-                                              <option key={c.id} value={c.id}>{c.nome}</option>
-                                            ))}
-                                          </select>
-                                          <button
-                                            onClick={() => vincularCurso.mutate(vinculandoCursoId!)}
-                                            disabled={!vinculandoCursoId || vincularCurso.isPending}
-                                            className="btn-primary text-sm px-3 flex items-center gap-1 disabled:opacity-50"
-                                          >
-                                            {vincularCurso.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Vincular"}
-                                          </button>
-                                        </div>
-                                      </div>
-                                    )}
+                                  <div className="border border-dashed rounded-lg p-6 text-center text-gray-400 text-sm space-y-3">
+                                    <p>Nenhuma UC cadastrada{moduloSelecionado ? ` para o módulo "${moduloSelecionado}"` : " para este curso"}.</p>
                                     {eventoSelecionado.curso_id && (
-                                      <div className="text-center">
-                                        <button
-                                          onClick={() => {
-                                            setUcForm({
-                                              nome: eventoSelecionado.disciplina,
-                                              carga_horaria: String((eventoSelecionado as any).carga_horaria_total ?? ""),
-                                            });
-                                            setUcFormAberto(true);
-                                          }}
-                                          className="text-blue-600 text-xs underline"
-                                        >
-                                          Usar o curso como UC única
-                                        </button>
-                                      </div>
+                                      <button
+                                        onClick={() => {
+                                          setUcForm({
+                                            nome: eventoSelecionado.disciplina,
+                                            carga_horaria: String((eventoSelecionado as any).carga_horaria_total ?? ""),
+                                          });
+                                          setUcFormAberto(true);
+                                        }}
+                                        className="text-blue-600 text-xs underline"
+                                      >
+                                        Usar o curso como UC única
+                                      </button>
                                     )}
                                   </div>
                                 ) : (
