@@ -107,7 +107,6 @@ async def alterar_aula_e_replaneja(
                     Aula.evento_id == evento.id,
                     Aula.data > aula.data,
                     Aula.status == "Agendada",
-                    Aula.alterada_manualmente == False,
                 )
             ).order_by(Aula.data)
         )
