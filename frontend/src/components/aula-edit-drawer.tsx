@@ -309,7 +309,7 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
               <div>
                 <p className="text-sm font-medium text-amber-800">Recalcular aulas futuras</p>
                 <p className="text-xs text-amber-600 mt-0.5">
-                  Propaga a troca de professor para todas as aulas futuras com status Agendada deste evento.
+                  Propaga a troca de professor para todas as aulas posteriores desta data (exceto canceladas).
                 </p>
               </div>
             </label>

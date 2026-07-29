@@ -100,21 +100,17 @@ async def alterar_aula_e_replaneja(
     aulas_replanejadas = []
     conflitos = []
 
-    print(f"[REPLAN] replaneja_futuras={replaneja_futuras} evento_id={evento.id if evento else None} aula_data={aula.data} alteracoes={alteracoes}", flush=True)
-
     if replaneja_futuras and evento:
         result_futuras = await db.execute(
             select(Aula).where(
                 and_(
                     Aula.evento_id == evento.id,
                     Aula.data > aula.data,
-                    Aula.status == "Agendada",
+                    Aula.status != "Cancelada",
                 )
             ).order_by(Aula.data)
         )
         aulas_futuras = result_futuras.scalars().all()
-
-        print(f"[REPLAN] futuras encontradas: {len(aulas_futuras)} | novo_professor_id={alteracoes.get('professor_id')}", flush=True)
 
         for aula_futura in aulas_futuras:
             snap_antes = _snapshot_aula(aula_futura)
