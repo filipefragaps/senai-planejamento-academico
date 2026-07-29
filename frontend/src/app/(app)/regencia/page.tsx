@@ -8,7 +8,7 @@ import { RegenciaBar } from "@/components/regencia-bar";
 import { StatusBadge } from "@/components/status-badge";
 import { cn } from "@/lib/utils";
 import {
-  Search, X, TrendingUp, CheckCircle, AlertTriangle, Zap, Download, ArrowUpDown,
+  Search, X, TrendingUp, CheckCircle, AlertTriangle, Zap, Download, ArrowUpDown, Info,
 } from "lucide-react";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -275,8 +275,24 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose }: {
                   {horasTurno.toFixed(1)}h / {periodoEfetivo.toFixed(0)}h ({numTurnos} turno{numTurnos > 1 ? "s" : ""})
                 </p>
               )}
+              {turnoFiltro === "todos" && (regencia as any)?.horas_excedentes > 0 && (
+                <p className="text-[10px] text-amber-500 mt-0.5">
+                  +{(regencia as any).horas_excedentes.toFixed(1)}h acima da CH mínima
+                </p>
+              )}
             </div>
           </div>
+
+          {/* Observação Horista — horas excedentes */}
+          {(regencia as any)?.observacao && (
+            <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <Info className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
+              <div>
+                <span className="font-semibold">Horas excedentes registradas · </span>
+                {(regencia as any).observacao}
+              </div>
+            </div>
+          )}
 
           {/* Calendário */}
           <div className="border rounded-lg p-4">
@@ -431,7 +447,7 @@ export default function RegenciaPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Regência Docente" description="Acompanhamento da carga horária e meta de 70% por professor">
+      <PageHeader title="Regência Docente" description="Mensalistas: meta 70% da CH contratada · Horistas: meta 100% da CH mínima contratada">
         <button onClick={exportarExcel}
           className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600 hover:bg-green-50 hover:border-green-300 hover:text-green-700 transition-colors">
           <Download className="h-4 w-4" /> Exportar Excel
@@ -549,19 +565,26 @@ export default function RegenciaPage() {
                     <div
                       className={cn(
                         "h-3 rounded-full transition-all",
-                        p.percentual_regencia >= 90 ? "bg-orange-400" :
-                        p.percentual_regencia >= 70 ? "bg-green-500" :
-                        p.percentual_regencia >= 50 ? "bg-yellow-400" : "bg-red-400"
+                        p.tipo === "Horista"
+                          ? (p.percentual_regencia >= 100 ? "bg-green-500" : p.percentual_regencia >= 50 ? "bg-yellow-400" : "bg-red-400")
+                          : (p.percentual_regencia >= 90 ? "bg-orange-400" : p.percentual_regencia >= 70 ? "bg-green-500" : p.percentual_regencia >= 50 ? "bg-yellow-400" : "bg-red-400")
                       )}
                       style={{ width: `${Math.min(p.percentual_regencia ?? 0, 100)}%` }}
                     />
-                    {/* Marcador da meta em 70% */}
-                    <div className="absolute top-0 h-3 w-0.5 bg-gray-500/60" style={{ left: "70%" }} />
+                    {/* Marcador da meta na posição correta por tipo */}
+                    <div className="absolute top-0 h-3 w-0.5 bg-gray-500/60" style={{ left: `${p.meta_regencia ?? 70}%` }} />
                   </div>
 
                   <div className="flex items-center justify-between text-[10px] text-gray-400">
                     <span>0%</span>
-                    <span className="font-medium text-gray-500">▲ Meta 70%</span>
+                    <span className="font-medium text-gray-500 flex items-center gap-1">
+                      ▲ Meta {p.meta_regencia ?? 70}%
+                      {p.observacao && (
+                        <span title={p.observacao} className="text-amber-500 cursor-help">
+                          <Info className="h-3 w-3" />
+                        </span>
+                      )}
+                    </span>
                     <span>100%</span>
                   </div>
                 </div>

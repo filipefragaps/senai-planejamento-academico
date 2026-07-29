@@ -1,7 +1,9 @@
 """
 Cálculo de Regência docente.
-- Mensalistas: meta = 70% = horas_ministradas / horas_contratadas (semanal)
-- Horistas: cálculo de remuneração por horas ministradas
+- Mensalistas: meta = 70% de (horas_contratadas/semana × semanas do período).
+- Horistas:    CH contratada é o MÍNIMO semanal. Regência = min(100%, horas_realizadas / ch_minima_periodo).
+               Se realizou acima do mínimo, regência permanece 100% e é gerada uma observação explicativa.
+               Horistas NÃO têm sobrecarga — recebem por hora e podem fazer mais do que o mínimo.
 """
 from datetime import date, datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,11 +33,13 @@ def calcular_status_regencia(percentual: float, tipo: str) -> str:
         elif percentual > ALERTA_SUPERIOR:
             return "Sobrecarga"
         return "OK"
-    else:  # Horista
+    else:
+        # Horista: regência já vem capped em 1.0 (100%)
+        # O status reflete cumprimento da CH mínima
         if percentual < ALERTA_INFERIOR:
-            return "Baixa carga"
-        elif percentual > ALERTA_SUPERIOR:
-            return "Alta carga"
+            return "Critico"
+        elif percentual < 1.0:
+            return "Alerta"
         return "OK"
 
 
@@ -63,32 +67,43 @@ async def calcular_regencia_professor(
     aulas_lista = result.scalars().all()
     horas_ministradas = sum(_horas_aula(a) for a in aulas_lista)
 
+    semanas = max(1, (data_fim - data_inicio).days / 7)
+    horas_excedentes = 0.0
+    observacao = None
+
     if professor.tipo == "Mensalista":
-        # Horas semanais contratadas
-        horas_semanais = professor.horas_contratadas
-        # Ajustar para o período
-        semanas = max(1, (data_fim - data_inicio).days / 7)
-        horas_periodo = horas_semanais * semanas
+        horas_periodo = professor.horas_contratadas * semanas
         percentual = horas_ministradas / horas_periodo if horas_periodo > 0 else 0
         meta = META_REGENCIA_MENSALISTA
         remuneracao = None
-    else:  # Horista
-        horas_periodo = professor.horas_contratadas  # máximo contratado
-        percentual = horas_ministradas / horas_periodo if horas_periodo > 0 else 0
-        meta = None
+    else:
+        # Horista: horas_contratadas = CH mínima semanal
+        horas_periodo = professor.horas_contratadas * semanas
+        horas_excedentes = max(0.0, horas_ministradas - horas_periodo)
+        # Regência com teto em 100% — acima do mínimo não aumenta o indicador
+        percentual = min(1.0, horas_ministradas / horas_periodo) if horas_periodo > 0 else 0
+        meta = 1.0  # meta do Horista = cumprir 100% da CH mínima
         remuneracao = horas_ministradas * (professor.valor_hora or 0)
+        if horas_excedentes > 0:
+            observacao = (
+                f"Realizou {round(horas_excedentes, 1)}h acima da CH mínima contratada "
+                f"({professor.horas_contratadas}h/sem × {round(semanas, 1)} sem = {round(horas_periodo, 1)}h). "
+                "Regência máxima atingida — horas excedentes são remuneradas normalmente."
+            )
 
     return {
         "professor_id": professor.id,
         "nome": professor.nome,
         "tipo": professor.tipo,
         "horas_contratadas": professor.horas_contratadas,
-        "horas_ministradas": horas_ministradas,
+        "horas_ministradas": round(horas_ministradas, 2),
         "horas_periodo": round(horas_periodo, 2),
+        "horas_excedentes": round(horas_excedentes, 2),
         "percentual_regencia": round(percentual * 100, 2),
-        "meta_regencia": round((meta or 0) * 100, 2),
+        "meta_regencia": round(meta * 100, 2),
         "status": calcular_status_regencia(percentual, professor.tipo),
         "remuneracao_horista": round(remuneracao, 2) if remuneracao is not None else None,
+        "observacao": observacao,
         "periodo_inicio": data_inicio.isoformat(),
         "periodo_fim": data_fim.isoformat(),
     }
