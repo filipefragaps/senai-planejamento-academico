@@ -41,8 +41,8 @@ export const authApi = {
 
 // Cursos
 export const cursosApi = {
-  listar: (ativo?: boolean, codigo?: string) =>
-    api.get("/cursos/", { params: { ativo, codigo } }).then((r) => r.data),
+  listar: (ativo?: boolean, busca?: string) =>
+    api.get("/cursos/", { params: { ativo, busca } }).then((r) => r.data),
   criar: (data: any) => api.post("/cursos/", data).then((r) => r.data),
   atualizar: (id: number, data: any) =>
     api.put(`/cursos/${id}`, data).then((r) => r.data),

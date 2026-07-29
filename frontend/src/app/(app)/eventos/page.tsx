@@ -900,7 +900,8 @@ export default function EventosPage() {
   const [ucForm, setUcForm] = useState({ nome: "", carga_horaria: "" });
   const [limparAberto, setLimparAberto] = useState(false);
   const [codigoVincular, setCodigoVincular] = useState("");
-  const [ofertaBuscada, setOfertaBuscada] = useState<{id: number; codigo_evento: string; nome_curso: string; curso_id: number | null} | null>(null);
+  const [cursosEncontrados, setCursosEncontrados] = useState<any[]>([]);
+  const [ofertaBuscada, setOfertaBuscada] = useState<{id: number; codigo: string; nome: string} | null>(null);
 
   // ── Calendário state ────────────────────────────────────────────────────────
   const _hoje = new Date();
@@ -965,10 +966,12 @@ export default function EventosPage() {
 
   // ── Mutations ──────────────────────────────────────────────────────────────
 
-  const buscarCursoPorCodigo = useMutation({
-    mutationFn: (codigo: string) =>
-      cursosApi.listar(undefined, codigo).then((lista: any[]) => lista[0] ?? null),
-    onSuccess: (curso) => setOfertaBuscada(curso),
+  const buscarCurso = useMutation({
+    mutationFn: (busca: string) => cursosApi.listar(undefined, busca),
+    onSuccess: (lista: any[]) => {
+      setCursosEncontrados(lista);
+      setOfertaBuscada(lista.length === 1 ? lista[0] : null);
+    },
     onError: () => toast.error("Erro ao buscar curso"),
   });
 
@@ -980,6 +983,7 @@ export default function EventosPage() {
       qc.invalidateQueries({ queryKey: ["evento-ucs", eventoSelecionado!.id, moduloSelecionado] });
       qc.invalidateQueries({ queryKey: ["eventos"] });
       setOfertaBuscada(null);
+      setCursosEncontrados([]);
       setCodigoVincular("");
       toast.success("Curso vinculado! Selecione o módulo para planejar.");
     },
@@ -1248,6 +1252,7 @@ export default function EventosPage() {
                       setDiaSel(null);
                       setCodigoVincular("");
                       setOfertaBuscada(null);
+                      setCursosEncontrados([]);
                     }}
                   />
                 ))
@@ -1474,30 +1479,45 @@ export default function EventosPage() {
                                   <div className="border border-dashed rounded-lg p-6 text-center text-gray-400 text-sm space-y-4">
                                     <p>Nenhuma UC cadastrada{moduloSelecionado ? ` para o módulo "${moduloSelecionado}"` : " para este curso"}.</p>
 
-                                    {/* Evento sem módulos = não vinculado ao curso: buscar pelo código da pasta */}
+                                    {/* Evento sem módulos = não vinculado ao curso */}
                                     {modList.length === 0 && (
                                       <div className="text-left space-y-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
                                         <p className="text-xs font-medium text-amber-800">
-                                          Informe o código da pasta (curso) para carregar os módulos e UCs:
+                                          Digite o código da pasta ou parte do nome do curso:
                                         </p>
                                         <div className="flex gap-2">
                                           <input
                                             className="input flex-1 text-sm"
-                                            placeholder="Código da pasta (ex: 18130)"
+                                            placeholder="Ex: 18130 ou Eletrotécnica"
                                             value={codigoVincular}
-                                            onChange={(e) => { setCodigoVincular(e.target.value); setOfertaBuscada(null); }}
-                                            onKeyDown={(e) => e.key === "Enter" && codigoVincular && buscarCursoPorCodigo.mutate(codigoVincular)}
+                                            onChange={(e) => { setCodigoVincular(e.target.value); setOfertaBuscada(null); setCursosEncontrados([]); }}
+                                            onKeyDown={(e) => e.key === "Enter" && codigoVincular && buscarCurso.mutate(codigoVincular)}
                                           />
                                           <button
-                                            onClick={() => buscarCursoPorCodigo.mutate(codigoVincular)}
-                                            disabled={!codigoVincular || buscarCursoPorCodigo.isPending}
+                                            onClick={() => buscarCurso.mutate(codigoVincular)}
+                                            disabled={!codigoVincular || buscarCurso.isPending}
                                             className="btn-secondary text-sm px-3 flex items-center gap-1 disabled:opacity-50"
                                           >
-                                            {buscarCursoPorCodigo.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Buscar"}
+                                            {buscarCurso.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Buscar"}
                                           </button>
                                         </div>
-                                        {buscarCursoPorCodigo.isSuccess && !ofertaBuscada && (
-                                          <p className="text-xs text-red-600">Nenhum curso encontrado com este código.</p>
+                                        {buscarCurso.isSuccess && cursosEncontrados.length === 0 && (
+                                          <p className="text-xs text-red-600">Nenhum curso encontrado. Tente o nome ou outro código.</p>
+                                        )}
+                                        {cursosEncontrados.length > 1 && !ofertaBuscada && (
+                                          <div className="space-y-1">
+                                            <p className="text-xs text-amber-700">{cursosEncontrados.length} cursos encontrados — selecione:</p>
+                                            {cursosEncontrados.map((c: any) => (
+                                              <button
+                                                key={c.id}
+                                                onClick={() => setOfertaBuscada(c)}
+                                                className="w-full text-left text-xs bg-white border rounded px-2 py-1.5 hover:border-blue-400 hover:bg-blue-50 transition-colors"
+                                              >
+                                                <span className="font-medium text-gray-800">{c.nome}</span>
+                                                <span className="text-gray-400 ml-2">#{c.codigo}</span>
+                                              </button>
+                                            ))}
+                                          </div>
                                         )}
                                         {ofertaBuscada && (
                                           <div className="flex items-center justify-between gap-2 bg-white border border-green-200 rounded p-2">

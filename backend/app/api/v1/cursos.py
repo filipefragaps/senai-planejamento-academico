@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from app.database import get_db
 from app.models.curso import Curso
 from app.models.unidade_curricular import UnidadeCurricular
@@ -27,6 +27,7 @@ def _uc_dict(uc: UnidadeCurricular) -> dict:
 async def listar_cursos(
     ativo: bool | None = None,
     codigo: str | None = None,
+    busca: str | None = None,
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
@@ -35,6 +36,9 @@ async def listar_cursos(
         query = query.where(Curso.ativo == ativo)
     if codigo:
         query = query.where(Curso.codigo == codigo)
+    if busca:
+        b = f"%{busca}%"
+        query = query.where(or_(Curso.nome.ilike(b), Curso.codigo.ilike(b)))
     result = await db.execute(query.order_by(Curso.nome))
     return result.scalars().all()
 
