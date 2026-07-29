@@ -352,13 +352,20 @@ async def analisar_otimizacao_global(
         return _resultado_vazio(f"Solver não encontrou solução ({status_str}).")
 
     # ── 11. Extrair remanejamentos (apenas onde professor MUDA) ───────────────
+    def _val(key: tuple) -> float:
+        """Retorna o valor da variável binária ou 0 se a chave não existir."""
+        var = x.get(key)
+        if var is None:
+            return 0.0
+        v = pulp.value(var)
+        return v if v is not None else 0.0
+
     remanejamentos: list[dict] = []
     for item in ucs_livres:
         ev_id, uc_id = item["evento_id"], item["uc_id"]
         prof_novo_id: int | None = None
         for p in profs:
-            val = pulp.value(x.get((p.id, ev_id, uc_id)))
-            if val is not None and val > 0.5:
+            if _val((p.id, ev_id, uc_id)) > 0.5:
                 prof_novo_id = p.id
                 break
 
@@ -400,7 +407,7 @@ async def analisar_otimizacao_global(
         horas_depois = horas_fixas[p.id] + sum(
             it["horas"]
             for it in ucs_livres
-            if (pulp.value(x.get((p.id, it["evento_id"], it["uc_id"]))) or 0) > 0.5
+            if _val((p.id, it["evento_id"], it["uc_id"])) > 0.5
         )
 
         pct_antes = round(horas_antes / meta_horas * 100, 1) if meta_horas else 0
