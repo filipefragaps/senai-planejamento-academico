@@ -462,12 +462,21 @@ async def listar_ucs_evento(
     evento = result.scalar_one_or_none()
     if not evento:
         raise HTTPException(status_code=404, detail="Evento não encontrado")
-    if not evento.curso_id:
+
+    curso_id = evento.curso_id
+    # Fallback: busca curso_id pela oferta vinculada
+    if not curso_id and evento.oferta_id:
+        res_of = await db.execute(
+            select(OfertaCurso.curso_id).where(OfertaCurso.id == evento.oferta_id)
+        )
+        curso_id = res_of.scalar_one_or_none()
+
+    if not curso_id:
         return []
 
     query = (
         select(UnidadeCurricular)
-        .where(UnidadeCurricular.curso_id == evento.curso_id)
+        .where(UnidadeCurricular.curso_id == curso_id)
         .order_by(UnidadeCurricular.modulo_etapa, UnidadeCurricular.sequencia)
     )
     # Filtra pelo módulo solicitado (seleção manual pelo usuário)
@@ -477,7 +486,7 @@ async def listar_ucs_evento(
         # Fallback: filtro histórico por módulo inicial configurado no evento
         res_all = await db.execute(
             select(UnidadeCurricular.modulo_etapa)
-            .where(UnidadeCurricular.curso_id == evento.curso_id)
+            .where(UnidadeCurricular.curso_id == curso_id)
             .distinct()
             .order_by(UnidadeCurricular.modulo_etapa)
         )
