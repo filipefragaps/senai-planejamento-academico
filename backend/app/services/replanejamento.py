@@ -124,29 +124,20 @@ async def alterar_aula_e_replaneja(
                 ):
                     aula_futura.professor_id = professor_id
 
-            # Se professor mudou na aula atual, propaga
+            # Propaga professor escolhido explicitamente pelo coordenador
             novo_professor_id = alteracoes.get("professor_id")
-            if novo_professor_id and novo_professor_id != aula_futura.professor_id:
-                if not await verificar_conflito_professor(
+            if novo_professor_id is not None and novo_professor_id != aula_futura.professor_id:
+                # Aplica diretamente — é decisão do coordenador, não do algoritmo automático
+                aula_futura.professor_id = novo_professor_id
+                # Registra como conflito apenas se houver dupla alocação real
+                if await verificar_conflito_professor(
                     novo_professor_id, aula_futura.data, aula_futura.horario_inicio, aula_futura.horario_fim, db, aula_futura.id
                 ):
-                    if await verificar_disponibilidade_professor(
-                        novo_professor_id, aula_futura.data.weekday(),
-                        aula_futura.horario_inicio, aula_futura.horario_fim, db
-                    ):
-                        aula_futura.professor_id = novo_professor_id
-                    else:
-                        alternativas = await encontrar_professor_alternativo(
-                            evento, aula_futura.data, aula_futura.horario_inicio, aula_futura.horario_fim, db
-                        )
-                        if alternativas:
-                            aula_futura.professor_id = alternativas[0]["professor_id"]
-                        else:
-                            conflitos.append({
-                                "aula_id": aula_futura.id,
-                                "data": aula_futura.data.isoformat(),
-                                "motivo": "Nenhum professor alternativo disponível",
-                            })
+                    conflitos.append({
+                        "aula_id": aula_futura.id,
+                        "data": aula_futura.data.isoformat(),
+                        "motivo": "Professor com conflito de horário nesta data",
+                    })
 
             # Propaga sala se alterada
             nova_sala = alteracoes.get("sala")
