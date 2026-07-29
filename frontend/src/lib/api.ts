@@ -136,6 +136,8 @@ export const ofertasApi = {
     api.patch(`/ofertas/${id}`, dados).then((r) => r.data),
   atualizarStatus: (id: number, status: string) =>
     api.patch(`/ofertas/${id}/status`, null, { params: { status } }).then((r) => r.data),
+  deletar: (id: number) =>
+    api.delete(`/ofertas/${id}`).then((r) => r.data),
   importar: (file: File) => {
     const form = new FormData();
     form.append("arquivo", file);

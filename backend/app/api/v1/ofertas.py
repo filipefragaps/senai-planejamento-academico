@@ -254,6 +254,20 @@ async def atualizar_oferta(
     return _serializar(o)
 
 
+@router.delete("/{oferta_id}", status_code=204)
+async def deletar_oferta(
+    oferta_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    result = await db.execute(select(OfertaCurso).where(OfertaCurso.id == oferta_id))
+    o = result.scalar_one_or_none()
+    if not o:
+        raise HTTPException(status_code=404, detail="Oferta não encontrada")
+    await db.delete(o)
+    await db.commit()
+
+
 @router.patch("/{oferta_id}/status")
 async def atualizar_status(
     oferta_id: int,

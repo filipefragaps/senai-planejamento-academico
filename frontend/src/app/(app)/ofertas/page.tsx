@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/page-header";
 import { toast } from "sonner";
 import {
   Upload, Search, X, Loader2, RefreshCw,
-  CalendarDays, TrendingUp, Download,
+  CalendarDays, TrendingUp, Download, Trash2,
 } from "lucide-react";
 import { downloadModeloOfertas } from "@/lib/templates";
 import { cn } from "@/lib/utils";
@@ -90,6 +90,20 @@ export default function OfertasPage() {
         busca: busca || undefined,
         limit: 500,
       }),
+  });
+
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+
+  // ── Mutations ─────────────────────────────────────────────────────────────
+  const deletar = useMutation({
+    mutationFn: (id: number) => ofertasApi.deletar(id),
+    onSuccess: () => {
+      toast.success("Evento excluído com sucesso.");
+      qc.invalidateQueries({ queryKey: ["ofertas"] });
+      qc.invalidateQueries({ queryKey: ["ofertas-stats"] });
+      setConfirmDelete(null);
+    },
+    onError: () => toast.error("Erro ao excluir evento."),
   });
 
   // ── Import mutation ───────────────────────────────────────────────────────
@@ -311,13 +325,14 @@ export default function OfertasPage() {
                   <th className="px-3 py-3 text-left font-semibold">Execução</th>
                   <th className="px-3 py-3 text-left font-semibold">Status Cronograma</th>
                   <th className="px-3 py-3 text-center font-semibold">Sem.</th>
+                  <th className="px-3 py-3 w-10"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {ofertas.map((o: any) => (
                   <tr
                     key={o.id}
-                    className="hover:bg-blue-50 transition-colors cursor-pointer"
+                    className="group hover:bg-blue-50 transition-colors cursor-pointer"
                     onClick={() => setSelectedOferta(o)}
                   >
                     <td className="px-3 py-2.5 font-mono text-gray-500 whitespace-nowrap">{o.codigo_evento}</td>
@@ -369,6 +384,36 @@ export default function OfertasPage() {
                       )}>
                         {o.semestre}°
                       </span>
+                    </td>
+                    <td
+                      className="px-2 py-2.5 text-center"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {confirmDelete === o.id ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => deletar.mutate(o.id)}
+                            disabled={deletar.isPending}
+                            className="text-xs font-semibold text-white bg-red-600 hover:bg-red-700 px-2 py-0.5 rounded"
+                          >
+                            {deletar.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Excluir"}
+                          </button>
+                          <button
+                            onClick={() => setConfirmDelete(null)}
+                            className="text-xs text-gray-500 hover:text-gray-700 px-1"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmDelete(o.id)}
+                          className="opacity-0 group-hover:opacity-100 p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all"
+                          title="Excluir evento"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
