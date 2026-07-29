@@ -290,18 +290,35 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
             )}
           </div>
 
-          {/* Filtro por área (só aparece quando há áreas cadastradas) */}
+          {/* Filtro por área — pills */}
           {areasDisponiveis.length > 0 && (
-            <select
-              className="input w-40 text-sm"
-              value={areaFiltro}
-              onChange={(e) => { setAreaFiltro(e.target.value); setEventoFiltro(""); setDiaSelecionado(null); }}
-            >
-              <option value="">Todas as áreas</option>
+            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => { setAreaFiltro(""); setEventoFiltro(""); setDiaSelecionado(null); }}
+                className={cn(
+                  "px-3 py-1 rounded-md text-xs font-medium transition-all",
+                  areaFiltro === ""
+                    ? "bg-white shadow text-gray-800"
+                    : "text-gray-500 hover:text-gray-700"
+                )}
+              >
+                Todas
+              </button>
               {areasDisponiveis.map((a) => (
-                <option key={a} value={a}>{a}</option>
+                <button
+                  key={a}
+                  onClick={() => { setAreaFiltro(a); setEventoFiltro(""); setDiaSelecionado(null); }}
+                  className={cn(
+                    "px-3 py-1 rounded-md text-xs font-medium transition-all",
+                    areaFiltro === a
+                      ? "bg-blue-600 text-white shadow"
+                      : "text-gray-500 hover:text-gray-700"
+                  )}
+                >
+                  {a}
+                </button>
               ))}
-            </select>
+            </div>
           )}
 
           {/* Select de evento (filtrado pela busca/área acima) */}

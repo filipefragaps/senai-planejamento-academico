@@ -6,6 +6,7 @@ from app.database import get_db
 from app.models.evento import Evento
 from app.models.aula import Aula
 from app.models.curso import Curso
+from app.models.oferta import OfertaCurso
 from app.schemas.evento import EventoCreate, EventoUpdate, EventoOut, EventoComAulas
 from app.algorithms.constraint_solver import gerar_aulas_evento
 from app.core.deps import get_current_user
@@ -31,19 +32,26 @@ async def listar_eventos(
     result = await db.execute(query.order_by(Evento.data_inicio.desc()))
     eventos_list = result.scalars().all()
 
-    # Batch-fetch course names and areas to include in response
+    # Batch-fetch course names and areas
     ids_curso = {e.curso_id for e in eventos_list if e.curso_id}
     cursos: dict[int, dict] = {}
     if ids_curso:
         res = await db.execute(select(Curso).where(Curso.id.in_(ids_curso)))
         cursos = {c.id: {"nome": c.nome, "area": c.area} for c in res.scalars().all()}
 
+    # Batch-fetch oferta areas as fallback (Curso.area may be null on master-data import)
+    ids_oferta = {e.oferta_id for e in eventos_list if e.oferta_id}
+    oferta_areas: dict[int, str | None] = {}
+    if ids_oferta:
+        res = await db.execute(select(OfertaCurso).where(OfertaCurso.id.in_(ids_oferta)))
+        oferta_areas = {o.id: o.area for o in res.scalars().all()}
+
     out = []
     for e in eventos_list:
         d = EventoOut.model_validate(e).model_dump()
         curso_data = cursos.get(e.curso_id) or {}
         d["nome_curso"] = curso_data.get("nome")
-        d["area"] = curso_data.get("area")
+        d["area"] = curso_data.get("area") or (oferta_areas.get(e.oferta_id) if e.oferta_id else None)
         out.append(d)
     return out
 

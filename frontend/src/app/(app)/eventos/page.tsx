@@ -888,7 +888,6 @@ export default function EventosPage() {
 
   const [search, setSearch] = useState("");
   const [statusFiltro, setStatusFiltro] = useState("");
-  const [areaFiltro, setAreaFiltro] = useState("");
   const [eventoSelecionado, setEventoSelecionado] = useState<Evento | null>(null);
   const [abaAtiva, setAbaAtiva] = useState<"cronograma" | "ucs" | "regencia">("cronograma");
   const [aulaEditando, setAulaEditando] = useState<AulaRow | null>(null);
@@ -1084,25 +1083,16 @@ export default function EventosPage() {
     apagarPlanejamentoMut.mutate({ ucId });
   }
 
-  const areasDisponiveis = useMemo(() => {
-    const set = new Set<string>();
-    for (const e of eventos as Evento[]) {
-      if (e.area) set.add(e.area);
-    }
-    return Array.from(set).sort();
-  }, [eventos]);
-
   const filtrados = useMemo(() => {
     const q = search.toLowerCase();
     return (eventos as Evento[]).filter((e) => {
       const matchSearch = !q || [
         e.nome_turma, e.disciplina, e.nome_curso ?? "",
       ].some((s) => s.toLowerCase().includes(q));
-      const matchArea = !areaFiltro || e.area === areaFiltro;
       const matchStatus = !statusFiltro || e.status === statusFiltro;
-      return matchSearch && matchArea && matchStatus;
+      return matchSearch && matchStatus;
     });
-  }, [eventos, search, areaFiltro, statusFiltro]);
+  }, [eventos, search, statusFiltro]);
 
   const ucsParaPlanejar: UCParaPlanejar[] = ucsOrdenadas.map((u, i) => ({
     uc_id: u.id,
@@ -1198,19 +1188,9 @@ export default function EventosPage() {
                 <option key={s}>{s}</option>
               ))}
             </select>
-            <select
-              className="input w-full text-sm"
-              value={areaFiltro}
-              onChange={(e) => setAreaFiltro(e.target.value)}
-            >
-              <option value="">Todas as áreas</option>
-              {areasDisponiveis.map((a) => (
-                <option key={a} value={a}>{a}</option>
-              ))}
-            </select>
-            {(search || areaFiltro) && (
+            {search && (
               <button
-                onClick={() => { setSearch(""); setAreaFiltro(""); }}
+                onClick={() => setSearch("")}
                 className="text-xs text-blue-600 hover:text-blue-800 text-left"
               >
                 Limpar filtros
