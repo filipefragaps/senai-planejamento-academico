@@ -119,7 +119,10 @@ export function OtimizacaoGlobalModal({ onClose, onConfirmado }: OtimizacaoGloba
       // Pré-seleciona todos os remanejamentos
       setSelecionados(new Set(data.remanejamentos.map(remKey)));
     },
-    onError: () => toast.error("Erro ao analisar. Tente novamente."),
+    onError: (err: any) => {
+      const detail = err?.response?.data?.detail ?? "Erro desconhecido";
+      toast.error(`Erro ao analisar: ${detail}`);
+    },
   });
 
   const confirmarMutation = useMutation({

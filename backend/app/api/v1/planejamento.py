@@ -848,8 +848,13 @@ async def preview_otimizacao_global(
     Prioridade: Mensalista > Horista > RPA/PJ (RPA/PJ só se incluir_rpa_pj=True).
     NÃO salva nada — retorna apenas a proposta para revisão do coordenador.
     """
+    import logging, traceback
     from app.services.otimizacao_global_service import analisar_otimizacao_global
-    return await analisar_otimizacao_global(db, incluir_rpa_pj=incluir_rpa_pj)
+    try:
+        return await analisar_otimizacao_global(db, incluir_rpa_pj=incluir_rpa_pj)
+    except Exception as e:
+        logging.error(f"[otimizar-global] {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/otimizar-global/confirmar")

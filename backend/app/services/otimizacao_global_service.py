@@ -167,10 +167,13 @@ async def analisar_otimizacao_global(
     todos_profs = res_profs.scalars().all()
 
     profs = [p for p in todos_profs if not _is_rpa_pj(p.tipo) or incluir_rpa_pj]
+    if not profs:
+        return _resultado_vazio("Nenhum professor Mensalista ou Horista ativo encontrado.")
     profs_map: dict[int, Professor] = {p.id: p for p in profs}
+    prof_ids_list = list(profs_map.keys())
 
     res_at = await db.execute(
-        select(Atuacao).where(Atuacao.professor_id.in_(profs_map.keys()))
+        select(Atuacao).where(Atuacao.professor_id.in_(prof_ids_list))
     )
     atuacoes_por_prof: dict[int, list[Atuacao]] = {}
     for at in res_at.scalars().all():
@@ -180,7 +183,7 @@ async def analisar_otimizacao_global(
     res_disp = await db.execute(
         select(DisponibilidadeDetalhada).where(
             and_(
-                DisponibilidadeDetalhada.professor_id.in_(profs_map.keys()),
+                DisponibilidadeDetalhada.professor_id.in_(prof_ids_list),
                 DisponibilidadeDetalhada.tipo_disponibilidade.in_(["Disponível", "Preferencial"]),
             )
         )
@@ -333,11 +336,20 @@ async def analisar_otimizacao_global(
     prob += 1000 * pulp.lpSum(deficit_terms) + pulp.lpSum(tipo_penalty_terms)
 
     # ── 10. Resolver ───────────────────────────────────────────────────────────
-    solver = pulp.PULP_CBC_CMD(msg=0, timeLimit=30)
-    status = prob.solve(solver)
+    import logging
+    try:
+        solver = pulp.PULP_CBC_CMD(msg=0, timeLimit=30)
+        status = prob.solve(solver)
+    except Exception as e:
+        logging.warning(f"[otimizacao] CBC falhou ({e}), tentando solver padrão")
+        try:
+            status = prob.solve()
+        except Exception as e2:
+            return _resultado_vazio(f"Solver indisponível: {e2}")
 
-    if pulp.LpStatus[status] not in ("Optimal", "Feasible"):
-        return _resultado_vazio(f"Solver não encontrou solução ({pulp.LpStatus[status]}).")
+    status_str = pulp.LpStatus.get(status, "Desconhecido")
+    if status_str not in ("Optimal", "Feasible"):
+        return _resultado_vazio(f"Solver não encontrou solução ({status_str}).")
 
     # ── 11. Extrair remanejamentos (apenas onde professor MUDA) ───────────────
     remanejamentos: list[dict] = []
