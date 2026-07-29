@@ -967,7 +967,14 @@ export default function EventosPage() {
   // ── Mutations ──────────────────────────────────────────────────────────────
 
   const buscarCurso = useMutation({
-    mutationFn: (busca: string) => cursosApi.listar(undefined, busca),
+    mutationFn: (busca: string) => {
+      const trimmed = busca.trim();
+      // Número puro = código da pasta (match exato); texto = busca parcial por nome
+      const isNumerico = /^\d+$/.test(trimmed);
+      return isNumerico
+        ? cursosApi.listar(undefined, undefined, trimmed)
+        : cursosApi.listar(undefined, trimmed);
+    },
     onSuccess: (lista: any[]) => {
       setCursosEncontrados(lista);
       setOfertaBuscada(lista.length === 1 ? lista[0] : null);
