@@ -34,6 +34,8 @@ class EventoUpdate(BaseModel):
     observacoes: str | None = None
     horas_semanais: float | None = None
     data_fim: date | None = None
+    curso_id: int | None = None
+    oferta_id: int | None = None
 
 
 class EventoOut(EventoBase):
