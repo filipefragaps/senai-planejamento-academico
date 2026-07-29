@@ -26,12 +26,15 @@ def _uc_dict(uc: UnidadeCurricular) -> dict:
 @router.get("/", response_model=list[CursoOut])
 async def listar_cursos(
     ativo: bool | None = None,
+    codigo: str | None = None,
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
     query = select(Curso)
     if ativo is not None:
         query = query.where(Curso.ativo == ativo)
+    if codigo:
+        query = query.where(Curso.codigo == codigo)
     result = await db.execute(query.order_by(Curso.nome))
     return result.scalars().all()
 
