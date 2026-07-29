@@ -899,6 +899,8 @@ export default function EventosPage() {
   const [ucFormAberto, setUcFormAberto] = useState(false);
   const [ucForm, setUcForm] = useState({ nome: "", carga_horaria: "" });
   const [limparAberto, setLimparAberto] = useState(false);
+  const [codigoVincular, setCodigoVincular] = useState("");
+  const [ofertaBuscada, setOfertaBuscada] = useState<{id: number; codigo_evento: string; nome_curso: string; curso_id: number | null} | null>(null);
 
   // ── Calendário state ────────────────────────────────────────────────────────
   const _hoje = new Date();
@@ -962,6 +964,32 @@ export default function EventosPage() {
   });
 
   // ── Mutations ──────────────────────────────────────────────────────────────
+
+  const buscarOfertaPorCodigo = useMutation({
+    mutationFn: (codigo: string) =>
+      ofertasApi.listar({ busca: codigo, limit: 5 }).then((lista: any[]) =>
+        lista.find((o) => o.codigo_evento === codigo) ?? lista[0] ?? null
+      ),
+    onSuccess: (oferta) => setOfertaBuscada(oferta),
+    onError: () => toast.error("Erro ao buscar evento"),
+  });
+
+  const vincularOferta = useMutation({
+    mutationFn: () =>
+      eventosApi.atualizar(eventoSelecionado!.id, {
+        oferta_id: ofertaBuscada!.id,
+        ...(ofertaBuscada!.curso_id ? { curso_id: ofertaBuscada!.curso_id } : {}),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["evento-modulos", eventoSelecionado!.id] });
+      qc.invalidateQueries({ queryKey: ["evento-ucs", eventoSelecionado!.id, moduloSelecionado] });
+      qc.invalidateQueries({ queryKey: ["eventos"] });
+      setOfertaBuscada(null);
+      setCodigoVincular("");
+      toast.success("Evento vinculado ao curso. Selecione o módulo para planejar.");
+    },
+    onError: () => toast.error("Erro ao vincular evento ao curso"),
+  });
 
   const adicionarUcAvulsa = useMutation({
     mutationFn: (dados: { nome: string; carga_horaria: number }) =>
@@ -1223,6 +1251,8 @@ export default function EventosPage() {
                       setModuloSelecionado(null);
                       setModuloDataInicio("");
                       setDiaSel(null);
+                      setCodigoVincular("");
+                      setOfertaBuscada(null);
                     }}
                   />
                 ))
@@ -1446,8 +1476,52 @@ export default function EventosPage() {
 
                                 {/* Lista de UCs */}
                                 {ucsOrdenadas.length === 0 ? (
-                                  <div className="border border-dashed rounded-lg p-6 text-center text-gray-400 text-sm space-y-3">
+                                  <div className="border border-dashed rounded-lg p-6 text-center text-gray-400 text-sm space-y-4">
                                     <p>Nenhuma UC cadastrada{moduloSelecionado ? ` para o módulo "${moduloSelecionado}"` : " para este curso"}.</p>
+
+                                    {/* Evento sem módulos = não vinculado ao curso/oferta: buscar pelo código */}
+                                    {modList.length === 0 && (
+                                      <div className="text-left space-y-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                                        <p className="text-xs font-medium text-amber-800">
+                                          Vincule este evento ao seu código SENAI para carregar os módulos e UCs:
+                                        </p>
+                                        <div className="flex gap-2">
+                                          <input
+                                            className="input flex-1 text-sm"
+                                            placeholder="Código do evento (ex: 1068397)"
+                                            value={codigoVincular}
+                                            onChange={(e) => { setCodigoVincular(e.target.value); setOfertaBuscada(null); }}
+                                            onKeyDown={(e) => e.key === "Enter" && codigoVincular && buscarOfertaPorCodigo.mutate(codigoVincular)}
+                                          />
+                                          <button
+                                            onClick={() => buscarOfertaPorCodigo.mutate(codigoVincular)}
+                                            disabled={!codigoVincular || buscarOfertaPorCodigo.isPending}
+                                            className="btn-secondary text-sm px-3 flex items-center gap-1 disabled:opacity-50"
+                                          >
+                                            {buscarOfertaPorCodigo.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Buscar"}
+                                          </button>
+                                        </div>
+                                        {buscarOfertaPorCodigo.isSuccess && !ofertaBuscada && (
+                                          <p className="text-xs text-red-600">Nenhum evento encontrado com este código.</p>
+                                        )}
+                                        {ofertaBuscada && (
+                                          <div className="flex items-center justify-between gap-2 bg-white border border-green-200 rounded p-2">
+                                            <div>
+                                              <p className="text-xs font-semibold text-gray-700">{ofertaBuscada.nome_curso}</p>
+                                              <p className="text-xs text-gray-400">Código: {ofertaBuscada.codigo_evento}</p>
+                                            </div>
+                                            <button
+                                              onClick={() => vincularOferta.mutate()}
+                                              disabled={vincularOferta.isPending}
+                                              className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1 shrink-0"
+                                            >
+                                              {vincularOferta.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Vincular"}
+                                            </button>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+
                                     {eventoSelecionado.curso_id && (
                                       <button
                                         onClick={() => {
