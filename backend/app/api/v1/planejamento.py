@@ -829,6 +829,46 @@ async def remanejo(
         raise HTTPException(status_code=422, detail="tipo deve ser 'substituicao' ou 'remarcacao'")
 
 
+# ── Otimização Global de Regência ─────────────────────────────────────────────
+
+class ConfirmarOtimizacaoRequest(BaseModel):
+    remanejamentos: list[dict]
+
+
+@router.get("/otimizar-global")
+async def preview_otimizacao_global(
+    incluir_rpa_pj: bool = False,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """
+    Analisa todos os eventos ativos e sugere remanejamentos de professores
+    para maximizar a regência dos Mensalistas (meta 70%).
+    Apenas UCs sem nenhuma aula Realizada são candidatas a reatribuição.
+    Prioridade: Mensalista > Horista > RPA/PJ (RPA/PJ só se incluir_rpa_pj=True).
+    NÃO salva nada — retorna apenas a proposta para revisão do coordenador.
+    """
+    from app.services.otimizacao_global_service import analisar_otimizacao_global
+    return await analisar_otimizacao_global(db, incluir_rpa_pj=incluir_rpa_pj)
+
+
+@router.post("/otimizar-global/confirmar")
+async def confirmar_otimizacao_global_endpoint(
+    body: ConfirmarOtimizacaoRequest,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """
+    Aplica os remanejamentos selecionados pelo coordenador:
+    atualiza professor_id nas aulas futuras das UCs remanejadas.
+    """
+    from app.services.otimizacao_global_service import confirmar_otimizacao_global
+    try:
+        return await confirmar_otimizacao_global(db, body.remanejamentos)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao confirmar: {str(e)}")
+
+
 # ── Apagar Planejamento ────────────────────────────────────────────────────────
 
 @router.delete("/apagar/{evento_id}", status_code=200)

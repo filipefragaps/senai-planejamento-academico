@@ -9,10 +9,11 @@ import { StatusBadge } from "@/components/status-badge";
 import { CronogramaTable, AulaRow } from "@/components/cronograma-table";
 import { AulaEditDrawer } from "@/components/aula-edit-drawer";
 import { PlanejamentoModal, UCParaPlanejar } from "@/components/planejamento-modal";
+import { OtimizacaoGlobalModal } from "@/components/otimizacao-global-modal";
 import { toast } from "sonner";
 import {
   Search, Plus, Upload, Loader2, RefreshCw, ArrowUp, ArrowDown, X, Download,
-  ChevronLeft, ChevronRight, Trash2,
+  ChevronLeft, ChevronRight, Trash2, BarChart3,
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 import { downloadModeloHistorico } from "@/lib/templates";
@@ -893,6 +894,7 @@ export default function EventosPage() {
   const [aulaEditando, setAulaEditando] = useState<AulaRow | null>(null);
   const [gerarAberto, setGerarAberto] = useState(false);
   const [ofertaPickerAberto, setOfertaPickerAberto] = useState(false);
+  const [otimizacaoAberta, setOtimizacaoAberta] = useState(false);
   const [ucsOrdenadas, setUcsOrdenadas] = useState<UCItem[]>([]);
   const [moduloSelecionado, setModuloSelecionado] = useState<string | null>(null);
   const [moduloDataInicio, setModuloDataInicio] = useState<string>("");
@@ -1182,6 +1184,14 @@ export default function EventosPage() {
                 ? <Loader2 className="h-4 w-4 animate-spin" />
                 : <Upload className="h-4 w-4" />}
               Importar Histórico
+            </button>
+            <button
+              onClick={() => setOtimizacaoAberta(true)}
+              className="btn-secondary flex items-center gap-1.5"
+              title="Analisa todos os eventos e sugere remanejamentos para maximizar a regência"
+            >
+              <BarChart3 className="h-4 w-4" />
+              Otimizar Regência
             </button>
             <button onClick={() => setOfertaPickerAberto(true)} className="btn-primary flex items-center gap-1.5">
               <Plus className="h-4 w-4" />
@@ -1681,6 +1691,13 @@ export default function EventosPage() {
         <OfertaPickerModal
           onClose={() => setOfertaPickerAberto(false)}
           onEventoCriado={handleEventoCriado}
+        />
+      )}
+
+      {otimizacaoAberta && (
+        <OtimizacaoGlobalModal
+          onClose={() => setOtimizacaoAberta(false)}
+          onConfirmado={() => qc.invalidateQueries({ queryKey: ["cronograma"] })}
         />
       )}
     </>

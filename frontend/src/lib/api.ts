@@ -179,6 +179,10 @@ export const planejamentoApi = {
     api.post(`/planejamento/remanejo/${aulaId}`, body).then((r) => r.data),
   apagarPlanejamento: (eventoId: number, ucId?: number) =>
     api.delete(`/planejamento/apagar/${eventoId}`, { params: ucId != null ? { uc_id: ucId } : undefined }).then((r) => r.data),
+  otimizarGlobal: (incluirRpaPj = false) =>
+    api.get("/planejamento/otimizar-global", { params: { incluir_rpa_pj: incluirRpaPj } }).then((r) => r.data),
+  confirmarOtimizacaoGlobal: (remanejamentos: unknown[]) =>
+    api.post("/planejamento/otimizar-global/confirmar", { remanejamentos }).then((r) => r.data),
   importarHistorico: (file: File) => {
     const form = new FormData();
     form.append("arquivo", file);
