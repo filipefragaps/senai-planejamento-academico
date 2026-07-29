@@ -34,6 +34,7 @@ interface Evento {
   horas_semanais: number;
   horario_inicio: string | null;
   horario_fim: string | null;
+  dias_semana?: number[] | null;
   modalidade: string;
   professores_preferidos?: number[] | null;
   modulo_etapa_inicial?: string | null;
@@ -904,6 +905,8 @@ export default function EventosPage() {
   const [codigoVincular, setCodigoVincular] = useState("");
   const [cursosEncontrados, setCursosEncontrados] = useState<any[]>([]);
   const [ofertaBuscada, setOfertaBuscada] = useState<{id: number; codigo: string; nome: string} | null>(null);
+  const [agendaEditando, setAgendaEditando] = useState(false);
+  const [agendaForm, setAgendaForm] = useState({ data_inicio: "", data_fim: "", horario_inicio: "", horario_fim: "", dias_semana: [] as number[] });
 
   // ── Calendário state ────────────────────────────────────────────────────────
   const _hoje = new Date();
@@ -1048,6 +1051,23 @@ export default function EventosPage() {
       qc.invalidateQueries({ queryKey: ["cronograma-global"] });
     },
     onError: (err: any) => toast.error(err?.response?.data?.detail || "Erro ao importar"),
+  });
+
+  const salvarAgenda = useMutation({
+    mutationFn: () => eventosApi.atualizar(eventoSelecionado!.id, {
+      data_inicio: agendaForm.data_inicio || undefined,
+      data_fim: agendaForm.data_fim || undefined,
+      horario_inicio: agendaForm.horario_inicio || undefined,
+      horario_fim: agendaForm.horario_fim || undefined,
+      dias_semana: agendaForm.dias_semana.length > 0 ? agendaForm.dias_semana : undefined,
+    }),
+    onSuccess: (updated: any) => {
+      setEventoSelecionado((prev) => prev ? { ...prev, ...updated } : prev);
+      setAgendaEditando(false);
+      qc.invalidateQueries({ queryKey: ["eventos"] });
+      toast.success("Configuração de agendamento salva.");
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.detail || "Erro ao salvar configuração"),
   });
 
   const apagarPlanejamentoMut = useMutation({
@@ -1402,6 +1422,129 @@ export default function EventosPage() {
                   {/* ── Tab: UCs & Professores ── */}
                   {abaAtiva === "ucs" && (
                     <div className="p-5 space-y-4">
+
+                      {/* ── Configuração de agendamento ── */}
+                      {(() => {
+                        const DIAS_NOMES = ["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"];
+                        const dias: number[] = eventoSelecionado?.dias_semana ?? [];
+                        const semDias = dias.length === 0;
+                        return (
+                          <div className={cn(
+                            "rounded-lg border px-3 py-2 text-xs",
+                            semDias ? "border-amber-300 bg-amber-50" : "border-gray-200 bg-gray-50"
+                          )}>
+                            {!agendaEditando ? (
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-3 flex-wrap">
+                                  {semDias ? (
+                                    <span className="text-amber-800 font-medium">
+                                      ⚠ Dias da semana não configurados — o planejamento automático não funcionará.
+                                    </span>
+                                  ) : (
+                                    <>
+                                      <span className="text-gray-600">
+                                        <span className="font-medium">Dias:</span>{" "}
+                                        {dias.map((d) => DIAS_NOMES[d]).join(", ")}
+                                      </span>
+                                      {eventoSelecionado?.horario_inicio && (
+                                        <span className="text-gray-500">
+                                          {eventoSelecionado.horario_inicio} – {eventoSelecionado.horario_fim}
+                                        </span>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    setAgendaForm({
+                                      data_inicio: eventoSelecionado?.data_inicio ?? "",
+                                      data_fim: eventoSelecionado?.data_fim ?? "",
+                                      horario_inicio: eventoSelecionado?.horario_inicio ?? "",
+                                      horario_fim: eventoSelecionado?.horario_fim ?? "",
+                                      dias_semana: [...dias],
+                                    });
+                                    setAgendaEditando(true);
+                                  }}
+                                  className="shrink-0 text-blue-600 hover:text-blue-800 font-medium"
+                                >
+                                  {semDias ? "Configurar" : "Editar"}
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="space-y-3">
+                                <p className="font-semibold text-gray-700">Configurar agendamento do evento</p>
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="block text-gray-500 mb-1">Data início</label>
+                                    <input type="date" className="input text-sm w-full"
+                                      value={agendaForm.data_inicio}
+                                      onChange={(e) => setAgendaForm((f) => ({ ...f, data_inicio: e.target.value }))}
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-gray-500 mb-1">Data fim</label>
+                                    <input type="date" className="input text-sm w-full"
+                                      value={agendaForm.data_fim}
+                                      onChange={(e) => setAgendaForm((f) => ({ ...f, data_fim: e.target.value }))}
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-gray-500 mb-1">Horário início</label>
+                                    <input type="time" className="input text-sm w-full"
+                                      value={agendaForm.horario_inicio}
+                                      onChange={(e) => setAgendaForm((f) => ({ ...f, horario_inicio: e.target.value }))}
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-gray-500 mb-1">Horário fim</label>
+                                    <input type="time" className="input text-sm w-full"
+                                      value={agendaForm.horario_fim}
+                                      onChange={(e) => setAgendaForm((f) => ({ ...f, horario_fim: e.target.value }))}
+                                    />
+                                  </div>
+                                </div>
+                                <div>
+                                  <label className="block text-gray-500 mb-1">Dias da semana</label>
+                                  <div className="flex gap-2 flex-wrap">
+                                    {DIAS_NOMES.map((nome, idx) => (
+                                      <button
+                                        key={idx}
+                                        type="button"
+                                        onClick={() => setAgendaForm((f) => ({
+                                          ...f,
+                                          dias_semana: f.dias_semana.includes(idx)
+                                            ? f.dias_semana.filter((d) => d !== idx)
+                                            : [...f.dias_semana, idx].sort((a, b) => a - b),
+                                        }))}
+                                        className={cn(
+                                          "px-2 py-1 rounded border text-xs font-medium transition-colors",
+                                          agendaForm.dias_semana.includes(idx)
+                                            ? "bg-blue-600 text-white border-blue-600"
+                                            : "border-gray-300 text-gray-600 hover:border-blue-400"
+                                        )}
+                                      >
+                                        {nome}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div className="flex gap-2 justify-end pt-1">
+                                  <button onClick={() => setAgendaEditando(false)} className="btn-secondary text-xs py-1">Cancelar</button>
+                                  <button
+                                    onClick={() => salvarAgenda.mutate()}
+                                    disabled={salvarAgenda.isPending || agendaForm.dias_semana.length === 0}
+                                    className="btn-primary text-xs py-1 flex items-center gap-1 disabled:opacity-50"
+                                  >
+                                    {salvarAgenda.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                                    Salvar
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
                       {/* Aguardando query de módulos (sucesso ou erro) */}
                       {!modulosResolvido ? (
                         <div className="flex items-center justify-center py-16 text-gray-400">

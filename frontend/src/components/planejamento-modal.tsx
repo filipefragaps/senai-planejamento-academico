@@ -129,6 +129,12 @@ function AlocacaoCard({ a }: { a: AlocacaoResult }) {
         </div>
       </div>
 
+      {!isNaoAgendada && a.aulas_necessarias > 0 && a.datas_aulas.length === 0 && (
+        <p className="text-xs text-red-600 mt-1.5 flex items-start gap-1 font-medium">
+          <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
+          Sem datas letivas disponíveis — nenhuma aula será agendada para esta UC.
+        </p>
+      )}
       {a.alerta && (
         <p className="text-xs text-amber-700 mt-1.5 flex items-start gap-1">
           <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
@@ -200,7 +206,7 @@ export function PlanejamentoModal({ eventoId, nomeEvento, ucs, onClose, onConfir
       return planejamentoApi.confirmar(eventoId, resultado.alocacoes, substituirFuturas);
     },
     onSuccess: (res) => {
-      toast.success(`${res.aulas_criadas ?? 0} aulas criadas com sucesso.`);
+      toast.success(`${res.inseridas ?? 0} aulas criadas com sucesso.`);
       onConfirmado?.();
       onClose();
     },
@@ -509,8 +515,9 @@ export function PlanejamentoModal({ eventoId, nomeEvento, ucs, onClose, onConfir
                   </button>
                   <button
                     onClick={() => confirmar.mutate()}
-                    disabled={confirmar.isPending}
-                    className="btn-primary flex items-center gap-1.5"
+                    disabled={confirmar.isPending || (resultado?.total_aulas ?? 0) === 0}
+                    title={(resultado?.total_aulas ?? 0) === 0 ? "Nenhuma aula foi planejada. Verifique os dias da semana e o período do evento." : undefined}
+                    className="btn-primary flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {confirmar.isPending
                       ? <Loader2 className="h-4 w-4 animate-spin" />

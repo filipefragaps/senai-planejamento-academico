@@ -33,7 +33,11 @@ class EventoUpdate(BaseModel):
     status: str | None = None
     observacoes: str | None = None
     horas_semanais: float | None = None
+    data_inicio: date | None = None
     data_fim: date | None = None
+    dias_semana: list[int] | None = None
+    horario_inicio: time | None = None
+    horario_fim: time | None = None
     curso_id: int | None = None
     oferta_id: int | None = None
 

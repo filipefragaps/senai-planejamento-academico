@@ -181,9 +181,31 @@ async def gerar_planejamento(
     turno = _turno(evento)
 
     # 2. Datas letivas disponíveis
+    dias_semana = list(evento.dias_semana or [])
+
+    # Auto-inferência: se dias_semana está vazio, deriva dos dias das aulas existentes no evento
+    if not dias_semana:
+        res_dias = await db.execute(select(Aula.data).where(Aula.evento_id == evento_id).limit(200))
+        dias_inferidos = list(set(row[0].weekday() for row in res_dias.fetchall()))
+        if dias_inferidos:
+            dias_semana = sorted(dias_inferidos)
+
+    if not dias_semana:
+        raise ValueError(
+            f"O evento não possui dias da semana configurados e não há aulas anteriores para inferir. "
+            "Recrie o evento pela oferta (que define os dias automaticamente) ou edite o evento para informar os dias."
+        )
+
     datas_letivas = await get_datas_letivas(
-        evento.data_inicio, evento.data_fim, evento.dias_semana or [], db
+        evento.data_inicio, evento.data_fim, dias_semana, db
     )
+
+    if not datas_letivas:
+        raise ValueError(
+            f"Nenhuma data letiva encontrada para o período do evento "
+            f"({evento.data_inicio} → {evento.data_fim}, dias: {dias_semana}). "
+            "Verifique se o período está correto e se as datas não estão bloqueadas no calendário acadêmico."
+        )
 
     # 3. Regências atuais de todos os professores
     result_profs = await db.execute(select(Professor).where(Professor.ativo == True))
@@ -360,7 +382,8 @@ async def gerar_planejamento(
                     f"{prof.nome}: projeção de {pct_projetado:.1f}% — abaixo da meta de {meta:.0f}%."
                 )
 
-    total_aulas = sum(a.aulas_necessarias for a in alocacoes)
+    # Conta aulas reais agendadas (comprimento de datas_aulas), não teóricas
+    total_aulas = sum(len(a.datas_aulas) for a in alocacoes)
     horas_planejadas = total_aulas * horas_por_aula
 
     return PlanejamentoResult(
