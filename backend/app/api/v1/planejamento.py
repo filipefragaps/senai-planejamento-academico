@@ -432,14 +432,24 @@ async def listar_modulos_evento(
     """Retorna lista de módulos/etapas distintos das UCs do curso vinculado ao evento."""
     result = await db.execute(select(Evento).where(Evento.id == evento_id))
     evento = result.scalar_one_or_none()
-    if not evento or not evento.curso_id:
+    if not evento:
+        return []
+
+    curso_id = evento.curso_id
+    if not curso_id and evento.oferta_id:
+        res_of = await db.execute(
+            select(OfertaCurso.curso_id).where(OfertaCurso.id == evento.oferta_id)
+        )
+        curso_id = res_of.scalar_one_or_none()
+
+    if not curso_id:
         return []
 
     res = await db.execute(
         select(UnidadeCurricular.modulo_etapa)
         .where(
             and_(
-                UnidadeCurricular.curso_id == evento.curso_id,
+                UnidadeCurricular.curso_id == curso_id,
                 UnidadeCurricular.modulo_etapa.isnot(None),
                 UnidadeCurricular.modulo_etapa != "",
             )

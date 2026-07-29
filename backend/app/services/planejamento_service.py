@@ -393,15 +393,15 @@ async def confirmar_planejamento(
     hoje = date.today()
 
     if substituir_futuras:
-        res_del = await db.execute(
-            select(Aula).where(
-                and_(
-                    Aula.evento_id == evento_id,
-                    Aula.data >= hoje,
-                    Aula.alterada_manualmente == False,
-                )
-            )
-        )
+        uc_ids_no_plano = {aloc.get("uc_id") for aloc in alocacoes if aloc.get("uc_id")}
+        del_conditions = [
+            Aula.evento_id == evento_id,
+            Aula.data >= hoje,
+            Aula.alterada_manualmente == False,
+        ]
+        if uc_ids_no_plano:
+            del_conditions.append(Aula.unidade_curricular_id.in_(uc_ids_no_plano))
+        res_del = await db.execute(select(Aula).where(and_(*del_conditions)))
         for aula in res_del.scalars().all():
             await db.delete(aula)
 
