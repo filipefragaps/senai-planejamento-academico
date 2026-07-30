@@ -22,11 +22,11 @@ const MODALIDADES = [
 ];
 
 const AREAS = [
-  "Mecânica", "Elétrica", "Automação", "SEPE", "Solda",
-  "Vestuário", "Marcenaria", "Administrativo", "Aviação",
+  "MECÂNICA", "ELÉTRICA", "AUTOMAÇÃO", "SEPE", "SOLDA",
+  "VESTUÁRIO", "MARCENARIA", "ADMINISTRATIVO", "AVIAÇÃO",
 ];
 
-const TURNOS = ["Matutino", "Vespertino", "Noturno"];
+const TURNOS = ["MATUTINO", "VESPERTINO", "NOTURNO"];
 
 const DIAS = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB", "DOM"];
 
@@ -160,25 +160,25 @@ export function OfertaDrawer({ oferta, onClose }: OfertaDrawerProps) {
     }
   }, [oferta?.id]);
 
-  // Auto-cálculo financeiro quando editando
+  // Auto-cálculo financeiro: Regime de Crédito × CH = Total; Total / Parcelas = Parcela; Parcela × (1 - desc%) = Líquido
   useEffect(() => {
     if (!editMode) return;
-    const vi = form.valor_individual ?? 0;
-    const desc = form.desconto_percentual ?? 0;
-    const nParc = form.parcelas_boleto ?? 0;
+    const rc = form.hora_aula ?? 0;
     const ch = form.carga_horaria ?? 0;
+    const nParc = form.parcelas_boleto ?? 0;
+    const desc = form.desconto_percentual ?? 0;
 
-    const parcDesc = vi > 0 ? vi * (1 - desc / 100) : 0;
-    const totalAluno = nParc > 0 && parcDesc > 0 ? nParc * parcDesc : 0;
-    const haRegime = ch > 0 && totalAluno > 0 ? totalAluno / ch : 0;
+    const total = rc > 0 && ch > 0 ? rc * ch : 0;
+    const valParc = total > 0 && nParc > 0 ? total / nParc : 0;
+    const valLiq = valParc > 0 ? valParc * (1 - desc / 100) : 0;
 
     setForm((prev) => ({
       ...prev,
-      parcela_com_desconto: parcDesc > 0 ? parseFloat(parcDesc.toFixed(2)) : null,
-      total_por_aluno: totalAluno > 0 ? parseFloat(totalAluno.toFixed(2)) : null,
-      hora_aula: haRegime > 0 ? parseFloat(haRegime.toFixed(4)) : null,
+      total_por_aluno: total > 0 ? parseFloat(total.toFixed(2)) : null,
+      valor_individual: valParc > 0 ? parseFloat(valParc.toFixed(2)) : null,
+      parcela_com_desconto: valLiq > 0 ? parseFloat(valLiq.toFixed(2)) : null,
     }));
-  }, [form.valor_individual, form.desconto_percentual, form.parcelas_boleto, form.carga_horaria, editMode]);
+  }, [form.hora_aula, form.carga_horaria, form.parcelas_boleto, form.desconto_percentual, editMode]);
 
   const salvar = useMutation({
     mutationFn: () => ofertasApi.atualizar(oferta!.id, form as Record<string, unknown>),
@@ -211,10 +211,12 @@ export function OfertaDrawer({ oferta, onClose }: OfertaDrawerProps) {
 
   const open = !!oferta;
 
-  // Indicador de execução (matriculados vs mínimo)
-  const pctExecucao = oferta.min_para_inicio > 0
-    ? Math.min(100, (oferta.alunos_matriculados / oferta.min_para_inicio) * 100)
-    : null;
+  // Indicador de execução: escala = vagas, marco = min_para_inicio
+  const execMax = oferta.vagas > 0 ? oferta.vagas : oferta.min_para_inicio > 0 ? oferta.min_para_inicio : 0;
+  const pctMatr = execMax > 0 ? Math.min(100, (oferta.alunos_matriculados / execMax) * 100) : null;
+  const pctMeta = execMax > 0 && oferta.min_para_inicio > 0
+    ? Math.min(100, (oferta.min_para_inicio / execMax) * 100) : null;
+  const atingiu = oferta.min_para_inicio > 0 && oferta.alunos_matriculados >= oferta.min_para_inicio;
 
   return (
     <>
@@ -424,30 +426,36 @@ export function OfertaDrawer({ oferta, onClose }: OfertaDrawerProps) {
               </Field>
             </div>
 
-            {/* Barra de execução */}
-            {pctExecucao !== null && (
+            {/* Barra de execução: escala 0→vagas, marco em min_para_inicio */}
+            {pctMatr !== null && (
               <div className="mt-3">
                 <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                  <span>Execução</span>
-                  <span className={cn("font-semibold",
-                    pctExecucao >= 100 ? "text-green-600"
-                    : pctExecucao >= 75 ? "text-yellow-600"
-                    : pctExecucao >= 50 ? "text-orange-600"
-                    : "text-red-600"
-                  )}>
-                    {Math.round(pctExecucao)}%
-                  </span>
+                  <span>{oferta.alunos_matriculados}/{execMax} vagas</span>
+                  {oferta.min_para_inicio > 0 && (
+                    <span className={cn("font-semibold", atingiu ? "text-green-600" : "text-amber-600")}>
+                      meta: {oferta.min_para_inicio}
+                    </span>
+                  )}
                 </div>
-                <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
-                  <div
-                    className={cn("h-full rounded-full transition-all",
-                      pctExecucao >= 100 ? "bg-green-500"
-                      : pctExecucao >= 75 ? "bg-yellow-400"
-                      : pctExecucao >= 50 ? "bg-orange-400"
-                      : "bg-red-400"
-                    )}
-                    style={{ width: `${Math.min(100, pctExecucao)}%` }}
-                  />
+                <div className="relative h-2.5">
+                  <div className="absolute inset-0 rounded-full bg-gray-100 overflow-hidden">
+                    <div
+                      className={cn("h-full rounded-full transition-all",
+                        atingiu ? "bg-green-500"
+                        : pctMatr >= 75 ? "bg-yellow-400"
+                        : pctMatr >= 50 ? "bg-orange-400"
+                        : "bg-red-400"
+                      )}
+                      style={{ width: `${pctMatr}%` }}
+                    />
+                  </div>
+                  {pctMeta !== null && (
+                    <div
+                      className="absolute top-0 h-full w-0.5 bg-blue-600"
+                      style={{ left: `${pctMeta}%` }}
+                      title={`Mínimo: ${oferta.min_para_inicio}`}
+                    />
+                  )}
                 </div>
               </div>
             )}
@@ -457,35 +465,35 @@ export function OfertaDrawer({ oferta, onClose }: OfertaDrawerProps) {
           <section>
             <SectionTitle>Financeiro</SectionTitle>
             <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-              <Field label="Número de parcelas">
+              <Field label="Nº de parcelas">
                 {editMode
                   ? <NumberInput value={form.parcelas_boleto} onChange={(v) => set("parcelas_boleto", v)} />
                   : <span>{oferta.parcelas_boleto ?? "—"}</span>}
               </Field>
-              <Field label="Valor Individual">
+              <Field label="Regime de Crédito (R$/h)">
                 {editMode
-                  ? <NumberInput value={form.valor_individual} step={0.01} onChange={(v) => set("valor_individual", v)} />
-                  : <span>{moeda(oferta.valor_individual)}</span>}
+                  ? <NumberInput value={form.hora_aula} step={0.01} onChange={(v) => set("hora_aula", v)} />
+                  : <span>{oferta.hora_aula != null ? `${moeda(oferta.hora_aula)}/h` : "—"}</span>}
               </Field>
               <Field label="Desconto (%)">
                 {editMode
                   ? <NumberInput value={form.desconto_percentual} step={0.01} onChange={(v) => set("desconto_percentual", v)} />
                   : <span>{oferta.desconto_percentual != null ? `${oferta.desconto_percentual}%` : "—"}</span>}
               </Field>
-              <Field label="Parcela c/ desconto">
-                {editMode
-                  ? <CalcDisplay value={form.parcela_com_desconto} />
-                  : <span>{moeda(oferta.parcela_com_desconto)}</span>}
-              </Field>
-              <Field label="Total por aluno">
+              <Field label="Total do curso">
                 {editMode
                   ? <CalcDisplay value={form.total_por_aluno} />
                   : <span>{moeda(oferta.total_por_aluno)}</span>}
               </Field>
-              <Field label="Hora aula — Regime de Crédito">
+              <Field label="Valor da parcela">
                 {editMode
-                  ? <CalcDisplay value={form.hora_aula} />
-                  : <span>{oferta.hora_aula != null ? `${moeda(oferta.hora_aula)}/h` : "—"}</span>}
+                  ? <CalcDisplay value={form.valor_individual} />
+                  : <span>{moeda(oferta.valor_individual)}</span>}
+              </Field>
+              <Field label="Valor líquido (c/ desconto)">
+                {editMode
+                  ? <CalcDisplay value={form.parcela_com_desconto} />
+                  : <span>{moeda(oferta.parcela_com_desconto)}</span>}
               </Field>
             </div>
           </section>
@@ -503,11 +511,6 @@ export function OfertaDrawer({ oferta, onClose }: OfertaDrawerProps) {
                 {editMode
                   ? <TextInput value={form.execucao ?? ""} onChange={(v) => set("execucao", v || null)} />
                   : <span>{fmtDate(oferta.execucao)}</span>}
-              </Field>
-              <Field label="Status do cronograma">
-                {editMode
-                  ? <TextInput value={form.status_cronograma ?? ""} onChange={(v) => set("status_cronograma", v || null)} />
-                  : <span>{oferta.status_cronograma || "—"}</span>}
               </Field>
             </div>
           </section>

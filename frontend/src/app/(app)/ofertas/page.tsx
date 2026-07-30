@@ -15,18 +15,37 @@ import { cn } from "@/lib/utils";
 import { OfertaDrawer, type Oferta } from "@/components/oferta-drawer";
 import { NovaOfertaModal } from "@/components/nova-oferta-modal";
 
-// ── Execução badge ────────────────────────────────────────────────────────────
-function ExecucaoBadge({ matriculados, minimo }: { matriculados: number; minimo: number }) {
-  if (minimo <= 0) return <span className="text-gray-500 text-xs">{matriculados}</span>;
-  const pct = (matriculados / minimo) * 100;
-  const cls = pct >= 100 ? "text-green-700 bg-green-50 border-green-300"
-    : pct >= 75  ? "text-yellow-700 bg-yellow-50 border-yellow-300"
-    : pct >= 50  ? "text-orange-700 bg-orange-50 border-orange-300"
-    : "text-red-700 bg-red-50 border-red-300";
+// ── Execução badge: escala 0→vagas, marco em min_para_inicio ─────────────────
+function ExecucaoBadge({ matriculados, minimo, vagas }: { matriculados: number; minimo: number; vagas: number }) {
+  const max = vagas > 0 ? vagas : minimo > 0 ? minimo : 0;
+  if (max <= 0) return <span className="text-gray-500 text-xs">{matriculados}</span>;
+
+  const pctMatr = Math.min(100, (matriculados / max) * 100);
+  const pctMin = minimo > 0 ? Math.min(100, (minimo / max) * 100) : null;
+  const atingiu = minimo > 0 && matriculados >= minimo;
+  const barColor = atingiu ? "bg-green-500"
+    : pctMatr >= 75 ? "bg-yellow-400"
+    : pctMatr >= 50 ? "bg-orange-400"
+    : "bg-red-400";
+
   return (
-    <span className={cn("inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded border", cls)}>
-      {matriculados}/{minimo}
-    </span>
+    <div className="min-w-[80px]">
+      <div className="flex justify-between text-[10px] mb-0.5">
+        <span className={cn("font-bold", atingiu ? "text-green-600" : "text-amber-700")}>{matriculados}</span>
+        <span className="text-gray-400">/{vagas || "—"}</span>
+      </div>
+      <div className="relative h-1.5 rounded-full bg-gray-100">
+        <div className="absolute inset-0 rounded-full overflow-hidden">
+          <div className={cn("h-full rounded-full", barColor)} style={{ width: `${pctMatr}%` }} />
+        </div>
+        {pctMin !== null && (
+          <div className="absolute top-0 h-full w-px bg-blue-600" style={{ left: `${pctMin}%` }} />
+        )}
+      </div>
+      {minimo > 0 && (
+        <div className="text-[9px] text-gray-400 mt-0.5 text-right">meta {minimo}</div>
+      )}
+    </div>
   );
 }
 
@@ -347,7 +366,7 @@ export default function OfertasPage() {
                     <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{fmtDate(o.data_termino)}</td>
                     <td className="px-3 py-2.5 text-center text-gray-700">{o.vagas}</td>
                     <td className="px-3 py-2.5 text-center">
-                      <ExecucaoBadge matriculados={o.alunos_matriculados} minimo={o.min_para_inicio} />
+                      <ExecucaoBadge matriculados={o.alunos_matriculados} minimo={o.min_para_inicio} vagas={o.vagas} />
                     </td>
                     <td className="px-3 py-2.5 text-right text-gray-700 whitespace-nowrap">{moeda(o.total_por_aluno)}</td>
                     <td className="px-3 py-2.5 text-gray-600 max-w-[160px]">

@@ -22,11 +22,11 @@ const MODALIDADES = [
 ];
 
 const AREAS = [
-  "Mecânica", "Elétrica", "Automação", "SEPE", "Solda",
-  "Vestuário", "Marcenaria", "Administrativo", "Aviação",
+  "MECÂNICA", "ELÉTRICA", "AUTOMAÇÃO", "SEPE", "SOLDA",
+  "VESTUÁRIO", "MARCENARIA", "ADMINISTRATIVO", "AVIAÇÃO",
 ];
 
-const TURNOS = ["Matutino", "Vespertino", "Noturno"];
+const TURNOS = ["MATUTINO", "VESPERTINO", "NOTURNO"];
 
 const DIAS = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB", "DOM"];
 
@@ -143,24 +143,24 @@ export function NovaOfertaModal({ open, onClose }: NovaOfertaModalProps) {
     return c.codigo?.toLowerCase().includes(q) || c.nome?.toLowerCase().includes(q);
   });
 
-  // Auto-cálculos financeiros
+  // Auto-cálculos financeiros: Regime de Crédito × CH = Total; Total / Parcelas = Valor da Parcela; Parcela × (1 - desc%) = Valor Líquido
   useEffect(() => {
-    const vi = parseFloat(String(form.valor_individual)) || 0;
-    const desc = parseFloat(String(form.desconto_percentual)) || 0;
-    const nParc = parseInt(String(form.parcelas_boleto)) || 0;
+    const rc = parseFloat(String(form.hora_aula)) || 0;       // Regime de Crédito (input)
     const ch = form.carga_horaria || 0;
+    const nParc = parseInt(String(form.parcelas_boleto)) || 0;
+    const desc = parseFloat(String(form.desconto_percentual)) || 0;
 
-    const parcDesc = vi > 0 ? vi * (1 - desc / 100) : 0;
-    const totalAluno = nParc > 0 && parcDesc > 0 ? nParc * parcDesc : 0;
-    const haRegime = ch > 0 && totalAluno > 0 ? totalAluno / ch : 0;
+    const total = rc > 0 && ch > 0 ? rc * ch : 0;
+    const valParc = total > 0 && nParc > 0 ? total / nParc : 0;
+    const valLiq = valParc > 0 ? valParc * (1 - desc / 100) : 0;
 
     setForm((prev) => ({
       ...prev,
-      parcela_com_desconto: parcDesc > 0 ? parseFloat(parcDesc.toFixed(2)) : "",
-      total_por_aluno: totalAluno > 0 ? parseFloat(totalAluno.toFixed(2)) : "",
-      hora_aula: haRegime > 0 ? parseFloat(haRegime.toFixed(4)) : "",
+      total_por_aluno: total > 0 ? parseFloat(total.toFixed(2)) : "",
+      valor_individual: valParc > 0 ? parseFloat(valParc.toFixed(2)) : "",
+      parcela_com_desconto: valLiq > 0 ? parseFloat(valLiq.toFixed(2)) : "",
     }));
-  }, [form.valor_individual, form.desconto_percentual, form.parcelas_boleto, form.carga_horaria]);
+  }, [form.hora_aula, form.carga_horaria, form.parcelas_boleto, form.desconto_percentual]);
 
   function selecionarCurso(curso: any) {
     setForm((prev) => ({
@@ -468,7 +468,7 @@ export function NovaOfertaModal({ open, onClose }: NovaOfertaModalProps) {
             <section>
               <SectionTitle>Financeiro</SectionTitle>
               <div className="grid grid-cols-2 gap-4">
-                <Field label="Número de parcelas">
+                <Field label="Nº de parcelas">
                   <input
                     type="number"
                     min={1}
@@ -478,14 +478,14 @@ export function NovaOfertaModal({ open, onClose }: NovaOfertaModalProps) {
                     onChange={(e) => set("parcelas_boleto", e.target.value)}
                   />
                 </Field>
-                <Field label="Valor Individual (R$)">
+                <Field label="Regime de Crédito (R$/h)">
                   <input
                     type="number"
                     step="0.01"
                     className="input w-full"
                     placeholder="0,00"
-                    value={form.valor_individual}
-                    onChange={(e) => set("valor_individual", e.target.value)}
+                    value={form.hora_aula}
+                    onChange={(e) => set("hora_aula", e.target.value)}
                   />
                 </Field>
                 <Field label="Desconto (%)">
@@ -500,26 +500,18 @@ export function NovaOfertaModal({ open, onClose }: NovaOfertaModalProps) {
                     onChange={(e) => set("desconto_percentual", e.target.value)}
                   />
                 </Field>
-                <CalcField label="Parcela c/ desconto" value={fmtBRL(form.parcela_com_desconto)} />
-                <CalcField label="Total por aluno" value={fmtBRL(form.total_por_aluno)} />
-                <CalcField
-                  label="Hora aula — Regime de Crédito (R$/h)"
-                  value={fmtBRL(form.hora_aula)}
-                />
+                <CalcField label="Total do curso" value={fmtBRL(form.total_por_aluno)} />
+                <CalcField label="Valor da parcela" value={fmtBRL(form.valor_individual)} />
+                <CalcField label="Valor líquido (c/ desconto)" value={fmtBRL(form.parcela_com_desconto)} />
               </div>
             </section>
 
             {/* Cronograma */}
             <section>
               <SectionTitle>Cronograma</SectionTitle>
-              <div className="grid grid-cols-1 gap-4">
-                <Field label="Previsão de início">
-                  <input className="input w-full" placeholder="Ex: Março/2025" value={form.previsao_inicio} onChange={(e) => set("previsao_inicio", e.target.value)} />
-                </Field>
-                <Field label="Status do cronograma">
-                  <input className="input w-full" value={form.status_cronograma} onChange={(e) => set("status_cronograma", e.target.value)} />
-                </Field>
-              </div>
+              <Field label="Previsão de início">
+                <input className="input w-full" placeholder="Ex: Março/2025" value={form.previsao_inicio} onChange={(e) => set("previsao_inicio", e.target.value)} />
+              </Field>
             </section>
 
           </div>
