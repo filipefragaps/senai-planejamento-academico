@@ -23,10 +23,11 @@ const MODALIDADES = [
 
 const AREAS = [
   "MECÂNICA", "ELÉTRICA", "AUTOMAÇÃO", "SEPE", "SOLDA",
-  "VESTUÁRIO", "MARCENARIA", "ADMINISTRATIVO", "AVIAÇÃO",
+  "VESTUÁRIO", "MARCENARIA", "GESTÃO", "AVIAÇÃO",
+  "DESIGN", "MANUFATURA ADITIVA", "SISTEMAS DE ENERGIA", "ENERGIA GTD",
 ];
 
-const TURNOS = ["MATUTINO", "VESPERTINO", "NOTURNO"];
+const TURNOS = ["MATUTINO", "VESPERTINO", "NOTURNO", "INTEGRAL"];
 
 const DIAS = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB", "DOM"];
 
@@ -40,7 +41,7 @@ const COORDENADORES = [
   "WILLIAM CARLOS DE ANDRADE",
 ];
 
-const STATUS_TURMA = ["EM MATRÍCULA", "CANCELADO", "TURMA INICIADA"] as const;
+const STATUS_TURMA = ["EM MATRÍCULA", "CANCELADO", "TURMA INICIADA", "ADIADA"] as const;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function Label({ children }: { children: React.ReactNode }) {
@@ -388,6 +389,8 @@ export function NovaOfertaModal({ open, onClose }: NovaOfertaModalProps) {
                               ? "bg-green-600 text-white border-green-600"
                               : s === "CANCELADO"
                               ? "bg-red-600 text-white border-red-600"
+                              : s === "ADIADA"
+                              ? "bg-purple-600 text-white border-purple-600"
                               : "bg-amber-500 text-white border-amber-500"
                             : "bg-white text-gray-600 border-gray-300 hover:border-gray-400 hover:text-gray-800"
                         )}

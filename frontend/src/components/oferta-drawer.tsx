@@ -23,10 +23,11 @@ const MODALIDADES = [
 
 const AREAS = [
   "MECÂNICA", "ELÉTRICA", "AUTOMAÇÃO", "SEPE", "SOLDA",
-  "VESTUÁRIO", "MARCENARIA", "ADMINISTRATIVO", "AVIAÇÃO",
+  "VESTUÁRIO", "MARCENARIA", "GESTÃO", "AVIAÇÃO",
+  "DESIGN", "MANUFATURA ADITIVA", "SISTEMAS DE ENERGIA", "ENERGIA GTD",
 ];
 
-const TURNOS = ["MATUTINO", "VESPERTINO", "NOTURNO"];
+const TURNOS = ["MATUTINO", "VESPERTINO", "NOTURNO", "INTEGRAL"];
 
 const DIAS = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB", "DOM"];
 
@@ -40,18 +41,20 @@ const COORDENADORES = [
   "WILLIAM CARLOS DE ANDRADE",
 ];
 
-const STATUS_TURMA = ["EM MATRÍCULA", "CANCELADO", "TURMA INICIADA"] as const;
+const STATUS_TURMA = ["EM MATRÍCULA", "CANCELADO", "TURMA INICIADA", "ADIADA"] as const;
 
 function statusBadgeClass(s: string) {
   if (s === "TURMA INICIADA") return "bg-green-100 text-green-700 border-green-300";
   if (s === "CANCELADO") return "bg-red-100 text-red-700 border-red-300";
   if (s === "EM MATRÍCULA") return "bg-amber-100 text-amber-700 border-amber-300";
+  if (s === "ADIADA") return "bg-purple-100 text-purple-700 border-purple-300";
   return "bg-gray-100 text-gray-600 border-gray-200";
 }
 
 function statusActiveClass(s: string) {
   if (s === "TURMA INICIADA") return "bg-green-600 text-white border-green-600";
   if (s === "CANCELADO") return "bg-red-600 text-white border-red-600";
+  if (s === "ADIADA") return "bg-purple-600 text-white border-purple-600";
   return "bg-amber-500 text-white border-amber-500";
 }
 
@@ -552,11 +555,6 @@ export function OfertaDrawer({ oferta, onClose }: OfertaDrawerProps) {
                 {editMode
                   ? <TextInput value={form.previsao_inicio ?? ""} onChange={(v) => set("previsao_inicio", v || null)} />
                   : <span>{fmtDate(oferta.previsao_inicio)}</span>}
-              </Field>
-              <Field label="Execução">
-                {editMode
-                  ? <TextInput value={form.execucao ?? ""} onChange={(v) => set("execucao", v || null)} />
-                  : <span>{fmtDate(oferta.execucao)}</span>}
               </Field>
             </div>
           </section>
