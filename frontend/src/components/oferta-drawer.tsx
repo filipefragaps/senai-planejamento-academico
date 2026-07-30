@@ -40,6 +40,21 @@ const COORDENADORES = [
   "WILLIAM CARLOS DE ANDRADE",
 ];
 
+const STATUS_TURMA = ["EM MATRÍCULA", "CANCELADO", "TURMA INICIADA"] as const;
+
+function statusBadgeClass(s: string) {
+  if (s === "TURMA INICIADA") return "bg-green-100 text-green-700 border-green-300";
+  if (s === "CANCELADO") return "bg-red-100 text-red-700 border-red-300";
+  if (s === "EM MATRÍCULA") return "bg-amber-100 text-amber-700 border-amber-300";
+  return "bg-gray-100 text-gray-600 border-gray-200";
+}
+
+function statusActiveClass(s: string) {
+  if (s === "TURMA INICIADA") return "bg-green-600 text-white border-green-600";
+  if (s === "CANCELADO") return "bg-red-600 text-white border-red-600";
+  return "bg-amber-500 text-white border-amber-500";
+}
+
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 export interface Oferta {
   id: number;
@@ -314,6 +329,37 @@ export function OfertaDrawer({ oferta, onClose }: OfertaDrawerProps) {
                   )
                   : <span>{oferta.semestre}° Semestre</span>}
               </Field>
+              <div className="col-span-2">
+                <Field label="Status da turma">
+                  {editMode
+                    ? (
+                      <div className="flex gap-2 flex-wrap mt-0.5">
+                        {STATUS_TURMA.map((s) => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => set("status", form.status === s ? "" : s)}
+                            className={cn(
+                              "px-3 py-1.5 text-xs font-semibold rounded-md border transition-colors",
+                              form.status === s
+                                ? statusActiveClass(s)
+                                : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
+                            )}
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    )
+                    : oferta.status && STATUS_TURMA.includes(oferta.status as any)
+                      ? (
+                        <span className={cn("inline-flex text-xs font-semibold px-2.5 py-1 rounded border", statusBadgeClass(oferta.status))}>
+                          {oferta.status}
+                        </span>
+                      )
+                      : <span className="text-gray-400 text-sm">—</span>}
+                </Field>
+              </div>
             </div>
           </section>
 

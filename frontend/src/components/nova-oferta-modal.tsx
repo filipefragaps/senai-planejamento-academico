@@ -40,6 +40,8 @@ const COORDENADORES = [
   "WILLIAM CARLOS DE ANDRADE",
 ];
 
+const STATUS_TURMA = ["EM MATRÍCULA", "CANCELADO", "TURMA INICIADA"] as const;
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function Label({ children }: { children: React.ReactNode }) {
   return (
@@ -112,6 +114,7 @@ function formInicial() {
     parcelas_boleto: "" as string | number,
     hora_aula: "" as string | number,
     coordenador: "",
+    status: "",
     previsao_inicio: "",
     execucao: "",
     status_cronograma: "",
@@ -221,7 +224,7 @@ export function NovaOfertaModal({ open, onClose }: NovaOfertaModalProps) {
         hora_termino: form.hora_termino || null,
         data_inicio: form.data_inicio || null,
         data_termino: form.data_termino || null,
-        status: "NÃO DEFINIDO",
+        status: form.status || "NÃO DEFINIDO",
         vagas: form.vagas || 0,
         min_para_inicio: form.min_para_inicio || 0,
         alunos_matriculados: form.alunos_matriculados || 0,
@@ -367,6 +370,32 @@ export function NovaOfertaModal({ open, onClose }: NovaOfertaModalProps) {
                     <option value="">Selecionar coordenador...</option>
                     {COORDENADORES.map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
+                </Field>
+              </div>
+
+              <div className="mt-4">
+                <Field label="Status da turma">
+                  <div className="flex gap-2 flex-wrap">
+                    {STATUS_TURMA.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => set("status", form.status === s ? "" : s)}
+                        className={cn(
+                          "px-3 py-1.5 text-xs font-semibold rounded-md border transition-colors",
+                          form.status === s
+                            ? s === "TURMA INICIADA"
+                              ? "bg-green-600 text-white border-green-600"
+                              : s === "CANCELADO"
+                              ? "bg-red-600 text-white border-red-600"
+                              : "bg-amber-500 text-white border-amber-500"
+                            : "bg-white text-gray-600 border-gray-300 hover:border-gray-400 hover:text-gray-800"
+                        )}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
                 </Field>
               </div>
             </section>
