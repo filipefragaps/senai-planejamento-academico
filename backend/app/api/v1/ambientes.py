@@ -26,6 +26,7 @@ TIPOS_VALIDOS = {"Sala Teórica", "Laboratório", "Híbrido"}
 class AmbienteCreate(BaseModel):
     bloco: Optional[str] = None
     nome: str
+    sigla: Optional[str] = None
     capacidade: Optional[int] = None
     tipo: str = "Sala Teórica"
     tags: Optional[list[str]] = None
@@ -36,6 +37,7 @@ class AmbienteCreate(BaseModel):
 class AmbienteUpdate(BaseModel):
     bloco: Optional[str] = None
     nome: Optional[str] = None
+    sigla: Optional[str] = None
     capacidade: Optional[int] = None
     tipo: Optional[str] = None
     tags: Optional[list[str]] = None
@@ -49,11 +51,16 @@ def _norm(s: str) -> str:
     return unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode().strip().lower()
 
 
+def _upper(s: str | None) -> str | None:
+    return s.strip().upper() if s and s.strip() else None
+
+
 def _serializar(a: Ambiente) -> dict:
     return {
         "id": a.id,
         "bloco": a.bloco,
         "nome": a.nome,
+        "sigla": a.sigla,
         "capacidade": a.capacidade,
         "tipo": a.tipo,
         "tags": a.tags or [],
@@ -115,7 +122,11 @@ async def criar(
 ):
     if body.tipo not in TIPOS_VALIDOS:
         raise HTTPException(status_code=422, detail=f"Tipo inválido. Use: {', '.join(TIPOS_VALIDOS)}")
-    amb = Ambiente(**body.model_dump())
+    data = body.model_dump()
+    data["bloco"] = _upper(data.get("bloco"))
+    data["nome"] = (data.get("nome") or "").strip().upper()
+    data["sigla"] = _upper(data.get("sigla"))
+    amb = Ambiente(**data)
     db.add(amb)
     await db.commit()
     await db.refresh(amb)
@@ -148,7 +159,14 @@ async def atualizar(
         raise HTTPException(status_code=404, detail="Ambiente não encontrado")
     if body.tipo and body.tipo not in TIPOS_VALIDOS:
         raise HTTPException(status_code=422, detail=f"Tipo inválido. Use: {', '.join(TIPOS_VALIDOS)}")
-    for campo, valor in body.model_dump(exclude_unset=True).items():
+    updates = body.model_dump(exclude_unset=True)
+    if "bloco" in updates:
+        updates["bloco"] = _upper(updates["bloco"])
+    if "nome" in updates:
+        updates["nome"] = (updates["nome"] or "").strip().upper()
+    if "sigla" in updates:
+        updates["sigla"] = _upper(updates["sigla"])
+    for campo, valor in updates.items():
         setattr(amb, campo, valor)
     await db.commit()
     await db.refresh(amb)
@@ -213,18 +231,19 @@ async def template_excel(_=Depends(get_current_user)):
     ws = wb.active
     ws.title = "AMBIENTES"
 
-    headers = ["Bloco", "Sala / Nome", "Capacidade", "Tipo", "Tags", "Observações"]
+    headers = ["Bloco", "Sala / Nome", "Sigla", "Capacidade", "Tipo", "Tags", "Observações"]
     examples = [
-        ["Bloco A", "Lab. Automação 01", 30, "Laboratório", "Automação, Elétrica", "Equipamentos para CLP"],
-        ["Bloco A", "Sala Teórica 101", 40, "Sala Teórica", "Elétrica", ""],
-        ["Bloco B", "Lab. Informática 02", 25, "Laboratório", "Informática", "20 computadores Dell"],
-        ["Bloco B", "Sala Híbrida 201", 35, "Híbrido", "Automação, Informática", "Quadro interativo"],
-        ["Principal", "Auditório", 120, "Sala Teórica", "", "Uso para eventos"],
+        ["BLOCO A", "LAB. AUTOMAÇÃO 01", "BLA-AUTO01", 30, "Laboratório", "Automação, Elétrica", "Equipamentos para CLP"],
+        ["BLOCO A", "SALA TEÓRICA 101", "BLA-101", 40, "Sala Teórica", "Elétrica", ""],
+        ["BLOCO B", "LAB. INFORMÁTICA 02", "BLB-INFO02", 25, "Laboratório", "Informática", "20 computadores Dell"],
+        ["BLOCO B", "SALA HÍBRIDA 201", "BLB-201", 35, "Híbrido", "Automação, Informática", "Quadro interativo"],
+        ["PRINCIPAL", "AUDITÓRIO", "AUD", 120, "Sala Teórica", "", "Uso para eventos"],
     ]
     notes = [
         ["INSTRUÇÕES:"],
-        ["• Bloco: número/nome do bloco (ex: Bloco A, 1, Principal). Opcional."],
-        ["• Sala / Nome: nome da sala. Obrigatório."],
+        ["• Bloco: número/nome do bloco (ex: BLOCO A, 1, PRINCIPAL). Opcional. Será gravado em maiúsculo."],
+        ["• Sala / Nome: nome da sala. Obrigatório. Será gravado em maiúsculo."],
+        ["• Sigla: código curto da sala (ex: BLA-101, AUD). Opcional. Será gravado em maiúsculo."],
         ["• Capacidade: número inteiro de vagas. Opcional."],
         ["• Tipo: Sala Teórica | Laboratório | Híbrido"],
         ["• Tags: separar por vírgula (ex: Automação, Elétrica, Informática, Mecânica)"],
@@ -263,7 +282,7 @@ async def template_excel(_=Depends(get_current_user)):
         cell.font = Font(bold=(row_idx == 1))
 
     # Column widths
-    col_widths = [18, 30, 14, 18, 35, 40]
+    col_widths = [18, 30, 16, 14, 18, 35, 40]
     for i, w in enumerate(col_widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = w
     ws.row_dimensions[1].height = 20
@@ -320,12 +339,16 @@ async def importar(
 
     for row_num, row in enumerate(rows[1:], 2):
         row = list(row)
-        nome = _get_cell(row, headers, "sala / nome", "sala", "nome", "ambiente")
-        if not nome:
+        nome_raw = _get_cell(row, headers, "sala / nome", "sala", "nome", "ambiente")
+        if not nome_raw:
             ignorados += 1
             continue
 
-        bloco = _get_cell(row, headers, "bloco", "bloco / número")
+        nome = nome_raw.strip().upper()
+        bloco_raw = _get_cell(row, headers, "bloco", "bloco / número")
+        bloco = bloco_raw.strip().upper() if bloco_raw else None
+        sigla_raw = _get_cell(row, headers, "sigla", "codigo", "código", "cod")
+        sigla = sigla_raw.strip().upper() if sigla_raw else None
         cap_raw = _get_cell(row, headers, "capacidade", "cap")
         tipo_raw = _get_cell(row, headers, "tipo") or "Sala Teórica"
         tags_raw = _get_cell(row, headers, "tags", "tag", "área", "area")
@@ -365,10 +388,12 @@ async def importar(
                 existente.tipo = tipo
                 existente.tags = tags or existente.tags
                 existente.observacoes = obs if obs else existente.observacoes
+                if sigla:
+                    existente.sigla = sigla
                 atualizados += 1
             else:
                 db.add(Ambiente(
-                    bloco=bloco, nome=nome, capacidade=capacidade,
+                    bloco=bloco, nome=nome, sigla=sigla, capacidade=capacidade,
                     tipo=tipo, tags=tags, observacoes=obs, ativo=True,
                 ))
                 inseridos += 1

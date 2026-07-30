@@ -18,6 +18,7 @@ interface Ambiente {
   id: number;
   bloco: string | null;
   nome: string;
+  sigla: string | null;
   capacidade: number | null;
   tipo: "Sala Teórica" | "Laboratório" | "Híbrido";
   tags: string[];
@@ -42,7 +43,7 @@ const TAGS_SUGERIDAS = [
 ];
 
 const FORM_INICIAL = {
-  bloco: "", nome: "", capacidade: "", tipo: "Sala Teórica" as Tipo,
+  bloco: "", nome: "", sigla: "", capacidade: "", tipo: "Sala Teórica" as Tipo,
   tags: [] as string[], tagInput: "", observacoes: "", ativo: true,
 };
 
@@ -86,6 +87,7 @@ function AmbienteModal({
       ? {
           bloco: inicial.bloco ?? "",
           nome: inicial.nome,
+          sigla: inicial.sigla ?? "",
           capacidade: String(inicial.capacidade ?? ""),
           tipo: inicial.tipo as Tipo,
           tags: [...(inicial.tags ?? [])],
@@ -101,6 +103,7 @@ function AmbienteModal({
       const payload = {
         bloco: form.bloco.trim() || null,
         nome: form.nome.trim(),
+        sigla: form.sigla.trim() || null,
         capacidade: form.capacidade ? parseInt(form.capacidade) : null,
         tipo: form.tipo,
         tags: form.tags,
@@ -157,10 +160,10 @@ function AmbienteModal({
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Bloco</label>
                 <input
-                  className="input w-full text-sm"
-                  placeholder="Ex: Bloco A"
+                  className="input w-full text-sm uppercase"
+                  placeholder="Ex: BLOCO A"
                   value={form.bloco}
-                  onChange={(e) => setForm((f) => ({ ...f, bloco: e.target.value }))}
+                  onChange={(e) => setForm((f) => ({ ...f, bloco: e.target.value.toUpperCase() }))}
                 />
               </div>
               <div className="col-span-2">
@@ -168,16 +171,25 @@ function AmbienteModal({
                   Nome / Identificação <span className="text-red-500">*</span>
                 </label>
                 <input
-                  className="input w-full text-sm"
-                  placeholder="Ex: Lab. Automação 01"
+                  className="input w-full text-sm uppercase"
+                  placeholder="Ex: LAB. AUTOMAÇÃO 01"
                   value={form.nome}
-                  onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))}
+                  onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value.toUpperCase() }))}
                 />
               </div>
             </div>
 
-            {/* Tipo + Capacidade */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* Sigla + Tipo + Capacidade */}
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Sigla</label>
+                <input
+                  className="input w-full text-sm uppercase font-mono"
+                  placeholder="Ex: BLA-101"
+                  value={form.sigla}
+                  onChange={(e) => setForm((f) => ({ ...f, sigla: e.target.value.toUpperCase() }))}
+                />
+              </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Tipo</label>
                 <select
@@ -425,7 +437,11 @@ export default function AmbientesPage() {
     if (filtroTag) r = r.filter((a) => a.tags.some((t) => t.toLowerCase().includes(filtroTag.toLowerCase())));
     if (busca) {
       const q = busca.toLowerCase();
-      r = r.filter((a) => a.nome.toLowerCase().includes(q) || (a.bloco ?? "").toLowerCase().includes(q));
+      r = r.filter((a) =>
+        a.nome.toLowerCase().includes(q) ||
+        (a.bloco ?? "").toLowerCase().includes(q) ||
+        (a.sigla ?? "").toLowerCase().includes(q)
+      );
     }
     return r;
   }, [ambientes, filtroAtivo, filtroTipo, filtroBloco, filtroTag, busca]);
@@ -669,7 +685,7 @@ export default function AmbientesPage() {
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="bg-gray-50 border-b">
-                  {["Bloco", "Nome / Identificação", "Tipo", "Capacidade", "Tags", "Observações", ""].map((h) => (
+                  {["Bloco", "Sigla", "Nome / Identificação", "Tipo", "Capacidade", "Tags", "Observações", ""].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
                       {h}
                     </th>
@@ -689,6 +705,13 @@ export default function AmbientesPage() {
                     <td className="px-4 py-3 whitespace-nowrap">
                       {a.bloco ? (
                         <span className="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-700">{a.bloco}</span>
+                      ) : (
+                        <span className="text-gray-300 text-xs">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {a.sigla ? (
+                        <span className="font-mono text-xs font-semibold bg-blue-50 border border-blue-200 text-blue-700 px-2 py-0.5 rounded">{a.sigla}</span>
                       ) : (
                         <span className="text-gray-300 text-xs">—</span>
                       )}

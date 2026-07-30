@@ -10,6 +10,7 @@ class Ambiente(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     bloco: Mapped[str | None] = mapped_column(String(100))
     nome: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    sigla: Mapped[str | None] = mapped_column(String(50), index=True)
     capacidade: Mapped[int | None] = mapped_column(Integer)
     tipo: Mapped[str] = mapped_column(String(50), nullable=False)   # "Sala Teórica" | "Laboratório" | "Híbrido"
     tags: Mapped[list | None] = mapped_column(JSON)                  # ["Automação", "Elétrica", ...]
