@@ -33,10 +33,12 @@ class OfertaCurso(Base):
     min_para_inicio: Mapped[int] = mapped_column(Integer, default=0)
     parcelas_boleto: Mapped[int | None] = mapped_column(Integer)
     valor_individual: Mapped[float | None] = mapped_column(Float)
+    desconto_percentual: Mapped[float | None] = mapped_column(Float)
     parcela_com_desconto: Mapped[float | None] = mapped_column(Float)
     total_por_aluno: Mapped[float | None] = mapped_column(Float)
-    hora_aula: Mapped[int | None] = mapped_column(Integer)
+    hora_aula: Mapped[float | None] = mapped_column(Float)   # Regime de crédito: total/CH
     alunos_matriculados: Mapped[int] = mapped_column(Integer, default=0)
+    coordenador: Mapped[str | None] = mapped_column(String(150))
     previsao_inicio: Mapped[str | None] = mapped_column(String(100))
     execucao: Mapped[str | None] = mapped_column(String(100))
     status_cronograma: Mapped[str | None] = mapped_column(String(100))

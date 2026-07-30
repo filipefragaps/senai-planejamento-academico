@@ -38,6 +38,9 @@ async def _aplicar_migracoes(engine) -> None:
         "ALTER TABLE calendario_academico ADD COLUMN letivo BOOLEAN NOT NULL DEFAULT true",
         "ALTER TABLE cursos ALTER COLUMN tipo TYPE VARCHAR(100)",
         "ALTER TABLE ambientes ADD COLUMN sigla VARCHAR(50)",
+        "ALTER TABLE ofertas_cursos ADD COLUMN coordenador VARCHAR(150)",
+        "ALTER TABLE ofertas_cursos ADD COLUMN desconto_percentual FLOAT",
+        "ALTER TABLE ofertas_cursos ALTER COLUMN hora_aula TYPE FLOAT",
     ]
 
     # Cada ALTER TABLE em transação própria — PostgreSQL aborta toda a transação

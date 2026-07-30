@@ -33,10 +33,12 @@ class OfertaCreate(BaseModel):
     min_para_inicio: int = 0
     parcelas_boleto: Optional[int] = None
     valor_individual: Optional[float] = None
+    desconto_percentual: Optional[float] = None
     parcela_com_desconto: Optional[float] = None
     total_por_aluno: Optional[float] = None
-    hora_aula: Optional[int] = None
+    hora_aula: Optional[float] = None
     alunos_matriculados: int = 0
+    coordenador: Optional[str] = None
     previsao_inicio: Optional[str] = None
     execucao: Optional[str] = None
     status_cronograma: Optional[str] = None
@@ -51,19 +53,21 @@ class OfertaUpdate(BaseModel):
     dias_semana_texto: Optional[str] = None
     cidade: Optional[str] = None
     carga_horaria: Optional[int] = None
-    hora_inicio: Optional[str] = None       # "HH:MM"
-    hora_termino: Optional[str] = None      # "HH:MM"
-    data_inicio: Optional[str] = None       # "YYYY-MM-DD"
-    data_termino: Optional[str] = None      # "YYYY-MM-DD"
+    hora_inicio: Optional[str] = None
+    hora_termino: Optional[str] = None
+    data_inicio: Optional[str] = None
+    data_termino: Optional[str] = None
     status: Optional[str] = None
     vagas: Optional[int] = None
     min_para_inicio: Optional[int] = None
     parcelas_boleto: Optional[int] = None
     valor_individual: Optional[float] = None
+    desconto_percentual: Optional[float] = None
     parcela_com_desconto: Optional[float] = None
     total_por_aluno: Optional[float] = None
-    hora_aula: Optional[int] = None
+    hora_aula: Optional[float] = None
     alunos_matriculados: Optional[int] = None
+    coordenador: Optional[str] = None
     previsao_inicio: Optional[str] = None
     execucao: Optional[str] = None
     status_cronograma: Optional[str] = None
@@ -316,10 +320,12 @@ def _serializar(o: OfertaCurso) -> dict:
         "min_para_inicio": o.min_para_inicio,
         "parcelas_boleto": o.parcelas_boleto,
         "valor_individual": fmt_float(o.valor_individual),
+        "desconto_percentual": fmt_float(o.desconto_percentual),
         "parcela_com_desconto": fmt_float(o.parcela_com_desconto),
         "total_por_aluno": fmt_float(o.total_por_aluno),
-        "hora_aula": o.hora_aula,
+        "hora_aula": fmt_float(o.hora_aula),
         "alunos_matriculados": o.alunos_matriculados,
+        "coordenador": o.coordenador,
         "previsao_inicio": o.previsao_inicio,
         "execucao": o.execucao,
         "status_cronograma": o.status_cronograma,

@@ -15,18 +15,19 @@ import { cn } from "@/lib/utils";
 import { OfertaDrawer, type Oferta } from "@/components/oferta-drawer";
 import { NovaOfertaModal } from "@/components/nova-oferta-modal";
 
-// ── Status ────────────────────────────────────────────────────────────────────
-const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
-  "INICIOU":       { label: "Iniciou",       cls: "bg-green-100 text-green-800" },
-  "EM MATRÍCULA":  { label: "Em Matrícula",  cls: "bg-yellow-100 text-yellow-800" },
-  "CANCELADO":     { label: "Cancelado",     cls: "bg-red-100 text-red-700" },
-  "PLANEJADO":     { label: "Planejado",     cls: "bg-blue-100 text-blue-700" },
-  "NÃO DEFINIDO":  { label: "Não definido",  cls: "bg-gray-100 text-gray-500" },
-};
-
-function StatusBadge({ status }: { status: string }) {
-  const cfg = STATUS_CONFIG[status] ?? { label: status, cls: "bg-gray-100 text-gray-600" };
-  return <span className={cn("badge text-xs font-medium whitespace-nowrap", cfg.cls)}>{cfg.label}</span>;
+// ── Execução badge ────────────────────────────────────────────────────────────
+function ExecucaoBadge({ matriculados, minimo }: { matriculados: number; minimo: number }) {
+  if (minimo <= 0) return <span className="text-gray-500 text-xs">{matriculados}</span>;
+  const pct = (matriculados / minimo) * 100;
+  const cls = pct >= 100 ? "text-green-700 bg-green-50 border-green-300"
+    : pct >= 75  ? "text-yellow-700 bg-yellow-50 border-yellow-300"
+    : pct >= 50  ? "text-orange-700 bg-orange-50 border-orange-300"
+    : "text-red-700 bg-red-50 border-red-300";
+  return (
+    <span className={cn("inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded border", cls)}>
+      {matriculados}/{minimo}
+    </span>
+  );
 }
 
 function moeda(v: number | null | undefined) {
@@ -66,7 +67,6 @@ export default function OfertasPage() {
   const [selectedOferta, setSelectedOferta] = useState<Oferta | null>(null);
   const [novoEventoAberto, setNovoEventoAberto] = useState(false);
   const [semestre, setSemestre] = useState<number | undefined>(undefined);
-  const [filtroStatus, setFiltroStatus] = useState("");
   const [filtroModalidade, setFiltroModalidade] = useState("");
   const [filtroArea, setFiltroArea] = useState("");
   const [filtroTurno, setFiltroTurno] = useState("");
@@ -79,11 +79,10 @@ export default function OfertasPage() {
   });
 
   const { data: ofertas = [], isLoading, refetch } = useQuery({
-    queryKey: ["ofertas", semestre, filtroStatus, filtroModalidade, filtroArea, filtroTurno, busca],
+    queryKey: ["ofertas", semestre, filtroModalidade, filtroArea, filtroTurno, busca],
     queryFn: () =>
       ofertasApi.listar({
         semestre,
-        status: filtroStatus || undefined,
         modalidade: filtroModalidade || undefined,
         area: filtroArea || undefined,
         turno: filtroTurno || undefined,
@@ -129,14 +128,13 @@ export default function OfertasPage() {
 
   function limparFiltros() {
     setSemestre(undefined);
-    setFiltroStatus("");
     setFiltroModalidade("");
     setFiltroArea("");
     setFiltroTurno("");
     setBusca("");
   }
 
-  const temFiltro = !!semestre || !!filtroStatus || !!filtroModalidade || !!filtroArea || !!filtroTurno || !!busca;
+  const temFiltro = !!semestre || !!filtroModalidade || !!filtroArea || !!filtroTurno || !!busca;
 
   const iniciou   = stats?.por_status?.["INICIOU"] ?? 0;
   const emMatr    = stats?.por_status?.["EM MATRÍCULA"] ?? 0;
@@ -240,14 +238,6 @@ export default function OfertasPage() {
             <option value="2">2º Semestre</option>
           </select>
 
-          {/* Status */}
-          <select className="input w-40" value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)}>
-            <option value="">Todos os status</option>
-            {Object.keys(STATUS_CONFIG).map((s) => (
-              <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>
-            ))}
-          </select>
-
           {/* Modalidade */}
           <select className="input w-48" value={filtroModalidade} onChange={(e) => setFiltroModalidade(e.target.value)}>
             <option value="">Todas modalidades</option>
@@ -317,13 +307,12 @@ export default function OfertasPage() {
                   <th className="px-3 py-3 text-left font-semibold">CH</th>
                   <th className="px-3 py-3 text-left font-semibold">Início</th>
                   <th className="px-3 py-3 text-left font-semibold">Término</th>
-                  <th className="px-3 py-3 text-left font-semibold">Status</th>
                   <th className="px-3 py-3 text-center font-semibold">Vagas</th>
-                  <th className="px-3 py-3 text-center font-semibold">Matriculados</th>
-                  <th className="px-3 py-3 text-right font-semibold">Valor Total</th>
+                  <th className="px-3 py-3 text-center font-semibold">Execução</th>
+                  <th className="px-3 py-3 text-right font-semibold">Total Aluno</th>
+                  <th className="px-3 py-3 text-left font-semibold">Coordenador</th>
                   <th className="px-3 py-3 text-left font-semibold">Prev. Início</th>
-                  <th className="px-3 py-3 text-left font-semibold">Execução</th>
-                  <th className="px-3 py-3 text-left font-semibold">Status Cronograma</th>
+                  <th className="px-3 py-3 text-left font-semibold">Crono</th>
                   <th className="px-3 py-3 text-center font-semibold">Sem.</th>
                   <th className="px-3 py-3 w-10"></th>
                 </tr>
@@ -356,22 +345,15 @@ export default function OfertasPage() {
                     <td className="px-3 py-2.5 text-gray-600 text-center">{o.carga_horaria > 0 ? `${o.carga_horaria}h` : "—"}</td>
                     <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{fmtDate(o.data_inicio)}</td>
                     <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{fmtDate(o.data_termino)}</td>
-                    <td className="px-3 py-2.5"><StatusBadge status={o.status} /></td>
                     <td className="px-3 py-2.5 text-center text-gray-700">{o.vagas}</td>
                     <td className="px-3 py-2.5 text-center">
-                      <span className={cn(
-                        "font-semibold",
-                        o.alunos_matriculados >= o.min_para_inicio ? "text-green-600" : "text-amber-600"
-                      )}>
-                        {o.alunos_matriculados}
-                        {o.min_para_inicio > 0 && (
-                          <span className="text-gray-400 font-normal">/{o.min_para_inicio}</span>
-                        )}
-                      </span>
+                      <ExecucaoBadge matriculados={o.alunos_matriculados} minimo={o.min_para_inicio} />
                     </td>
                     <td className="px-3 py-2.5 text-right text-gray-700 whitespace-nowrap">{moeda(o.total_por_aluno)}</td>
+                    <td className="px-3 py-2.5 text-gray-600 max-w-[160px]">
+                      <span className="truncate block text-xs" title={o.coordenador}>{o.coordenador || "—"}</span>
+                    </td>
                     <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{fmtDate(o.previsao_inicio)}</td>
-                    <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{fmtDate(o.execucao)}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       {o.status_cronograma
                         ? <span className="badge bg-slate-100 text-slate-700">{o.status_cronograma}</span>
