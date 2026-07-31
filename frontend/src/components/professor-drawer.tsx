@@ -84,7 +84,7 @@ export function ProfessorDrawer({ professor, onClose, onSaved }: Props) {
   const [showAddUC, setShowAddUC] = useState(false);
   const [selectedCursoId, setSelectedCursoId] = useState<number | "">("");
   const [checkedUCs, setCheckedUCs] = useState<string[]>([]);
-  const [novaModalidade, setNovaModalidade] = useState("Habilitação Técnica");
+  const [novaModalidade, setNovaModalidade] = useState("31 - HABILITAÇÃO TÉCNICA - EDUC. PROF. TÉCNICA");
   const [pendingUCs, setPendingUCs] = useState<any[]>([]); // create mode: {disciplina, curso_id, curso_nome, modalidade}
   const [editandoModalidade, setEditandoModalidade] = useState<number | null>(null); // atuacao id sendo editado
 
@@ -199,11 +199,10 @@ export function ProfessorDrawer({ professor, onClose, onSaved }: Props) {
     await Promise.all(
       checkedUCs.map((nome) => addAtuacao.mutateAsync({ disciplina: nome, cursoId, modalidade: novaModalidade }))
     );
-    toast.success(`${checkedUCs.length} UC(s) adicionada(s)!`);
+    toast.success(`${checkedUCs.length} UC(s) adicionada(s)! Selecione outro curso ou clique em Concluir.`);
     setCheckedUCs([]);
-    setSelectedCursoId("");
-    setNovaModalidade("Presencial");
-    setShowAddUC(false);
+    setSelectedCursoId(""); // limpa curso para escolher outro
+    // mantém o painel aberto e a modalidade selecionada
   }
 
   function handleAddUCsPending() {
@@ -213,9 +212,9 @@ export function ProfessorDrawer({ professor, onClose, onSaved }: Props) {
     const toAdd = checkedUCs.map((nome) => ({ disciplina: nome, cursoId, cursoNome, modalidade: novaModalidade }));
     setPendingUCs((prev) => [...prev, ...toAdd]);
     setCheckedUCs([]);
-    setSelectedCursoId("");
-    setNovaModalidade("Presencial");
-    setShowAddUC(false);
+    setSelectedCursoId(""); // limpa curso para escolher outro
+    toast.success(`${checkedUCs.length} UC(s) adicionada(s)!`);
+    // mantém o painel aberto
   }
 
   function handleAddDispPending() {
@@ -743,65 +742,99 @@ export function ProfessorDrawer({ professor, onClose, onSaved }: Props) {
               {/* Formulário para adicionar UCs */}
               {showAddUC && (
                 <div className="bg-blue-50 rounded-lg p-4 mb-4 border border-blue-100">
-                  <p className="text-xs font-semibold text-blue-700 mb-3">Selecionar UCs</p>
-                  <div className="grid grid-cols-2 gap-3 mb-3">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Modalidade de atuação</label>
-                      <select
-                        className="input w-full text-xs"
-                        value={novaModalidade}
-                        onChange={(e) => setNovaModalidade(e.target.value)}
-                      >
-                        {MODALIDADE_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Curso (PASTA)</label>
-                      <select
-                        className="input w-full"
-                        value={selectedCursoId}
-                        onChange={(e) => {
-                          setSelectedCursoId(e.target.value ? +e.target.value : "");
-                          setCheckedUCs([]);
-                        }}
-                      >
-                        <option value="">Selecione um curso...</option>
-                        {cursos.map((c: any) => (
-                          <option key={c.id} value={c.id}>
-                            {c.nome} ({c.codigo})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                  <p className="text-xs font-semibold text-blue-700 mb-3">
+                    Selecionar UCs — pode adicionar de vários cursos antes de concluir
+                  </p>
+
+                  {/* Modalidade — largura total */}
+                  <div className="mb-3">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Modalidade de atuação</label>
+                    <select
+                      className="input w-full text-xs"
+                      value={novaModalidade}
+                      onChange={(e) => {
+                        setNovaModalidade(e.target.value);
+                        setSelectedCursoId(""); // reset curso ao trocar modalidade
+                        setCheckedUCs([]);
+                      }}
+                    >
+                      {MODALIDADE_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                    </select>
                   </div>
 
+                  {/* Curso — filtrado pela modalidade */}
+                  <div className="mb-3">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Curso (PASTA)
+                      {novaModalidade && (
+                        <span className="ml-1 text-gray-400 normal-case font-normal">
+                          — {filtrarCursosPorModalidade(cursos as any[], novaModalidade).length} curso(s) disponível(is)
+                        </span>
+                      )}
+                    </label>
+                    <select
+                      className="input w-full"
+                      value={selectedCursoId}
+                      onChange={(e) => {
+                        setSelectedCursoId(e.target.value ? +e.target.value : "");
+                        setCheckedUCs([]);
+                      }}
+                    >
+                      <option value="">Selecione um curso...</option>
+                      {filtrarCursosPorModalidade(cursos as any[], novaModalidade).map((c: any) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nome} ({c.codigo})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Lista de UCs com checkboxes */}
                   {selectedCursoId && (
                     loadingUCs ? (
                       <div className="text-xs text-gray-400 py-2">Carregando UCs...</div>
                     ) : ucsDisponiveis.length === 0 ? (
                       <p className="text-xs text-gray-400 italic">Nenhuma UC cadastrada neste curso.</p>
                     ) : (
-                      <div className="max-h-48 overflow-y-auto border rounded-md bg-white divide-y">
-                        {ucsDisponiveis.map((uc: any) => (
-                          <label key={uc.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={checkedUCs.includes(uc.nome)}
-                              onChange={() => toggleUC(uc.nome)}
-                              className="rounded text-primary"
-                            />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs text-gray-800 leading-tight">{uc.nome}</p>
-                              <p className="text-xs text-gray-400">{uc.codigo_uc} · {uc.modulo_etapa} · {uc.carga_horaria}h</p>
-                            </div>
-                          </label>
-                        ))}
-                      </div>
+                      <>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-medium text-gray-600">UCs do curso</label>
+                          <button
+                            type="button"
+                            className="text-xs text-primary hover:underline"
+                            onClick={() =>
+                              setCheckedUCs(
+                                checkedUCs.length === ucsDisponiveis.length
+                                  ? []
+                                  : ucsDisponiveis.map((u: any) => u.nome)
+                              )
+                            }
+                          >
+                            {checkedUCs.length === ucsDisponiveis.length ? "Desmarcar todas" : "Selecionar todas"}
+                          </button>
+                        </div>
+                        <div className="max-h-52 overflow-y-auto border rounded-md bg-white divide-y">
+                          {ucsDisponiveis.map((uc: any) => (
+                            <label key={uc.id} className="flex items-center gap-3 px-3 py-2 hover:bg-blue-50 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={checkedUCs.includes(uc.nome)}
+                                onChange={() => toggleUC(uc.nome)}
+                                className="rounded text-primary"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium text-gray-800 leading-tight">{uc.nome}</p>
+                                <p className="text-xs text-gray-400">{uc.codigo_uc} · {uc.modulo_etapa} · {uc.carga_horaria}h</p>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                      </>
                     )
                   )}
 
                   {checkedUCs.length > 0 && (
-                    <p className="text-xs text-primary mt-2 font-medium">{checkedUCs.length} UC(s) selecionada(s)</p>
+                    <p className="text-xs text-primary mt-2 font-semibold">{checkedUCs.length} UC(s) selecionada(s)</p>
                   )}
 
                   <div className="flex gap-2 mt-3">
@@ -816,10 +849,15 @@ export function ProfessorDrawer({ professor, onClose, onSaved }: Props) {
                     </button>
                     <button
                       type="button"
-                      onClick={() => { setShowAddUC(false); setCheckedUCs([]); setSelectedCursoId(""); setNovaModalidade("Presencial"); }}
-                      className="px-3 py-1.5 text-xs border rounded-md hover:bg-gray-50"
+                      onClick={() => {
+                        setShowAddUC(false);
+                        setCheckedUCs([]);
+                        setSelectedCursoId("");
+                        setNovaModalidade("31 - HABILITAÇÃO TÉCNICA - EDUC. PROF. TÉCNICA");
+                      }}
+                      className="px-3 py-1.5 text-xs border rounded-md hover:bg-gray-50 font-medium"
                     >
-                      Cancelar
+                      Concluir
                     </button>
                   </div>
                 </div>
@@ -956,25 +994,69 @@ export function ProfessorDrawer({ professor, onClose, onSaved }: Props) {
 
 // ── Sub-componente: badge de modalidade ──────────────────────────
 export const MODALIDADE_OPTIONS = [
-  "Habilitação Técnica",
-  "Qualificação Profissional",
-  "Habilitação Técnica e Qualificação Profissional",
+  "21 - QUALIFICAÇÃO PROFISSIONAL BÁSICA - FORM. INICIAL E CONTINUADA",
+  "3 - INICIAÇÃO PROFISSIONAL - FORM. INICIAL E CONTINUADA",
+  "31 - HABILITAÇÃO TÉCNICA - EDUC. PROF. TÉCNICA",
+  "33 - HABILITAÇÃO TÉCNICA A DISTÂNCIA - EDUC. PROF. TÉCNICA",
+  "41 - GRADUAÇÃO TECNOLÓGICA - EDUCAÇÃO SUPERIOR",
+  "51 - APERFEIÇOAMENTO PROFISSIONAL - FORM. INICIAL E CONTINUADA",
+  "53 - APERFEIÇOAMENTO PROFISSIONAL - EDU. PROF. TEC",
+  "54 - APERFEIÇOAMENTO PROFISSIONAL - AÇÕES MÓVEIS",
+  "81 - GRADUAÇÃO - BACHARELADO (SUPERIOR)",
+  "91 - PÓS-GRADUAÇÃO LATO SENSU ESPECIALIZAÇÃO",
 ];
 
 const MODALIDADE_STYLES: Record<string, string> = {
-  "habilitação técnica":                              "bg-blue-50 text-blue-700",
-  "qualificação profissional":                        "bg-amber-50 text-amber-700",
-  "habilitação técnica e qualificação profissional":  "bg-indigo-50 text-indigo-700",
+  "21": "bg-amber-50 text-amber-700",
+  "3":  "bg-yellow-50 text-yellow-700",
+  "31": "bg-blue-50 text-blue-700",
+  "33": "bg-sky-50 text-sky-700",
+  "41": "bg-green-50 text-green-700",
+  "51": "bg-orange-50 text-orange-700",
+  "53": "bg-orange-50 text-orange-700",
+  "54": "bg-red-50 text-red-700",
+  "81": "bg-teal-50 text-teal-700",
+  "91": "bg-purple-50 text-purple-700",
+  // compatibilidade com registros antigos
+  "habilitação técnica":                             "bg-blue-50 text-blue-700",
+  "qualificação profissional":                       "bg-amber-50 text-amber-700",
+  "habilitação técnica e qualificação profissional": "bg-indigo-50 text-indigo-700",
 };
 
 function ModalidadeBadge({ modalidade }: { modalidade?: string | null }) {
-  const label = modalidade || "Habilitação Técnica";
-  const style = MODALIDADE_STYLES[label.toLowerCase()] || "bg-gray-100 text-gray-600";
+  const label = modalidade || "—";
+  const codigo = label.split(" ")[0];
+  const style = MODALIDADE_STYLES[codigo] ?? MODALIDADE_STYLES[label.toLowerCase()] ?? "bg-gray-100 text-gray-600";
   return (
     <span className={cn("inline-block text-xs px-1.5 py-0.5 rounded font-medium mt-0.5", style)}>
       {label}
     </span>
   );
+}
+
+export function filtrarCursosPorModalidade(cursos: any[], modalidade: string): any[] {
+  if (!modalidade) return cursos;
+  const codigo = modalidade.split(" ")[0];
+  const mapa: Record<string, string[]> = {
+    "21": ["qualificação"],
+    "3":  ["iniciação"],
+    "31": ["habilitação técnica"],
+    "33": ["habilitação técnica"],
+    "41": ["graduação tecnológica", "tecnológica"],
+    "51": ["aperfeiçoamento"],
+    "53": ["aperfeiçoamento"],
+    "54": ["aperfeiçoamento"],
+    "81": ["bacharelado", "graduação"],
+    "91": ["pós-graduação", "especialização", "pós graduação"],
+  };
+  const kws = mapa[codigo];
+  if (!kws) return cursos;
+  const filtered = cursos.filter((c: any) => {
+    if (!c.tipo) return true;
+    const t = (c.tipo as string).toLowerCase();
+    return kws.some((kw) => t.includes(kw));
+  });
+  return filtered.length > 0 ? filtered : cursos;
 }
 
 // ── Sub-componente: lista de disponibilidades ─────────────────────
