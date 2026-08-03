@@ -414,21 +414,21 @@ export default function DashboardPage() {
     staleTime: 60_000,
   });
 
-  // Normalize to a common shape regardless of data source
+  // Normalize to a common shape regardless of data source, ordenado maior → menor regência
   const professoresLista = useMemo(() => {
-    if (regenciasPeriodo) {
-      return (regenciasPeriodo as any[]).map((p: any) => ({
-        professor_id: p.professor_id,
-        nome: p.nome,
-        tipo: p.tipo,
-        horas_contratadas: p.horas_contratadas,
-        horas_ministradas_semana: p.horas_ministradas ?? 0,
-        percentual_regencia: p.percentual_regencia,
-        meta_regencia: p.meta_regencia,
-        status_regencia: p.status_regencia ?? p.status,
-      }));
-    }
-    return data?.professores ?? [];
+    const lista = regenciasPeriodo
+      ? (regenciasPeriodo as any[]).map((p: any) => ({
+          professor_id: p.professor_id,
+          nome: p.nome,
+          tipo: p.tipo,
+          horas_contratadas: p.horas_contratadas,
+          horas_ministradas_semana: p.horas_ministradas ?? 0,
+          percentual_regencia: p.percentual_regencia,
+          meta_regencia: p.meta_regencia,
+          status_regencia: p.status_regencia ?? p.status,
+        }))
+      : (data?.professores ?? []);
+    return [...lista].sort((a: any, b: any) => b.percentual_regencia - a.percentual_regencia);
   }, [regenciasPeriodo, data?.professores]);
 
   const periodoEhMultiploMeses = regInicio !== regFim;
