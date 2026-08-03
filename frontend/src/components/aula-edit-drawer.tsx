@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { aulasApi, professoresApi, planejamentoApi, cursosApi } from "@/lib/api";
+import { aulasApi, professoresApi, planejamentoApi, cursosApi, ambientesApi } from "@/lib/api";
 import { toast } from "sonner";
 import { X, Save, Loader2, Lock, RefreshCw, UserCheck, Calendar, ChevronDown, ChevronRight, BookOpen } from "lucide-react";
 import type { AulaRow } from "@/components/cronograma-table";
@@ -153,6 +153,13 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
     enabled: !!aula,
   });
 
+  // Ambientes disponíveis para seleção
+  const { data: ambientes = [] } = useQuery({
+    queryKey: ["ambientes-ativos"],
+    queryFn: () => ambientesApi.listar({ ativo: true }),
+    staleTime: 60_000,
+  });
+
   const salvar = useMutation({
     mutationFn: () => {
       if (!aula) throw new Error("Nenhuma aula selecionada");
@@ -249,12 +256,24 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
           </Field>
 
           <Field label="Ambiente / Sala">
-            <input
+            <select
               className="input w-full text-sm"
               value={form.ambiente}
               onChange={(e) => set("ambiente", e.target.value)}
-              placeholder="Ex: Lab Informática 1"
-            />
+            >
+              <option value="">— Sem ambiente —</option>
+              {(ambientes as any[]).map((a: any) => {
+                const label = a.sigla
+                  ? `${a.sigla} — ${a.nome}`
+                  : a.nome;
+                const value = a.sigla ?? a.nome;
+                return (
+                  <option key={a.id} value={value}>
+                    {label}
+                  </option>
+                );
+              })}
+            </select>
           </Field>
 
           <Field label="Subturma">
