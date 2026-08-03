@@ -164,7 +164,8 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
     mutationFn: () => {
       if (!aula) throw new Error("Nenhuma aula selecionada");
       const alteracoes: Record<string, unknown> = {};
-      if (form.professor_id !== "") alteracoes.professor_id = Number(form.professor_id) || null;
+      // Sempre inclui professor_id para permitir remover (null) ou trocar
+      alteracoes.professor_id = form.professor_id !== "" ? Number(form.professor_id) : null;
       if (form.ambiente !== aula.ambiente) alteracoes.ambiente = form.ambiente || null;
       if (form.subturma !== (aula.subturma ?? "")) alteracoes.subturma = form.subturma || null;
       if (form.status !== aula.status) alteracoes.status = form.status;
