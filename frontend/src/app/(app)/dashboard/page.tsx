@@ -8,7 +8,7 @@ import { RegenciaBar } from "@/components/regencia-bar";
 import { StatusBadge } from "@/components/status-badge";
 import { cn } from "@/lib/utils";
 import {
-  Users, BookOpen, Calendar, TrendingUp, AlertTriangle, CheckCircle, X,
+  Users, BookOpen, Calendar, TrendingUp, AlertTriangle, CheckCircle, X, Search,
 } from "lucide-react";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -394,6 +394,8 @@ export default function DashboardPage() {
   const [profSelecionado, setProfSelecionado] = useState<any | null>(null);
   const [regInicio, setRegInicio] = useState(mesAtual);
   const [regFim, setRegFim] = useState(mesAtual);
+  const [buscaTurma, setBuscaTurma] = useState("");
+  const [filtroAndamento, setFiltroAndamento] = useState<"todos" | "nao_iniciada" | "em_andamento" | "concluida">("todos");
 
   const regDataInicio = `${regInicio}-01`;
   const regDataFim = ultimoDiaMes(regFim);
@@ -430,6 +432,27 @@ export default function DashboardPage() {
   }, [regenciasPeriodo, data?.professores]);
 
   const periodoEhMultiploMeses = regInicio !== regFim;
+
+  const turmasFiltradas = useMemo(() => {
+    let lista = data?.turmas ?? [];
+    if (buscaTurma) {
+      const q = buscaTurma.toLowerCase();
+      lista = lista.filter((t: any) =>
+        t.nome_turma.toLowerCase().includes(q) ||
+        (t.disciplina ?? "").toLowerCase().includes(q)
+      );
+    }
+    if (filtroAndamento !== "todos") {
+      lista = lista.filter((t: any) => {
+        const p = t.progresso_percentual ?? 0;
+        if (filtroAndamento === "nao_iniciada") return p === 0;
+        if (filtroAndamento === "em_andamento") return p > 0 && p < 100;
+        if (filtroAndamento === "concluida") return p >= 100;
+        return true;
+      });
+    }
+    return lista;
+  }, [data?.turmas, buscaTurma, filtroAndamento]);
 
   if (isLoading) {
     return (
@@ -555,29 +578,83 @@ export default function DashboardPage() {
 
         {/* Turmas */}
         <div className="card p-5">
-          <h2 className="text-base font-semibold text-gray-800 mb-4">Progresso das Turmas</h2>
-          <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
-            {data.turmas?.map((t: any) => (
-              <div key={t.evento_id} className="border rounded-lg p-3">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-medium text-gray-800 truncate">{t.nome_turma}</span>
-                  <StatusBadge status={t.status} />
-                </div>
-                <p className="text-xs text-gray-500 mb-2">{t.disciplina}</p>
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 h-1.5 rounded-full bg-gray-100">
-                    <div
-                      className="h-1.5 rounded-full bg-blue-500"
-                      style={{ width: `${t.progresso_percentual}%` }}
-                    />
-                  </div>
-                  <span className="text-xs text-gray-500 shrink-0">
-                    {t.progresso_percentual.toFixed(0)}% ({t.aulas_realizadas}/{t.aulas_totais} aulas)
-                  </span>
-                </div>
-              </div>
+          <h2 className="text-base font-semibold text-gray-800 mb-3">Progresso das Turmas</h2>
+
+          {/* Busca */}
+          <div className="relative mb-2">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+            <input
+              className="w-full pl-8 pr-8 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300"
+              placeholder="Buscar evento ou disciplina..."
+              value={buscaTurma}
+              onChange={(e) => setBuscaTurma(e.target.value)}
+            />
+            {buscaTurma && (
+              <button onClick={() => setBuscaTurma("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Filtros de andamento */}
+          <div className="flex gap-1 mb-3 flex-wrap">
+            {([
+              { key: "todos",        label: "Todas" },
+              { key: "nao_iniciada", label: "Não iniciada" },
+              { key: "em_andamento", label: "Em andamento" },
+              { key: "concluida",    label: "Concluída" },
+            ] as const).map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setFiltroAndamento(key)}
+                className={cn(
+                  "px-2.5 py-1 text-xs rounded-full border font-medium transition-colors",
+                  filtroAndamento === key
+                    ? key === "todos"        ? "bg-gray-700 text-white border-gray-700"
+                    : key === "nao_iniciada" ? "bg-gray-200 text-gray-700 border-gray-300"
+                    : key === "em_andamento" ? "bg-blue-600 text-white border-blue-600"
+                    :                         "bg-green-600 text-white border-green-600"
+                    : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
+                )}
+              >
+                {label}
+              </button>
             ))}
           </div>
+
+          {/* Lista */}
+          <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+            {turmasFiltradas.length === 0 ? (
+              <div className="text-center text-gray-400 py-8 text-sm">Nenhuma turma encontrada.</div>
+            ) : (
+              turmasFiltradas.map((t: any) => {
+                const p = t.progresso_percentual ?? 0;
+                const barColor = p >= 100 ? "bg-green-500" : p > 0 ? "bg-blue-500" : "bg-gray-300";
+                return (
+                  <div key={t.evento_id} className="border rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-medium text-gray-800 truncate pr-2">{t.nome_turma}</span>
+                      <StatusBadge status={t.status} />
+                    </div>
+                    <p className="text-xs text-gray-500 mb-2">{t.disciplina}</p>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-1.5 rounded-full bg-gray-100">
+                        <div className={cn("h-1.5 rounded-full", barColor)} style={{ width: `${p}%` }} />
+                      </div>
+                      <span className="text-xs text-gray-500 shrink-0">
+                        {p.toFixed(0)}% ({t.aulas_realizadas}/{t.aulas_totais} aulas)
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Contador */}
+          <p className="text-[10px] text-gray-400 mt-2 text-right">
+            {turmasFiltradas.length} de {data.turmas?.length ?? 0} turma(s)
+          </p>
         </div>
       </div>
 
