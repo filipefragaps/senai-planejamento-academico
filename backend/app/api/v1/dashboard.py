@@ -39,12 +39,14 @@ async def get_dashboard(
 
         regencias = await calcular_regencia_todos(db, semana_inicio, semana_fim)
 
-        prof_ok = sum(1 for r in regencias if r["status"] == "OK")
-        prof_alerta = sum(1 for r in regencias if r["status"] == "Alerta")
-        prof_critico = sum(1 for r in regencias if r["status"] == "Critico")
+        # PJ/RPA são extraquadro — excluídos da média de regência e contagens de status
+        regencias_quadro = [r for r in regencias if r["tipo"] not in ("PJ", "RPA")]
+        prof_ok = sum(1 for r in regencias_quadro if r["status"] == "OK")
+        prof_alerta = sum(1 for r in regencias_quadro if r["status"] == "Alerta")
+        prof_critico = sum(1 for r in regencias_quadro if r["status"] == "Critico")
         taxa_media = (
-            sum(r["percentual_regencia"] for r in regencias) / len(regencias)
-            if regencias else 0
+            sum(r["percentual_regencia"] for r in regencias_quadro) / len(regencias_quadro)
+            if regencias_quadro else 0
         )
 
         res_aulas = await db.execute(
