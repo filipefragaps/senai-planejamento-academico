@@ -6,10 +6,11 @@ import { ambientesApi, downloadBlob } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { toast } from "sonner";
 import {
-  Plus, Search, X, Pencil, Trash2, Upload, Download, FlaskConical,
+  Plus, Search, X, Trash2, Upload, Download, FlaskConical,
   BookOpen, Layers, DoorOpen, Filter, ChevronDown, Loader2, Tag,
   AlertTriangle, Users,
 } from "lucide-react";
+import { AmbienteDrawer } from "@/components/ambiente-drawer";
 import { cn } from "@/lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -413,7 +414,8 @@ export default function AmbientesPage() {
   const [filtroAtivo, setFiltroAtivo] = useState<boolean | undefined>(true);
 
   // UI state
-  const [modalAberto, setModalAberto] = useState<Ambiente | null | "novo">(null);
+  const [modalAberto, setModalAberto] = useState<"novo" | null>(null);
+  const [drawerAberto, setDrawerAberto] = useState<Ambiente | null>(null);
   const [confirmarDelete, setConfirmarDelete] = useState<Ambiente | null>(null);
   const [confirmarDeleteLote, setConfirmarDeleteLote] = useState(false);
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
@@ -674,7 +676,7 @@ export default function AmbientesPage() {
             </p>
           </div>
           {ambientes.length === 0 && (
-            <button onClick={() => setModalAberto("novo")} className="btn-primary flex items-center gap-1.5">
+            <button onClick={() => { setModalAberto("novo"); }} className="btn-primary flex items-center gap-1.5">
               <Plus className="h-4 w-4" /> Novo Ambiente
             </button>
           )}
@@ -696,10 +698,12 @@ export default function AmbientesPage() {
                 {lista.map((a, i) => (
                   <tr
                     key={a.id}
+                    onClick={() => setDrawerAberto(a)}
                     className={cn(
-                      "border-b last:border-0 transition-colors hover:bg-blue-50/40",
+                      "border-b last:border-0 transition-colors hover:bg-blue-50/60 cursor-pointer",
                       !a.ativo && "opacity-50",
-                      i % 2 === 0 ? "bg-white" : "bg-gray-50/40"
+                      i % 2 === 0 ? "bg-white" : "bg-gray-50/40",
+                      drawerAberto?.id === a.id && "bg-blue-50 border-l-2 border-l-blue-500"
                     )}
                   >
                     <td className="px-4 py-3 whitespace-nowrap">
@@ -750,14 +754,7 @@ export default function AmbientesPage() {
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex items-center gap-1 justify-end">
                         <button
-                          onClick={() => setModalAberto(a)}
-                          className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-blue-600 transition-colors"
-                          title="Editar"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => setConfirmarDelete(a)}
+                          onClick={(e) => { e.stopPropagation(); setConfirmarDelete(a); }}
                           className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors"
                           title="Remover"
                         >
@@ -777,10 +774,20 @@ export default function AmbientesPage() {
         </div>
       )}
 
-      {/* Modals */}
-      {(modalAberto === "novo" || (modalAberto && typeof modalAberto === "object")) && (
+      {/* Drawer de detalhe/edição */}
+      {drawerAberto && (
+        <AmbienteDrawer
+          ambiente={drawerAberto}
+          onClose={() => setDrawerAberto(null)}
+          onSaved={invalidar}
+          onDeleted={() => { invalidar(); setDrawerAberto(null); }}
+        />
+      )}
+
+      {/* Modal de criação */}
+      {modalAberto === "novo" && (
         <AmbienteModal
-          inicial={modalAberto === "novo" ? null : modalAberto}
+          inicial={null}
           onClose={() => setModalAberto(null)}
           onSaved={invalidar}
         />
