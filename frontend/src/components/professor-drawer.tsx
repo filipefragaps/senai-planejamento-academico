@@ -233,7 +233,17 @@ export function ProfessorDrawer({ professor, onClose, onSaved }: Props) {
         valor_hora: basic.valor_hora !== "" ? Number(basic.valor_hora) : null,
       };
       const prof = await criarProf.mutateAsync(payload);
-      // adiciona pendingDisps
+      // adiciona grade semanal (gradeAtiva)
+      if (gradeAtiva.size > 0) {
+        const slots: { dia_semana: number; horario_inicio: string; horario_fim: string; tipo: string }[] = [];
+        for (const key of gradeAtiva) {
+          const [dia, ti] = key.split("-").map(Number);
+          const t = TURNOS[ti];
+          if (t) slots.push({ dia_semana: dia, horario_inicio: t.inicio, horario_fim: t.fim, tipo: "Disponível" });
+        }
+        await professoresApi.disponibilidadeBulk(prof.id, slots);
+      }
+      // adiciona pendingDisps (modo avançado)
       await Promise.all(
         pendingDisps.map((d) =>
           professoresApi.adicionarDisponibilidade(prof.id, d)
@@ -610,7 +620,9 @@ export function ProfessorDrawer({ professor, onClose, onSaved }: Props) {
                         </button>
                       ) : (
                         <p className="text-xs text-gray-400 mt-3 italic">
-                          A grade será salva ao criar o professor.
+                          {gradeAtiva.size > 0
+                            ? `${gradeAtiva.size} turno(s) selecionado(s) — serão salvos ao criar o professor.`
+                            : "Marque os turnos disponíveis. Serão salvos ao criar o professor."}
                         </p>
                       )}
                     </>
