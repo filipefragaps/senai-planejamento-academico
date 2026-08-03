@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useRef, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { planejamentoApi, professoresApi, eventosApi, relatoriosApi, downloadBlob } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
+import { AulaEditDrawer } from "@/components/aula-edit-drawer";
 import { cn } from "@/lib/utils";
 import {
   ChevronLeft, ChevronRight, Loader2, X, Printer, CalendarDays, LayoutGrid, Filter, FileDown, Search,
@@ -66,11 +67,13 @@ const STATUS_BADGE: Record<string, string> = {
 
 export default function CronogramaPage() {
   const hoje = new Date();
+  const qc = useQueryClient();
   const [modo, setModo] = useState<"mes" | "semana">("mes");
   const [mes, setMes] = useState(hoje.getMonth() + 1);
   const [ano, setAno] = useState(hoje.getFullYear());
   const [semana, setSemana] = useState(hoje);
   const [diaSelecionado, setDiaSelecionado] = useState<string | null>(null);
+  const [aulaEditando, setAulaEditando] = useState<any | null>(null);
   const [professorFiltro, setProfessorFiltro] = useState("");
   const [eventoFiltro, setEventoFiltro] = useState("");
   const [buscaEvento, setBuscaEvento] = useState("");
@@ -664,7 +667,12 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {aulasNoDia.map((a: any) => (
-                    <tr key={a.id} className="hover:bg-gray-50 transition-colors">
+                    <tr
+                      key={a.id}
+                      onClick={() => setAulaEditando(a)}
+                      className="hover:bg-blue-50/60 transition-colors cursor-pointer"
+                      title="Clique para editar esta aula"
+                    >
                       <td className="px-3 py-3">
                         <span
                           className="inline-block w-3 h-3 rounded-sm"
@@ -695,6 +703,17 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
             </div>
           )}
         </div>
+      )}
+
+      {aulaEditando && (
+        <AulaEditDrawer
+          aula={aulaEditando}
+          onClose={() => setAulaEditando(null)}
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: ["cronograma-global"] });
+            setAulaEditando(null);
+          }}
+        />
       )}
     </div>
   );
