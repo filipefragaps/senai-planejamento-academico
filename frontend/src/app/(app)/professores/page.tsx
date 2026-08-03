@@ -61,9 +61,16 @@ export default function ProfessoresPage() {
     queryFn: () => professoresApi.listar(),
   });
 
+  // Usa o mês atual como período — igual à aba de Regência
+  const hoje = new Date();
+  const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}`;
+  const inicioMes = `${mesAtual}-01`;
+  const ultimoDia = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).getDate();
+  const fimMes = `${mesAtual}-${String(ultimoDia).padStart(2, "0")}`;
+
   const { data: regencias = [] } = useQuery({
-    queryKey: ["regencias"],
-    queryFn: () => professoresApi.regencias(),
+    queryKey: ["regencias", inicioMes, fimMes],
+    queryFn: () => professoresApi.regencias({ data_inicio: inicioMes, data_fim: fimMes }),
   });
 
   const { data: detalhes, isLoading: loadingDetalhes } = useQuery({
@@ -75,10 +82,12 @@ export default function ProfessoresPage() {
   const regMap: Record<number, any> = {};
   regencias.forEach((r: any) => { regMap[r.professor_id] = r; });
 
-  const filtered = professores.filter((p: any) =>
-    p.nome.toLowerCase().includes(search.toLowerCase()) ||
-    (p.especialidades || "").toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = professores
+    .filter((p: any) =>
+      p.nome.toLowerCase().includes(search.toLowerCase()) ||
+      (p.especialidades || "").toLowerCase().includes(search.toLowerCase())
+    )
+    .sort((a: any, b: any) => a.nome.localeCompare(b.nome, "pt-BR"));
   const totalPaginas = Math.max(1, Math.ceil(filtered.length / POR_PAGINA));
   const paginaAtual = Math.min(pagina, totalPaginas);
   const paginados = filtered.slice((paginaAtual - 1) * POR_PAGINA, paginaAtual * POR_PAGINA);
