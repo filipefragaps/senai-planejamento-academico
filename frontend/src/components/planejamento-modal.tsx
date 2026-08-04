@@ -20,6 +20,7 @@ export interface UCParaPlanejar {
   professor_preferido_id?: number;
   data_inicio?: string;
   nao_agendar?: boolean;
+  dias_semana?: number[];
 }
 
 interface AlocacaoResult {
@@ -186,6 +187,7 @@ export function PlanejamentoModal({ eventoId, nomeEvento, ucs, onClose, onConfir
         professor_preferido_id: u.professor_preferido_id,
         data_inicio: u.data_inicio,
         nao_agendar: u.nao_agendar ?? false,
+        dias_semana: u.dias_semana && u.dias_semana.length > 0 ? u.dias_semana : undefined,
       }));
       return planejamentoApi.gerar(eventoId, ucsOrdenadas);
     },

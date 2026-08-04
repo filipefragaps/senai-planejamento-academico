@@ -66,6 +66,7 @@ interface UCItem {
   carga_horaria: number;
   professor_preferido_id?: number;
   nao_agendar?: boolean;
+  dias_semana?: number[];
 }
 
 const DIAS_LABELS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
@@ -787,12 +788,13 @@ function OfertaPickerModal({ onClose, onEventoCriado }: OfertaPickerProps) {
 // ── UC Row with per-UC candidatos ─────────────────────────────────────────────
 
 function UCRowWithCandidatos({
-  uc, idx, total, eventoId, onMover, onSetPreferido, onSetNaoAgendar,
+  uc, idx, total, eventoId, onMover, onSetPreferido, onSetNaoAgendar, onSetDiasSemana,
 }: {
   uc: UCItem; idx: number; total: number; eventoId: number;
   onMover: (idx: number, dir: "up" | "down") => void;
   onSetPreferido: (ucId: number, profId: number | undefined) => void;
   onSetNaoAgendar: (ucId: number, valor: boolean) => void;
+  onSetDiasSemana: (ucId: number, dias: number[]) => void;
 }) {
   const { data: candidatos = [], isLoading } = useQuery({
     queryKey: ["candidatos", eventoId, uc.id],
@@ -875,6 +877,43 @@ function UCRowWithCandidatos({
             {!isLoading && (candidatos as any[]).length === 0 && (
               <p className="text-[10px] text-amber-600 mt-0.5">Nenhum apto cadastrado</p>
             )}
+            {/* Picker de dias específicos para esta UC */}
+            <div className="mt-2 pt-2 border-t border-gray-100">
+              <p className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 mb-1">
+                Dias específicos
+              </p>
+              <div className="flex gap-1 flex-wrap">
+                {["Seg","Ter","Qua","Qui","Sex","Sáb"].map((label, i) => {
+                  const selecionado = (uc.dias_semana ?? []).includes(i);
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => {
+                        const atual = uc.dias_semana ?? [];
+                        const novo = selecionado
+                          ? atual.filter((d) => d !== i)
+                          : [...atual, i].sort();
+                        onSetDiasSemana(uc.id, novo);
+                      }}
+                      className={cn(
+                        "px-1.5 py-0.5 text-[9px] rounded font-medium border transition-colors",
+                        selecionado
+                          ? "bg-indigo-600 text-white border-indigo-600"
+                          : "bg-white text-gray-500 border-gray-200 hover:border-indigo-400"
+                      )}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+              {(uc.dias_semana ?? []).length > 0 && (
+                <p className="text-[9px] text-indigo-600 mt-0.5">
+                  Usará dias específicos no planejamento
+                </p>
+              )}
+            </div>
           </>
         )}
       </div>
@@ -1112,6 +1151,12 @@ export default function EventosPage() {
     );
   }
 
+  function setDiasSemanaUc(ucId: number, dias: number[]) {
+    setUcsOrdenadas((prev) =>
+      prev.map((u) => (u.id === ucId ? { ...u, dias_semana: dias } : u))
+    );
+  }
+
   function handleEventoCriado(ev: Evento) {
     qc.invalidateQueries({ queryKey: ["eventos"] });
     setOfertaPickerAberto(false);
@@ -1159,6 +1204,7 @@ export default function EventosPage() {
     // Apenas a 1ª UC recebe data_inicio — as demais encadeiam automaticamente
     data_inicio: i === 0 && moduloDataInicio ? moduloDataInicio : undefined,
     nao_agendar: u.nao_agendar ?? false,
+    dias_semana: u.dias_semana && u.dias_semana.length > 0 ? u.dias_semana : undefined,
   }));
 
   const abas = [
@@ -1724,6 +1770,7 @@ export default function EventosPage() {
                                         onMover={moverUc}
                                         onSetPreferido={setPreferidoUc}
                                         onSetNaoAgendar={setNaoAgendarUc}
+                                        onSetDiasSemana={setDiasSemanaUc}
                                       />
                                     ))}
                                   </div>

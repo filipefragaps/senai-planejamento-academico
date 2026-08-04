@@ -260,20 +260,39 @@ async def gerar_planejamento(
         if aulas_necessarias == 0:
             aulas_necessarias = 1
 
-        # Se há data_inicio_uc, avança o cursor até a primeira data >= data_inicio_uc
-        if data_inicio_uc:
-            try:
-                dt_ini = date.fromisoformat(data_inicio_uc) if isinstance(data_inicio_uc, str) else data_inicio_uc
-                while data_cursor < len(datas_letivas) and datas_letivas[data_cursor] < dt_ini:
-                    data_cursor += 1
-            except (ValueError, TypeError):
-                pass
+        # Dias específicos para esta UC (override do evento)
+        dias_semana_uc = item.get("dias_semana") or []
 
-        # Selecionar datas para esta UC (sequencial)
-        datas_uc: list[date] = []
-        while len(datas_uc) < aulas_necessarias and data_cursor < len(datas_letivas):
-            datas_uc.append(datas_letivas[data_cursor])
-            data_cursor += 1
+        if dias_semana_uc:
+            # Pool de datas independente para os dias escolhidos nesta UC
+            datas_pool_uc = await get_datas_letivas(
+                evento.data_inicio, evento.data_fim, dias_semana_uc, db
+            )
+            cursor_uc = 0
+            if data_inicio_uc:
+                try:
+                    dt_ini = date.fromisoformat(data_inicio_uc) if isinstance(data_inicio_uc, str) else data_inicio_uc
+                    while cursor_uc < len(datas_pool_uc) and datas_pool_uc[cursor_uc] < dt_ini:
+                        cursor_uc += 1
+                except (ValueError, TypeError):
+                    pass
+            datas_uc: list[date] = []
+            while len(datas_uc) < aulas_necessarias and cursor_uc < len(datas_pool_uc):
+                datas_uc.append(datas_pool_uc[cursor_uc])
+                cursor_uc += 1
+        else:
+            # Pool compartilhado do evento (comportamento padrão)
+            if data_inicio_uc:
+                try:
+                    dt_ini = date.fromisoformat(data_inicio_uc) if isinstance(data_inicio_uc, str) else data_inicio_uc
+                    while data_cursor < len(datas_letivas) and datas_letivas[data_cursor] < dt_ini:
+                        data_cursor += 1
+                except (ValueError, TypeError):
+                    pass
+            datas_uc: list[date] = []
+            while len(datas_uc) < aulas_necessarias and data_cursor < len(datas_letivas):
+                datas_uc.append(datas_letivas[data_cursor])
+                data_cursor += 1
 
         if not datas_uc:
             conflitos.append({"uc_id": uc_id, "uc_nome": uc.nome, "motivo": "Sem datas letivas disponíveis"})

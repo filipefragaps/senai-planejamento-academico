@@ -80,6 +80,7 @@ class UCOrdenada(BaseModel):
     professor_preferido_id: Optional[int] = None
     data_inicio: Optional[str] = None
     nao_agendar: bool = False
+    dias_semana: Optional[list[int]] = None  # override dos dias do evento para esta UC
 
 
 class GerarRequest(BaseModel):
