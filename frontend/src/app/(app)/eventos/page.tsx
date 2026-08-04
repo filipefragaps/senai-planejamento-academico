@@ -901,7 +901,11 @@ function UCRowWithCandidatos({
                       <button
                         key={i}
                         type="button"
-                        onClick={() => onSetDiasSemana(uc.id, selecionado ? [] : [i])}
+                        onClick={() => {
+                          const atual = uc.dias_semana ?? [];
+                          const novo = selecionado ? atual.filter((d) => d !== i) : [...atual, i].sort();
+                          onSetDiasSemana(uc.id, novo);
+                        }}
                         className={cn(
                           "px-2 py-1 text-[10px] rounded font-semibold border transition-colors",
                           selecionado
@@ -914,6 +918,11 @@ function UCRowWithCandidatos({
                     );
                   })}
                 </div>
+                {(uc.dias_semana ?? []).length > 1 && (
+                  <p className="text-[9px] text-indigo-500 mt-0.5">
+                    {(uc.dias_semana ?? []).length} dias/semana — para cobrir carga horária maior que o semestre
+                  </p>
+                )}
               </div>
             ) : (
               // Modo padrão: picker colapsado, múltiplos dias
