@@ -1,7 +1,7 @@
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete as sa_delete
 from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models.professor import Professor
@@ -367,5 +367,6 @@ async def excluir_professor(
                    "Reatribua ou remova as aulas antes de excluir o professor.",
         )
 
-    await db.delete(prof)
+    # DELETE direto via SQL — deixa o banco executar ON DELETE CASCADE/SET NULL
+    await db.execute(sa_delete(Professor).where(Professor.id == professor_id))
     await db.commit()
