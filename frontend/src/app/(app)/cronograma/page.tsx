@@ -502,7 +502,8 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
                         const profLabel = a.professor_nome?.split(" ")[0] ?? "";
                         return (
                           <div key={ai} className="rounded overflow-hidden" style={{ backgroundColor: cor }}>
-                            <div className="px-1.5 py-0.5 flex items-center gap-1">
+                            {/* Horário + UC */}
+                            <div className="px-1.5 pt-0.5 flex items-center gap-1">
                               {statusDot && (
                                 <span className="shrink-0 inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: statusDot }} />
                               )}
@@ -510,9 +511,26 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
                                 {(a.horario_inicio ?? "").slice(0, 5)} {ucLabel}
                               </span>
                             </div>
+                            {/* Turma */}
+                            {a.nome_evento && (
+                              <div className="px-1.5">
+                                <span className="text-[8px] text-white font-semibold truncate block leading-tight">
+                                  {a.nome_evento}
+                                </span>
+                              </div>
+                            )}
+                            {/* Curso */}
+                            {a.nome_curso && (
+                              <div className="px-1.5">
+                                <span className="text-[8px] text-white/75 truncate block leading-tight">
+                                  {a.nome_curso}
+                                </span>
+                              </div>
+                            )}
+                            {/* Professor */}
                             {profLabel && (
                               <div className="px-1.5 pb-0.5">
-                                <span className="text-[8px] text-white/80 truncate block">{profLabel}</span>
+                                <span className="text-[8px] text-white/70 truncate block leading-tight">{profLabel}</span>
                               </div>
                             )}
                           </div>
