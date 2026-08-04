@@ -24,8 +24,11 @@ ALERTA_INFERIOR = 0.50  # Abaixo disso = Crítico
 ALERTA_SUPERIOR = 0.90  # Acima disso = Alerta de sobrecarga
 
 
+_TIPOS_MENSALISTA = {"Mensalista", "Inclusão em Folha"}
+
+
 def calcular_status_regencia(percentual: float, tipo: str) -> str:
-    if tipo == "Mensalista":
+    if tipo in _TIPOS_MENSALISTA:
         if percentual < ALERTA_INFERIOR:
             return "Critico"
         elif percentual < META_REGENCIA_MENSALISTA:
@@ -71,7 +74,7 @@ async def calcular_regencia_professor(
     horas_excedentes = 0.0
     observacao = None
 
-    if professor.tipo == "Mensalista":
+    if professor.tipo in _TIPOS_MENSALISTA:
         horas_periodo = professor.horas_contratadas * semanas
         percentual = horas_ministradas / horas_periodo if horas_periodo > 0 else 0
         meta = META_REGENCIA_MENSALISTA

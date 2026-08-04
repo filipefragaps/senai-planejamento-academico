@@ -42,6 +42,7 @@ interface Props {
   professor: any | null; // null = modo criação
   onClose: () => void;
   onSaved: (prof: any) => void;
+  onDeleted?: () => void;
 }
 
 const BLANK_BASIC = {
@@ -51,7 +52,7 @@ const BLANK_BASIC = {
 
 const BLANK_DISP = { dia_semana: 0, horario_inicio: "18:30", horario_fim: "22:00", tipo: "Disponível" };
 
-export function ProfessorDrawer({ professor, onClose, onSaved }: Props) {
+export function ProfessorDrawer({ professor, onClose, onSaved, onDeleted }: Props) {
   const isEdit = !!professor;
   const qc = useQueryClient();
 
@@ -76,6 +77,9 @@ export function ProfessorDrawer({ professor, onClose, onSaved }: Props) {
   const [newDisp, setNewDisp] = useState({ ...BLANK_DISP });
   const [showAddDisp, setShowAddDisp] = useState(false);
   const [pendingDisps, setPendingDisps] = useState<any[]>([]); // create mode only
+
+  // ── exclusão ─────────────────────────────────────────────────────
+  const [confirmarExclusao, setConfirmarExclusao] = useState(false);
 
   // ── grade semanal ────────────────────────────────────────────────
   const [modoGrade, setModoGrade] = useState(true); // true=grade, false=lista+form
@@ -133,6 +137,21 @@ export function ProfessorDrawer({ professor, onClose, onSaved }: Props) {
       toast.success("Horário adicionado!");
     },
     onError: (err: any) => toast.error(err?.response?.data?.detail || "Erro ao adicionar horário"),
+  });
+
+  const excluirProfessor = useMutation({
+    mutationFn: () => professoresApi.deletar(professor!.id),
+    onSuccess: () => {
+      toast.success(`Professor "${professor!.nome}" excluído.`);
+      qc.invalidateQueries({ queryKey: ["professores"] });
+      onDeleted?.();
+      onClose();
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.detail || "Erro ao excluir professor";
+      toast.error(msg);
+      setConfirmarExclusao(false);
+    },
   });
 
   const delDisp = useMutation({
@@ -401,6 +420,7 @@ export function ProfessorDrawer({ professor, onClose, onSaved }: Props) {
                     <optgroup label="Quadro efetivo">
                       <option value="Mensalista">Mensalista</option>
                       <option value="Horista">Horista</option>
+                      <option value="Inclusão em Folha">Inclusão em Folha</option>
                     </optgroup>
                     <optgroup label="Extraquadro (reserva)">
                       <option value="PJ">PJ</option>
@@ -417,6 +437,7 @@ export function ProfessorDrawer({ professor, onClose, onSaved }: Props) {
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">
                     {["PJ", "RPA"].includes(basic.tipo) ? "Horas máximas / semana" : "Horas contratadas / semana"}
+                    {basic.tipo === "Inclusão em Folha" && " (regime mensalista)"}
                   </label>
                   <input
                     type="number"
@@ -425,7 +446,7 @@ export function ProfessorDrawer({ professor, onClose, onSaved }: Props) {
                     onChange={(e) => setBasic({ ...basic, horas_contratadas: +e.target.value })}
                   />
                 </div>
-                {["Horista", "PJ", "RPA"].includes(basic.tipo) && (
+                {["Horista", "PJ", "RPA"].includes(basic.tipo) && (  /* Inclusão em Folha = mensalista, sem valor/hora */
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Valor por hora (R$)</label>
                     <input
@@ -977,6 +998,23 @@ export function ProfessorDrawer({ professor, onClose, onSaved }: Props) {
           </form>
         </div>
 
+        {/* ── Footer (edit mode) — exclusão ── */}
+        {isEdit && (
+          <div className="px-6 py-3 border-t bg-gray-50 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setConfirmarExclusao(true)}
+              className="flex items-center gap-1.5 text-sm text-red-600 hover:text-red-800 font-medium border border-red-200 hover:border-red-300 rounded px-3 py-1.5 bg-red-50 hover:bg-red-100 transition-colors"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Excluir professor
+            </button>
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm border rounded-md hover:bg-gray-100">
+              Fechar
+            </button>
+          </div>
+        )}
+
         {/* ── Footer (create mode) ── */}
         {!isEdit && (
           <div className="px-6 py-4 border-t bg-gray-50 flex items-center justify-between">
@@ -996,6 +1034,47 @@ export function ProfessorDrawer({ professor, onClose, onSaved }: Props) {
                 {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 Criar Professor
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Modal confirmação exclusão ── */}
+        {confirmarExclusao && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/40" onClick={() => setConfirmarExclusao(false)} />
+            <div className="relative bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 z-[70]">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                  <Trash2 className="h-5 w-5 text-red-600" />
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-900 text-sm">Excluir professor</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{professor?.nome}</p>
+                </div>
+              </div>
+              <p className="text-sm text-gray-600 mb-5">
+                Esta ação é permanente e não pode ser desfeita. O professor será removido do sistema,
+                incluindo disponibilidades e UCs de atuação.
+              </p>
+              <div className="flex gap-2 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setConfirmarExclusao(false)}
+                  className="px-4 py-2 text-sm border rounded-md hover:bg-gray-100"
+                  disabled={excluirProfessor.isPending}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => excluirProfessor.mutate()}
+                  disabled={excluirProfessor.isPending}
+                  className="px-4 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {excluirProfessor.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                  Excluir definitivamente
+                </button>
+              </div>
             </div>
           </div>
         )}

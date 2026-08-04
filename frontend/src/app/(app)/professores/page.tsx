@@ -390,6 +390,7 @@ export default function ProfessoresPage() {
           professor={drawer === "new" ? null : drawer}
           onClose={() => setDrawer(null)}
           onSaved={handleDrawerSaved}
+          onDeleted={() => setDrawer(null)}
         />
       )}
     </div>

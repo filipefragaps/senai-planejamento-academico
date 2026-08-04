@@ -93,6 +93,7 @@ export const professoresApi = {
     api
       .patch(`/professores/${id}/atuacoes/${atuacaoId}`, null, { params: { modalidade } })
       .then((r) => r.data),
+  deletar: (id: number) => api.delete(`/professores/${id}`),
 };
 
 // Eventos

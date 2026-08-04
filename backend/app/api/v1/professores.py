@@ -1,10 +1,11 @@
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models.professor import Professor
+from app.models.aula import Aula
 from app.models.atuacao import Atuacao
 from app.models.disponibilidade import DisponibilidadeDetalhada
 from app.schemas.professor import (
@@ -338,4 +339,33 @@ async def remover_atuacao(
     if not a:
         raise HTTPException(status_code=404, detail="Atuação não encontrada")
     await db.delete(a)
+    await db.commit()
+
+
+@router.delete("/{professor_id}", status_code=204)
+async def excluir_professor(
+    professor_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """
+    Exclui permanentemente um professor. Bloqueado se houver aulas vinculadas.
+    Use para remover duplicatas ou cadastros incorretos.
+    """
+    result = await db.execute(select(Professor).where(Professor.id == professor_id))
+    prof = result.scalar_one_or_none()
+    if not prof:
+        raise HTTPException(status_code=404, detail="Professor não encontrado")
+
+    total_aulas = await db.scalar(
+        select(func.count(Aula.id)).where(Aula.professor_id == professor_id)
+    )
+    if total_aulas and total_aulas > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Não é possível excluir: professor possui {total_aulas} aula(s) vinculada(s). "
+                   "Reatribua ou remova as aulas antes de excluir o professor.",
+        )
+
+    await db.delete(prof)
     await db.commit()
