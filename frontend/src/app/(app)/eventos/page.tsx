@@ -788,13 +788,14 @@ function OfertaPickerModal({ onClose, onEventoCriado }: OfertaPickerProps) {
 // ── UC Row with per-UC candidatos ─────────────────────────────────────────────
 
 function UCRowWithCandidatos({
-  uc, idx, total, eventoId, onMover, onSetPreferido, onSetNaoAgendar, onSetDiasSemana,
+  uc, idx, total, eventoId, onMover, onSetPreferido, onSetNaoAgendar, onSetDiasSemana, modoSuperior,
 }: {
   uc: UCItem; idx: number; total: number; eventoId: number;
   onMover: (idx: number, dir: "up" | "down") => void;
   onSetPreferido: (ucId: number, profId: number | undefined) => void;
   onSetNaoAgendar: (ucId: number, valor: boolean) => void;
   onSetDiasSemana: (ucId: number, dias: number[]) => void;
+  modoSuperior?: boolean;
 }) {
   const { data: candidatos = [], isLoading } = useQuery({
     queryKey: ["candidatos", eventoId, uc.id],
@@ -877,43 +878,80 @@ function UCRowWithCandidatos({
             {!isLoading && (candidatos as any[]).length === 0 && (
               <p className="text-[10px] text-amber-600 mt-0.5">Nenhum apto cadastrado</p>
             )}
-            {/* Picker de dias específicos para esta UC */}
-            <div className="mt-2 pt-2 border-t border-gray-100">
-              <p className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 mb-1">
-                Dias específicos
-              </p>
-              <div className="flex gap-1 flex-wrap">
-                {["Seg","Ter","Qua","Qui","Sex","Sáb"].map((label, i) => {
-                  const selecionado = (uc.dias_semana ?? []).includes(i);
-                  return (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => {
-                        const atual = uc.dias_semana ?? [];
-                        const novo = selecionado
-                          ? atual.filter((d) => d !== i)
-                          : [...atual, i].sort();
-                        onSetDiasSemana(uc.id, novo);
-                      }}
-                      className={cn(
-                        "px-1.5 py-0.5 text-[9px] rounded font-medium border transition-colors",
-                        selecionado
-                          ? "bg-indigo-600 text-white border-indigo-600"
-                          : "bg-white text-gray-500 border-gray-200 hover:border-indigo-400"
-                      )}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-              {(uc.dias_semana ?? []).length > 0 && (
-                <p className="text-[9px] text-indigo-600 mt-0.5">
-                  Usará dias específicos no planejamento
+
+            {/* Picker de dia da semana */}
+            {modoSuperior ? (
+              // Modo Ensino Superior: destaque visual, comportamento radio (1 dia)
+              <div className={cn(
+                "mt-2 pt-2 border-t rounded-b px-1.5 pb-1.5",
+                (uc.dias_semana ?? []).length === 0
+                  ? "border-amber-300 bg-amber-50"
+                  : "border-indigo-200 bg-indigo-50"
+              )}>
+                <p className={cn(
+                  "text-[9px] font-bold uppercase tracking-wide mb-1",
+                  (uc.dias_semana ?? []).length === 0 ? "text-amber-700" : "text-indigo-700"
+                )}>
+                  {(uc.dias_semana ?? []).length === 0 ? "⚠ Dia da semana *" : "Dia da semana"}
                 </p>
-              )}
-            </div>
+                <div className="flex gap-1 flex-wrap">
+                  {["Seg","Ter","Qua","Qui","Sex","Sáb"].map((label, i) => {
+                    const selecionado = (uc.dias_semana ?? []).includes(i);
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => onSetDiasSemana(uc.id, selecionado ? [] : [i])}
+                        className={cn(
+                          "px-2 py-1 text-[10px] rounded font-semibold border transition-colors",
+                          selecionado
+                            ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                            : "bg-white text-gray-500 border-gray-300 hover:border-indigo-400 hover:text-indigo-600"
+                        )}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              // Modo padrão: picker colapsado, múltiplos dias
+              <div className="mt-2 pt-2 border-t border-gray-100">
+                <p className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 mb-1">
+                  Dias específicos
+                </p>
+                <div className="flex gap-1 flex-wrap">
+                  {["Seg","Ter","Qua","Qui","Sex","Sáb"].map((label, i) => {
+                    const selecionado = (uc.dias_semana ?? []).includes(i);
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => {
+                          const atual = uc.dias_semana ?? [];
+                          const novo = selecionado ? atual.filter((d) => d !== i) : [...atual, i].sort();
+                          onSetDiasSemana(uc.id, novo);
+                        }}
+                        className={cn(
+                          "px-1.5 py-0.5 text-[9px] rounded font-medium border transition-colors",
+                          selecionado
+                            ? "bg-indigo-600 text-white border-indigo-600"
+                            : "bg-white text-gray-500 border-gray-200 hover:border-indigo-400"
+                        )}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {(uc.dias_semana ?? []).length > 0 && (
+                  <p className="text-[9px] text-indigo-600 mt-0.5">
+                    Usará dias específicos no planejamento
+                  </p>
+                )}
+              </div>
+            )}
           </>
         )}
       </div>
@@ -936,6 +974,7 @@ export default function EventosPage() {
   const [ofertaPickerAberto, setOfertaPickerAberto] = useState(false);
   const [otimizacaoAberta, setOtimizacaoAberta] = useState(false);
   const [ucsOrdenadas, setUcsOrdenadas] = useState<UCItem[]>([]);
+  const [modoSuperior, setModoSuperior] = useState(false);
   const [moduloSelecionado, setModuloSelecionado] = useState<string | null>(null);
   const [moduloDataInicio, setModuloDataInicio] = useState<string>("");
   const [ucFormAberto, setUcFormAberto] = useState(false);
@@ -1663,22 +1702,61 @@ export default function EventosPage() {
                                   </span>
                                 </div>
 
-                                {/* Cabeçalho com botão Gerar */}
-                                <div className="flex justify-between items-center">
-                                  <p className="text-xs text-gray-500">
-                                    {ucsOrdenadas.length > 0
-                                      ? `${ucsOrdenadas.length} UC(s)${moduloSelecionado ? ` do módulo ${moduloSelecionado}` : ""} — reordene e defina professores antes de gerar.`
-                                      : "Adicione as unidades curriculares para gerar o planejamento."}
-                                  </p>
-                                  <button
-                                    onClick={() => setGerarAberto(true)}
-                                    disabled={ucsOrdenadas.length === 0}
-                                    className="btn-primary flex items-center gap-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                                  >
-                                    <RefreshCw className="h-4 w-4" />
-                                    Gerar Planejamento
-                                  </button>
+                                {/* Modo Ensino Superior */}
+                                <div className={cn(
+                                  "rounded-lg border px-3 py-2.5",
+                                  modoSuperior ? "border-indigo-300 bg-indigo-50" : "border-gray-200 bg-gray-50"
+                                )}>
+                                  <label className="flex items-start gap-2.5 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={modoSuperior}
+                                      onChange={(e) => setModoSuperior(e.target.checked)}
+                                      className="mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                    />
+                                    <div>
+                                      <p className={cn("text-xs font-semibold", modoSuperior ? "text-indigo-800" : "text-gray-700")}>
+                                        Ensino Superior — 1 UC por semana
+                                      </p>
+                                      <p className={cn("text-[10px] mt-0.5", modoSuperior ? "text-indigo-600" : "text-gray-400")}>
+                                        Cada UC ocorre sempre no mesmo dia da semana ao longo do semestre. Selecione o dia para cada UC abaixo.
+                                      </p>
+                                    </div>
+                                  </label>
                                 </div>
+
+                                {/* Cabeçalho com botão Gerar */}
+                                {(() => {
+                                  const ucsSemDia = modoSuperior
+                                    ? ucsOrdenadas.filter((u) => !u.nao_agendar && (!u.dias_semana || u.dias_semana.length === 0))
+                                    : [];
+                                  const gerarBloqueado = ucsOrdenadas.length === 0 || ucsSemDia.length > 0;
+                                  return (
+                                    <div className="flex justify-between items-center gap-3">
+                                      <div className="min-w-0">
+                                        <p className="text-xs text-gray-500">
+                                          {ucsOrdenadas.length > 0
+                                            ? `${ucsOrdenadas.length} UC(s)${moduloSelecionado ? ` do módulo ${moduloSelecionado}` : ""} — reordene e defina professores antes de gerar.`
+                                            : "Adicione as unidades curriculares para gerar o planejamento."}
+                                        </p>
+                                        {ucsSemDia.length > 0 && (
+                                          <p className="text-[10px] text-amber-700 mt-0.5">
+                                            ⚠ {ucsSemDia.length} UC(s) sem dia selecionado: {ucsSemDia.map((u) => u.nome).join(", ")}
+                                          </p>
+                                        )}
+                                      </div>
+                                      <button
+                                        onClick={() => setGerarAberto(true)}
+                                        disabled={gerarBloqueado}
+                                        title={ucsSemDia.length > 0 ? "Selecione o dia da semana para todas as UCs" : undefined}
+                                        className="shrink-0 btn-primary flex items-center gap-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                      >
+                                        <RefreshCw className="h-4 w-4" />
+                                        Gerar Planejamento
+                                      </button>
+                                    </div>
+                                  );
+                                })()}
 
                                 {/* Lista de UCs */}
                                 {ucsOrdenadas.length === 0 ? (
@@ -1771,6 +1849,7 @@ export default function EventosPage() {
                                         onSetPreferido={setPreferidoUc}
                                         onSetNaoAgendar={setNaoAgendarUc}
                                         onSetDiasSemana={setDiasSemanaUc}
+                                        modoSuperior={modoSuperior}
                                       />
                                     ))}
                                   </div>
