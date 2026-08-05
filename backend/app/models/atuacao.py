@@ -12,7 +12,7 @@ class Atuacao(Base):
     professor_id: Mapped[int] = mapped_column(ForeignKey("professores.id", ondelete="CASCADE"), nullable=False)
     curso_id: Mapped[int | None] = mapped_column(ForeignKey("cursos.id", ondelete="SET NULL"))
     disciplina: Mapped[str] = mapped_column(String(300), nullable=False)
-    modalidade: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    modalidade: Mapped[str | None] = mapped_column(String(200), nullable=True)
     nivel_competencia: Mapped[int] = mapped_column(Integer, default=3)  # 1-5
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

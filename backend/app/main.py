@@ -41,6 +41,7 @@ async def _aplicar_migracoes(engine) -> None:
         "ALTER TABLE ofertas_cursos ADD COLUMN coordenador VARCHAR(150)",
         "ALTER TABLE ofertas_cursos ADD COLUMN desconto_percentual FLOAT",
         "ALTER TABLE ofertas_cursos ALTER COLUMN hora_aula TYPE FLOAT",
+        "ALTER TABLE atuacoes ALTER COLUMN modalidade TYPE VARCHAR(200)",
     ]
 
     # Cada ALTER TABLE em transação própria — PostgreSQL aborta toda a transação
