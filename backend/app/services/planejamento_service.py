@@ -196,8 +196,20 @@ async def gerar_planejamento(
             "Recrie o evento pela oferta (que define os dias automaticamente) ou edite o evento para informar os dias."
         )
 
+    # Se alguma UC tem data_inicio anterior ao evento, estende o pool para cobrir
+    data_inicio_pool = evento.data_inicio
+    for item in ucs_ordenadas:
+        di = item.get("data_inicio")
+        if di:
+            try:
+                dt = date.fromisoformat(di) if isinstance(di, str) else di
+                if dt < data_inicio_pool:
+                    data_inicio_pool = dt
+            except (ValueError, TypeError):
+                pass
+
     datas_letivas = await get_datas_letivas(
-        evento.data_inicio, evento.data_fim, dias_semana, db
+        data_inicio_pool, evento.data_fim, dias_semana, db
     )
 
     if not datas_letivas:
@@ -265,8 +277,17 @@ async def gerar_planejamento(
 
         if dias_semana_uc:
             # Pool de datas independente para os dias escolhidos nesta UC
+            # Usa data_inicio_pool (já estendida) para cobrir data_inicio_uc anteriores ao evento
+            data_inicio_pool_uc = data_inicio_pool
+            if data_inicio_uc:
+                try:
+                    dt = date.fromisoformat(data_inicio_uc) if isinstance(data_inicio_uc, str) else data_inicio_uc
+                    if dt < data_inicio_pool_uc:
+                        data_inicio_pool_uc = dt
+                except (ValueError, TypeError):
+                    pass
             datas_pool_uc = await get_datas_letivas(
-                evento.data_inicio, evento.data_fim, dias_semana_uc, db
+                data_inicio_pool_uc, evento.data_fim, dias_semana_uc, db
             )
             cursor_uc = 0
             if data_inicio_uc:
@@ -321,13 +342,20 @@ async def gerar_planejamento(
 
             pool = sem_conflito if sem_conflito else candidatos
 
-            # Aleatoriedade controlada: todos dentro da banda de tolerância concorrem igual
-            top_score = pool[0]["score"]
-            grupo = [c for c in pool if (top_score - c["score"]) <= SCORE_TOLERANCE]
+            # Quando professor foi escolhido explicitamente para esta UC, usa-o diretamente
+            cand = None
+            if prof_preferido_uc:
+                # Busca primeiro sem conflito, depois com conflito se necessário
+                cand = next((c for c in pool if c["professor"].id == prof_preferido_uc), None)
+                if cand is None:
+                    cand = next((c for c in candidatos if c["professor"].id == prof_preferido_uc), None)
 
-            # Professor preferido tem prioridade dentro do grupo
-            preferidos_no_grupo = [c for c in grupo if c["is_preferido"]]
-            cand = preferidos_no_grupo[0] if preferidos_no_grupo else random.choice(grupo)
+            if cand is None:
+                # Seleção por score: aleatoriedade controlada dentro da banda de tolerância
+                top_score = pool[0]["score"]
+                grupo = [c for c in pool if (top_score - c["score"]) <= SCORE_TOLERANCE]
+                preferidos_no_grupo = [c for c in grupo if c["is_preferido"]]
+                cand = preferidos_no_grupo[0] if preferidos_no_grupo else random.choice(grupo)
 
             professor_escolhido = cand["professor"]
             score_escolhido = cand["score"]
@@ -336,14 +364,16 @@ async def gerar_planejamento(
             professor_nome = professor_escolhido.nome
 
             justificativa = (
-                f"Prof. {professor_nome}{preferido_str} �� regência atual {reg_pct:.1f}%, "
+                f"Prof. {professor_nome}{preferido_str} — regência atual {reg_pct:.1f}%, "
                 f"competência nível {cand['nivel_competencia']}/5, "
                 f"score {score_escolhido:.3f}."
             )
 
             if not sem_conflito:
                 alerta = f"Conflito detectado para {professor_nome} na 1ª data. Revisar manualmente."
-            elif preferidos and not cand["is_preferido"]:
+            elif prof_preferido_uc and professor_escolhido.id != prof_preferido_uc:
+                alerta = f"Professor preferido não habilitado para esta UC; alocado {professor_nome}."
+            elif not prof_preferido_uc and preferidos and not cand["is_preferido"]:
                 alerta = f"Professor preferido não disponível/habilitado; alocado {professor_nome}."
 
             # Acumula horas projetadas
