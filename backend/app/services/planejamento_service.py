@@ -326,37 +326,57 @@ async def gerar_planejamento(
         alerta = None
         justificativa = "Sem candidatos habilitados e disponíveis para esta UC."
         score_escolhido = 0.0
+        cand = None
 
-        if candidatos:
-            # Filtra candidatos sem conflito na 1ª data
+        # Professor selecionado explicitamente: prioridade absoluta, independente de atuação/score
+        if prof_preferido_uc:
+            cand = next((c for c in candidatos if c["professor"].id == prof_preferido_uc), None)
+            if cand is None:
+                # Professor não está nos candidatos (sem atuação ou disponibilidade cadastrada)
+                # Carrega direto do banco e usa mesmo assim (usuário fez escolha explícita)
+                res_pref = await db.execute(
+                    select(Professor).where(Professor.id == prof_preferido_uc, Professor.ativo == True)
+                )
+                prof_direto = res_pref.scalar_one_or_none()
+                if prof_direto:
+                    reg = regencias_atuais.get(prof_direto.id, {})
+                    cand = {
+                        "professor": prof_direto,
+                        "nivel_competencia": 3,
+                        "is_preferido": True,
+                        "score": 0.0,
+                        "percentual_regencia": reg.get("percentual_regencia", 0),
+                        "status_regencia": reg.get("status", "N/A"),
+                    }
+                    alerta = (
+                        f"Prof. {prof_direto.nome} selecionado manualmente — "
+                        "habilitação ou disponibilidade não cadastrada para esta UC."
+                    )
+
+        if cand is None and candidatos:
+            # Seleção por score: filtra conflito e aplica aleatoriedade controlada
             sem_conflito = []
-            for cand in candidatos:
-                prof = cand["professor"]
+            for c in candidatos:
                 tem_conflito = False
                 if datas_uc:
                     tem_conflito = await verificar_conflito_professor(
-                        prof.id, datas_uc[0], evento.horario_inicio, evento.horario_fim, db
+                        c["professor"].id, datas_uc[0], evento.horario_inicio, evento.horario_fim, db
                     )
                 if not tem_conflito:
-                    sem_conflito.append(cand)
+                    sem_conflito.append(c)
 
             pool = sem_conflito if sem_conflito else candidatos
+            top_score = pool[0]["score"]
+            grupo = [c for c in pool if (top_score - c["score"]) <= SCORE_TOLERANCE]
+            preferidos_no_grupo = [c for c in grupo if c["is_preferido"]]
+            cand = preferidos_no_grupo[0] if preferidos_no_grupo else random.choice(grupo)
 
-            # Quando professor foi escolhido explicitamente para esta UC, usa-o diretamente
-            cand = None
-            if prof_preferido_uc:
-                # Busca primeiro sem conflito, depois com conflito se necessário
-                cand = next((c for c in pool if c["professor"].id == prof_preferido_uc), None)
-                if cand is None:
-                    cand = next((c for c in candidatos if c["professor"].id == prof_preferido_uc), None)
+            if not sem_conflito:
+                alerta = f"Conflito detectado para {cand['professor'].nome} na 1ª data. Revisar manualmente."
+            elif preferidos and not cand["is_preferido"]:
+                alerta = f"Professor preferido não disponível/habilitado; alocado {cand['professor'].nome}."
 
-            if cand is None:
-                # Seleção por score: aleatoriedade controlada dentro da banda de tolerância
-                top_score = pool[0]["score"]
-                grupo = [c for c in pool if (top_score - c["score"]) <= SCORE_TOLERANCE]
-                preferidos_no_grupo = [c for c in grupo if c["is_preferido"]]
-                cand = preferidos_no_grupo[0] if preferidos_no_grupo else random.choice(grupo)
-
+        if cand:
             professor_escolhido = cand["professor"]
             score_escolhido = cand["score"]
             reg_pct = cand["percentual_regencia"]
@@ -369,16 +389,10 @@ async def gerar_planejamento(
                 f"score {score_escolhido:.3f}."
             )
 
-            if not sem_conflito:
-                alerta = f"Conflito detectado para {professor_nome} na 1ª data. Revisar manualmente."
-            elif prof_preferido_uc and professor_escolhido.id != prof_preferido_uc:
-                alerta = f"Professor preferido não habilitado para esta UC; alocado {professor_nome}."
-            elif not prof_preferido_uc and preferidos and not cand["is_preferido"]:
-                alerta = f"Professor preferido não disponível/habilitado; alocado {professor_nome}."
-
             # Acumula horas projetadas
-            prof_id = professor_escolhido.id
-            horas_projetadas[prof_id] = horas_projetadas.get(prof_id, 0) + aulas_necessarias * horas_por_aula
+            horas_projetadas[professor_escolhido.id] = (
+                horas_projetadas.get(professor_escolhido.id, 0) + aulas_necessarias * horas_por_aula
+            )
 
         alocacoes.append(AlocacaoUC(
             uc_id=uc_id,
