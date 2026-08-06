@@ -42,13 +42,14 @@ const COORDENADORES = [
   "LEANDRA PEREIRA DA SILVA",
 ];
 
-const STATUS_TURMA = ["EM MATRÍCULA", "CANCELADO", "TURMA INICIADA", "ADIADA"] as const;
+const STATUS_TURMA = ["EM MATRÍCULA", "CANCELADO", "TURMA INICIADA", "ADIADA", "CONCLUÍDA"] as const;
 
 function statusBadgeClass(s: string) {
   if (s === "TURMA INICIADA") return "bg-green-100 text-green-700 border-green-300";
   if (s === "CANCELADO") return "bg-red-100 text-red-700 border-red-300";
   if (s === "EM MATRÍCULA") return "bg-amber-100 text-amber-700 border-amber-300";
   if (s === "ADIADA") return "bg-purple-100 text-purple-700 border-purple-300";
+  if (s === "CONCLUÍDA") return "bg-blue-100 text-blue-700 border-blue-300";
   return "bg-gray-100 text-gray-600 border-gray-200";
 }
 
@@ -56,6 +57,7 @@ function statusActiveClass(s: string) {
   if (s === "TURMA INICIADA") return "bg-green-600 text-white border-green-600";
   if (s === "CANCELADO") return "bg-red-600 text-white border-red-600";
   if (s === "ADIADA") return "bg-purple-600 text-white border-purple-600";
+  if (s === "CONCLUÍDA") return "bg-blue-600 text-white border-blue-600";
   return "bg-amber-500 text-white border-amber-500";
 }
 

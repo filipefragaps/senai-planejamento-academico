@@ -287,14 +287,20 @@ async def atualizar_status(
     o.status = status
     await db.commit()
 
-    # Sincroniza o evento vinculado quando a turma inicia
+    # Sincroniza o evento vinculado com base no novo status da oferta
+    novo_status_evento: str | None = None
     if status == "TURMA INICIADA":
+        novo_status_evento = "Ativo"
+    elif status == "CONCLUÍDA":
+        novo_status_evento = "Concluído"
+
+    if novo_status_evento:
         res_ev = await db.execute(
-            select(Evento).where(Evento.oferta_id == oferta_id, Evento.status == "Planejado")
+            select(Evento).where(Evento.oferta_id == oferta_id)
         )
         evento = res_ev.scalar_one_or_none()
-        if evento:
-            evento.status = "Ativo"
+        if evento and evento.status != "Cancelado":
+            evento.status = novo_status_evento
             await db.commit()
 
     return {"id": o.id, "status": o.status}

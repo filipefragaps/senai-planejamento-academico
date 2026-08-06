@@ -81,11 +81,19 @@ async def _aplicar_migracoes(engine) -> None:
             "AND data_inicio <= CURRENT_DATE "
             "AND data_fim >= CURRENT_DATE"
         ),
-        # Eventos que já encerraram: Planejado/Ativo → Concluído
+        # Oferta com 'CONCLUÍDA' → evento vinculado vira Concluído
         (
             "UPDATE eventos SET status = 'Concluído' "
-            "WHERE status IN ('Planejado', 'Ativo') "
-            "AND data_fim < CURRENT_DATE"
+            "WHERE status = 'Ativo' "
+            "AND oferta_id IN (SELECT id FROM ofertas_cursos WHERE status = 'CONCLUÍDA')"
+        ),
+        # Reverte eventos que foram automaticamente concluídos por data
+        # mas cuja oferta ainda não está CONCLUÍDA (cronograma pode ter mudado)
+        (
+            "UPDATE eventos SET status = 'Ativo' "
+            "WHERE status = 'Concluído' "
+            "AND oferta_id IS NOT NULL "
+            "AND oferta_id NOT IN (SELECT id FROM ofertas_cursos WHERE status = 'CONCLUÍDA')"
         ),
     ]:
         try:
