@@ -67,10 +67,17 @@ async def _aplicar_migracoes(engine) -> None:
             "WHERE data < CURRENT_DATE "
             "AND status NOT IN ('Remarcada', 'Cancelada', 'Realizada')"
         ),
-        # Eventos que já iniciaram: Planejado → Ativo
+        # Oferta com 'TURMA INICIADA' → evento vinculado vira Ativo
         (
             "UPDATE eventos SET status = 'Ativo' "
             "WHERE status = 'Planejado' "
+            "AND oferta_id IN (SELECT id FROM ofertas_cursos WHERE status = 'TURMA INICIADA')"
+        ),
+        # Fallback data: eventos sem oferta_id que já iniciaram → Ativo
+        (
+            "UPDATE eventos SET status = 'Ativo' "
+            "WHERE status = 'Planejado' "
+            "AND oferta_id IS NULL "
             "AND data_inicio <= CURRENT_DATE "
             "AND data_fim >= CURRENT_DATE"
         ),

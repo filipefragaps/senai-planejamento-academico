@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 from app.database import get_db
 from app.models.oferta import OfertaCurso
+from app.models.evento import Evento
 from app.core.deps import get_current_user
 from app.config import settings
 
@@ -285,6 +286,17 @@ async def atualizar_status(
         raise HTTPException(status_code=404, detail="Oferta não encontrada")
     o.status = status
     await db.commit()
+
+    # Sincroniza o evento vinculado quando a turma inicia
+    if status == "TURMA INICIADA":
+        res_ev = await db.execute(
+            select(Evento).where(Evento.oferta_id == oferta_id, Evento.status == "Planejado")
+        )
+        evento = res_ev.scalar_one_or_none()
+        if evento:
+            evento.status = "Ativo"
+            await db.commit()
+
     return {"id": o.id, "status": o.status}
 
 
