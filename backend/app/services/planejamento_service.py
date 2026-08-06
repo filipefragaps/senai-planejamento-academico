@@ -476,13 +476,22 @@ async def confirmar_planejamento(
         raise ValueError(f"Evento {evento_id} não encontrado")
 
     turno = _turno(evento)
-    hoje = date.today()
 
     if substituir_futuras:
         uc_ids_no_plano = {aloc.get("uc_id") for aloc in alocacoes if aloc.get("uc_id")}
+
+        # Usa a data mais antiga do novo plano como corte de deleção,
+        # permitindo substituir aulas passadas quando a data de início é anterior a hoje.
+        todas_datas = [
+            date.fromisoformat(str(d))
+            for aloc in alocacoes
+            for d in aloc.get("datas_aulas", [])
+        ]
+        data_corte = min(todas_datas) if todas_datas else date.today()
+
         del_conditions = [
             Aula.evento_id == evento_id,
-            Aula.data >= hoje,
+            Aula.data >= data_corte,
             Aula.alterada_manualmente == False,
         ]
         if uc_ids_no_plano:
