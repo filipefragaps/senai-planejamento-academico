@@ -392,69 +392,87 @@ function KpiCard({ title, value, subtitle, icon: Icon, color }: any) {
 function EficienciaChart({ dados }: { dados: any[] }) {
   const maxCH = Math.max(...dados.map((d) => d.ch_estimada), 1);
   const HEIGHT = 180;
-  const BAR_W = 28;
-  const GAP = 8;
-  const PAD_LEFT = 48;
-  const PAD_BOTTOM = 32;
+  const BAR_W = 32;
+  const GAP = 10;
+  const PAD_LEFT = 44;
+  const PAD_TOP = 36;    // espaço para 2 linhas de % acima da barra mais alta
+  const PAD_BOTTOM = 28;
   const totalW = PAD_LEFT + dados.length * (BAR_W + GAP);
+  const totalH = HEIGHT + PAD_TOP + PAD_BOTTOM;
 
   return (
-    <svg width="100%" viewBox={`0 0 ${totalW} ${HEIGHT + PAD_BOTTOM}`} className="overflow-visible">
-      {/* Grid lines */}
+    <svg
+      width="100%"
+      viewBox={`0 0 ${totalW} ${totalH}`}
+      style={{ display: "block" }}
+    >
+      {/* Linhas de grade */}
       {[0, 0.25, 0.5, 0.75, 1].map((frac) => {
-        const y = HEIGHT - frac * HEIGHT;
+        const y = PAD_TOP + HEIGHT * (1 - frac);
         const val = Math.round(frac * maxCH);
         return (
           <g key={frac}>
             <line x1={PAD_LEFT} y1={y} x2={totalW} y2={y} stroke="#e5e7eb" strokeWidth="1" />
-            <text x={PAD_LEFT - 4} y={y + 4} textAnchor="end" fontSize="9" fill="#9ca3af">
+            <text x={PAD_LEFT - 4} y={y + 3} textAnchor="end" fontSize="9" fill="#9ca3af">
               {val}h
             </text>
           </g>
         );
       })}
 
-      {/* Bars */}
       {dados.map((d, i) => {
         const x = PAD_LEFT + i * (BAR_W + GAP);
         const total = d.ch_estimada || 0;
-        const hQ   = total > 0 ? (d.ch_quadro / total) * HEIGHT * (total / maxCH) : 0;
-        const hExt = total > 0 ? (d.ch_externos / total) * HEIGHT * (total / maxCH) : 0;
-        const hNao = total > 0 ? (d.ch_nao_realizada / total) * HEIGHT * (total / maxCH) : 0;
         const barH = HEIGHT * (total / maxCH);
-        const yBase = HEIGHT;
+        const hQ   = total > 0 ? (d.ch_quadro / total) * barH : 0;
+        const hExt = total > 0 ? (d.ch_externos / total) * barH : 0;
+        const hNao = barH - hQ - hExt;
+        const yBase = PAD_TOP + HEIGHT;
+
+        const pctQ   = total > 0 ? Math.round(d.ch_quadro / total * 100) : 0;
+        const pctExt = total > 0 ? Math.round(d.ch_externos / total * 100) : 0;
 
         return (
           <g key={d.mes}>
-            {/* CH não realizada (topo — cinza) */}
-            {hNao > 0 && (
-              <rect x={x} y={yBase - hNao - hQ - hExt} width={BAR_W} height={hNao}
-                fill="#e5e7eb" rx="0" />
+            {/* Não realizada — cinza (topo) */}
+            {hNao > 0.5 && (
+              <rect x={x} y={yBase - barH} width={BAR_W} height={hNao} fill="#e5e7eb" />
             )}
-            {/* CH externos (meio — âmbar) */}
-            {hExt > 0 && (
-              <rect x={x} y={yBase - hQ - hExt} width={BAR_W} height={hExt}
-                fill="#f59e0b" rx="0" />
+            {/* Externos — âmbar */}
+            {hExt > 0.5 && (
+              <rect x={x} y={yBase - hQ - hExt} width={BAR_W} height={hExt} fill="#f59e0b" />
             )}
-            {/* CH quadro (baixo — verde) */}
-            {hQ > 0 && (
-              <rect x={x} y={yBase - hQ} width={BAR_W} height={hQ}
-                fill="#16a34a" rx="0" />
+            {/* Quadro — verde (base) */}
+            {hQ > 0.5 && (
+              <rect x={x} y={yBase - hQ} width={BAR_W} height={hQ} fill="#16a34a" />
             )}
-            {/* Contorno total */}
+            {/* Contorno da barra total */}
             {barH > 0 && (
               <rect x={x} y={yBase - barH} width={BAR_W} height={barH}
                 fill="none" stroke="#d1d5db" strokeWidth="0.5" rx="1" />
             )}
-            {/* Eficiência % acima da barra */}
+
+            {/* % CLT (verde) — linha superior acima da barra */}
             {total > 0 && (
-              <text x={x + BAR_W / 2} y={yBase - barH - 4}
-                textAnchor="middle" fontSize="8" fill="#374151" fontWeight="600">
-                {d.eficiencia_pct.toFixed(0)}%
+              <text
+                x={x + BAR_W / 2} y={yBase - barH - 17}
+                textAnchor="middle" fontSize="8.5" fill="#16a34a" fontWeight="700"
+              >
+                {pctQ}%
               </text>
             )}
-            {/* Label mês */}
-            <text x={x + BAR_W / 2} y={HEIGHT + PAD_BOTTOM - 4}
+            {/* % Externos (âmbar) — linha inferior acima da barra */}
+            {total > 0 && (
+              <text
+                x={x + BAR_W / 2} y={yBase - barH - 5}
+                textAnchor="middle" fontSize="8.5" fill="#d97706" fontWeight="700"
+              >
+                {pctExt}%
+              </text>
+            )}
+
+            {/* Rótulo do mês */}
+            <text x={x + BAR_W / 2} y={yBase + PAD_BOTTOM - 2}
               textAnchor="middle" fontSize="9" fill="#6b7280">
               {d.label}
             </text>
@@ -651,24 +669,28 @@ export default function DashboardPage() {
             </div>
 
             {/* Gráfico de barras */}
-            <div className="overflow-x-auto">
-              <div style={{ minWidth: 560 }}>
+            <div className="overflow-x-auto rounded">
+              <div style={{ minWidth: Math.max(520, eficienciaData.por_mes.length * 44) }}>
                 <EficienciaChart dados={eficienciaData.por_mes} />
               </div>
             </div>
 
             {/* Legenda */}
-            <div className="flex items-center gap-5 mt-3 justify-center">
-              {[
-                { color: "bg-green-600", label: "CH Quadro Próprio (realizada)" },
-                { color: "bg-amber-400", label: "CH Externos (realizada)" },
-                { color: "bg-gray-200", label: "CH Não Realizada (agendada/futura)" },
-              ].map((l) => (
-                <div key={l.label} className="flex items-center gap-1.5">
-                  <span className={cn("w-3 h-3 rounded-sm inline-block", l.color)} />
-                  <span className="text-[10px] text-gray-500">{l.label}</span>
-                </div>
-              ))}
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-4 justify-center">
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-sm inline-block bg-green-600" />
+                <span className="text-[10px] text-gray-500">CH Quadro Próprio (CLT)</span>
+                <span className="text-[10px] font-semibold text-green-700">— % em verde acima</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-sm inline-block bg-amber-400" />
+                <span className="text-[10px] text-gray-500">CH Externos (PJ · RPA)</span>
+                <span className="text-[10px] font-semibold text-amber-700">— % em âmbar acima</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-sm inline-block bg-gray-200" />
+                <span className="text-[10px] text-gray-500">Não Realizada (agendada/futura)</span>
+              </div>
             </div>
           </>
         ) : null}
