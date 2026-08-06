@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.services.excel_import import excel_import_service, _norm_col
+from app.services.excel_import_seduc import importar_cronograma_seduc, reverter_importacao_seduc
 from app.core.deps import get_current_user
 from app.config import settings
 
@@ -74,6 +75,66 @@ async def diagnosticar_excel(
         return {"abas": list(xls.sheet_names), "detalhe": resultado}
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Erro ao ler planilha: {str(e)}")
+
+
+@router.post("/cronograma-seduc")
+async def importar_seduc(
+    arquivo: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """
+    Importa planilha SEDUC (cursos integrados com Ensino Médio).
+    Colunas: Data | Evento | Turno | HORA_INICIO | HORA_TERMINO | Curso |
+             Unidade Curricular | Aula | Subturma | Professor | Ambiente | ...
+    Todas as aulas são marcadas com fonte='seduc' para rollback.
+    """
+    if not arquivo.filename.endswith((".xlsx", ".xls")):
+        raise HTTPException(status_code=400, detail="Arquivo deve ser .xlsx ou .xls")
+
+    tamanho_max = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    conteudo = await arquivo.read()
+    if len(conteudo) > tamanho_max:
+        raise HTTPException(status_code=400, detail=f"Arquivo muito grande (máximo {settings.MAX_UPLOAD_SIZE_MB}MB)")
+
+    try:
+        resultado = await importar_cronograma_seduc(conteudo, db)
+        await db.commit()
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail=f"Erro ao processar planilha SEDUC: {str(e)}")
+
+    return {
+        "sucesso": True,
+        "criadas": resultado["criadas"],
+        "atualizadas": resultado["atualizadas"],
+        "erros": resultado["erros"],
+        "mensagem": (
+            f"Importação SEDUC concluída: {resultado['criadas']} aulas criadas, "
+            f"{resultado['atualizadas']} atualizadas."
+            + (f" {len(resultado['erros'])} erros." if resultado["erros"] else "")
+        ),
+    }
+
+
+@router.delete("/cronograma-seduc")
+async def reverter_seduc(
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """Remove todas as aulas importadas via planilha SEDUC (fonte='seduc')."""
+    try:
+        resultado = await reverter_importacao_seduc(db)
+        await db.commit()
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Erro ao reverter importação SEDUC: {str(e)}")
+
+    return {
+        "sucesso": True,
+        "deletadas": resultado["deletadas"],
+        "mensagem": f"Rollback concluído: {resultado['deletadas']} aulas SEDUC removidas.",
+    }
 
 
 @router.get("/template")

@@ -212,6 +212,19 @@ export const importacaoApi = {
       .then((r) => r.data);
   },
   template: () => api.get("/importacao/template").then((r) => r.data),
+  importarSeduc: (file: File) => {
+    const form = new FormData();
+    form.append("arquivo", file);
+    return api
+      .post("/importacao/cronograma-seduc", form, {
+        transformRequest: (data, headers) => {
+          if (headers) delete headers["Content-Type"];
+          return data;
+        },
+      })
+      .then((r) => r.data);
+  },
+  reverterSeduc: () => api.delete("/importacao/cronograma-seduc").then((r) => r.data),
 };
 
 // Relatórios

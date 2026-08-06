@@ -27,6 +27,7 @@ class Aula(Base):
     observacoes: Mapped[str | None] = mapped_column(Text)
     alterada_manualmente: Mapped[bool] = mapped_column(default=False)
     uc_nome_original: Mapped[str | None] = mapped_column(String(300))  # raw UC name from import when uc link fails
+    fonte: Mapped[str | None] = mapped_column(String(50))              # origem da aula: 'seduc', etc.
     dados_anteriores: Mapped[dict | None] = mapped_column(JSON)  # snapshot before manual change
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     atualizado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

@@ -5,7 +5,10 @@ import { PageHeader } from "@/components/page-header";
 import { importacaoApi } from "@/lib/api";
 import { LimparBdButton } from "@/components/limpar-bd-button";
 import { toast } from "sonner";
-import { Upload, FileSpreadsheet, CheckCircle, AlertCircle, Loader2, Info, Download } from "lucide-react";
+import {
+  Upload, FileSpreadsheet, CheckCircle, AlertCircle, Loader2,
+  Info, Download, Trash2, RefreshCw,
+} from "lucide-react";
 import { downloadModeloDadosMestres } from "@/lib/templates";
 import { cn } from "@/lib/utils";
 
@@ -22,7 +25,16 @@ interface ResultadoImportacao {
   };
 }
 
+interface ResultadoSeduc {
+  sucesso: boolean;
+  mensagem: string;
+  criadas: number;
+  atualizadas: number;
+  erros: string[];
+}
+
 export default function ImportacaoPage() {
+  // ── Dados Mestres ─────────────────────────────────────────────────────────
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [nomeArquivo, setNomeArquivo] = useState("");
@@ -30,17 +42,26 @@ export default function ImportacaoPage() {
   const [erro, setErro] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // ── SEDUC ─────────────────────────────────────────────────────────────────
+  const [seducDragging, setSeducDragging] = useState(false);
+  const [seducLoading, setSeducLoading] = useState(false);
+  const [seducNomeArquivo, setSeducNomeArquivo] = useState("");
+  const [seducResultado, setSeducResultado] = useState<ResultadoSeduc | null>(null);
+  const [seducErro, setSeducErro] = useState<string | null>(null);
+  const [rollbackLoading, setRollbackLoading] = useState(false);
+  const [rollbackConfirm, setRollbackConfirm] = useState(false);
+  const seducInputRef = useRef<HTMLInputElement>(null);
+
+  // ── handlers dados mestres ────────────────────────────────────────────────
   async function processFile(file: File) {
     if (!file.name.match(/\.(xlsx|xls)$/i)) {
       toast.error("O arquivo deve ser .xlsx ou .xls");
       return;
     }
-
     setLoading(true);
     setResultado(null);
     setErro(null);
     setNomeArquivo(file.name);
-
     try {
       const res: ResultadoImportacao = await importacaoApi.importarExcel(file);
       setResultado(res);
@@ -53,18 +74,14 @@ export default function ImportacaoPage() {
       if (total > 0) {
         toast.success(`Importado com sucesso! ${total} registros processados.`);
       } else {
-        toast.warning(
-          "Arquivo processado, mas nenhum registro foi importado. Verifique os nomes das abas e colunas."
-        );
+        toast.warning("Arquivo processado, mas nenhum registro foi importado. Verifique os nomes das abas e colunas.");
       }
     } catch (err: any) {
       const raw = err?.response?.data?.detail;
       const detalhe =
-        typeof raw === "string"
-          ? raw
-          : Array.isArray(raw)
-          ? raw.map((e: any) => e.msg || JSON.stringify(e)).join("; ")
-          : err?.message || "Erro desconhecido ao processar o arquivo.";
+        typeof raw === "string" ? raw
+        : Array.isArray(raw) ? raw.map((e: any) => e.msg || JSON.stringify(e)).join("; ")
+        : err?.message || "Erro desconhecido ao processar o arquivo.";
       setErro(detalhe);
       toast.error(`Erro na importação: ${detalhe}`);
     } finally {
@@ -72,22 +89,52 @@ export default function ImportacaoPage() {
     }
   }
 
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    setDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) processFile(file);
+  // ── handlers SEDUC ────────────────────────────────────────────────────────
+  async function processSeducFile(file: File) {
+    if (!file.name.match(/\.(xlsx|xls)$/i)) {
+      toast.error("O arquivo deve ser .xlsx ou .xls");
+      return;
+    }
+    setSeducLoading(true);
+    setSeducResultado(null);
+    setSeducErro(null);
+    setSeducNomeArquivo(file.name);
+    try {
+      const res: ResultadoSeduc = await importacaoApi.importarSeduc(file);
+      setSeducResultado(res);
+      toast.success(res.mensagem || "Importação SEDUC concluída!");
+    } catch (err: any) {
+      const raw = err?.response?.data?.detail;
+      const detalhe =
+        typeof raw === "string" ? raw
+        : err?.message || "Erro desconhecido ao processar a planilha SEDUC.";
+      setSeducErro(detalhe);
+      toast.error(`Erro SEDUC: ${detalhe}`);
+    } finally {
+      setSeducLoading(false);
+    }
   }
 
-  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) processFile(file);
-    // Limpa o input para permitir reimportar o mesmo arquivo
-    e.target.value = "";
+  async function handleRollbackSeduc() {
+    if (!rollbackConfirm) {
+      setRollbackConfirm(true);
+      return;
+    }
+    setRollbackLoading(true);
+    setRollbackConfirm(false);
+    try {
+      const res = await importacaoApi.reverterSeduc();
+      setSeducResultado(null);
+      toast.success(res.mensagem || `${res.deletadas} aulas SEDUC removidas.`);
+    } catch {
+      toast.error("Erro ao desfazer importação SEDUC.");
+    } finally {
+      setRollbackLoading(false);
+    }
   }
 
   return (
-    <div>
+    <div className="space-y-8">
       <PageHeader
         title="Importar Dados"
         description="Importe sua planilha Excel com os dados do banco preliminar"
@@ -99,20 +146,24 @@ export default function ImportacaoPage() {
         />
       </PageHeader>
 
+      {/* ── Dados Mestres ─────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Área de upload */}
+        {/* Upload */}
         <div className="space-y-4">
           <div
             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
-            onDrop={handleDrop}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              const f = e.dataTransfer.files[0];
+              if (f) processFile(f);
+            }}
             onClick={() => !loading && inputRef.current?.click()}
             className={cn(
               "border-2 border-dashed rounded-xl p-10 text-center transition-colors",
               loading ? "cursor-not-allowed opacity-60" : "cursor-pointer",
-              dragging
-                ? "border-primary bg-blue-50"
-                : "border-gray-200 hover:border-primary hover:bg-gray-50"
+              dragging ? "border-primary bg-blue-50" : "border-gray-200 hover:border-primary hover:bg-gray-50"
             )}
           >
             <input
@@ -120,9 +171,12 @@ export default function ImportacaoPage() {
               type="file"
               accept=".xlsx,.xls"
               className="hidden"
-              onChange={handleFileInput}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) processFile(f);
+                e.target.value = "";
+              }}
             />
-
             {loading ? (
               <div className="text-gray-500">
                 <Loader2 className="animate-spin h-12 w-12 text-primary mx-auto mb-3" />
@@ -135,16 +189,13 @@ export default function ImportacaoPage() {
             ) : (
               <>
                 <Upload className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-700 font-semibold text-lg">
-                  Arraste sua planilha aqui
-                </p>
+                <p className="text-gray-700 font-semibold text-lg">Arraste sua planilha aqui</p>
                 <p className="text-gray-400 text-sm mt-1">ou clique para selecionar</p>
                 <p className="text-xs text-gray-300 mt-3">.xlsx ou .xls • máximo 50MB</p>
               </>
             )}
           </div>
 
-          {/* Erro */}
           {erro && (
             <div className="rounded-lg border border-red-200 bg-red-50 p-4">
               <div className="flex items-start gap-2">
@@ -157,7 +208,6 @@ export default function ImportacaoPage() {
             </div>
           )}
 
-          {/* Resultado da importação */}
           {resultado && (
             <div className="rounded-lg border border-green-200 bg-green-50 p-5">
               <div className="flex items-center gap-2 mb-4">
@@ -177,12 +227,7 @@ export default function ImportacaoPage() {
                     className="flex items-center justify-between text-sm py-1 border-b border-green-100 last:border-0"
                   >
                     <span className="text-green-700">{label}</span>
-                    <span
-                      className={cn(
-                        "font-bold",
-                        (valor || 0) > 0 ? "text-green-800" : "text-gray-400"
-                      )}
-                    >
+                    <span className={cn("font-bold", (valor || 0) > 0 ? "text-green-800" : "text-gray-400")}>
                       {valor ?? 0} registros
                     </span>
                   </div>
@@ -198,9 +243,7 @@ export default function ImportacaoPage() {
                 </div>
               )}
 
-              {/* Zero registros? — dica de diagnóstico */}
-              {(resultado.importados?.cursos === 0 &&
-                resultado.importados?.professores === 0) && (
+              {(resultado.importados?.cursos === 0 && resultado.importados?.professores === 0) && (
                 <div className="mt-3 p-3 bg-amber-50 rounded border border-amber-200">
                   <div className="flex items-start gap-2">
                     <Info className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
@@ -280,13 +323,8 @@ export default function ImportacaoPage() {
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-xs font-bold text-primary">{aba}</span>
                 </div>
-
-                <p className="text-xs text-gray-500 font-mono">
-                  {colunas.join(" | ")}
-                </p>
-                {nota && (
-                  <p className="text-xs text-gray-400 mt-1 italic">{nota}</p>
-                )}
+                <p className="text-xs text-gray-500 font-mono">{colunas.join(" | ")}</p>
+                {nota && <p className="text-xs text-gray-400 mt-1 italic">{nota}</p>}
               </div>
             ))}
           </div>
@@ -302,6 +340,176 @@ export default function ImportacaoPage() {
                 <p>
                   Se os nomes das colunas na sua planilha forem diferentes, você pode
                   renomeá-las ou avisar para ajustar o sistema.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Cronograma SEDUC ──────────────────────────────────────────── */}
+      <div className="card p-6">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="rounded-lg bg-orange-100 p-2">
+            <FileSpreadsheet className="h-5 w-5 text-orange-600" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-gray-800">Importar Cronograma SEDUC</h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Cursos integrados com o Ensino Médio — planilha com colunas separadas{" "}
+              <strong>HORA_INICIO</strong> e <strong>HORA_TERMINO</strong>. Todas as aulas importadas
+              ficam marcadas e podem ser removidas em bloco se algo der errado.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Drop zone SEDUC */}
+          <div className="space-y-4">
+            <div
+              onDragOver={(e) => { e.preventDefault(); setSeducDragging(true); }}
+              onDragLeave={() => setSeducDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setSeducDragging(false);
+                const f = e.dataTransfer.files[0];
+                if (f) processSeducFile(f);
+              }}
+              onClick={() => !seducLoading && seducInputRef.current?.click()}
+              className={cn(
+                "border-2 border-dashed rounded-xl p-8 text-center transition-colors",
+                seducLoading ? "cursor-not-allowed opacity-60" : "cursor-pointer",
+                seducDragging
+                  ? "border-orange-400 bg-orange-50"
+                  : "border-orange-200 hover:border-orange-400 hover:bg-orange-50"
+              )}
+            >
+              <input
+                ref={seducInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) processSeducFile(f);
+                  e.target.value = "";
+                }}
+              />
+              {seducLoading ? (
+                <div className="text-gray-500">
+                  <Loader2 className="animate-spin h-10 w-10 text-orange-500 mx-auto mb-2" />
+                  <p className="font-medium text-gray-700 text-sm">Processando SEDUC...</p>
+                  <p className="text-xs text-gray-400 mt-1">{seducNomeArquivo}</p>
+                </div>
+              ) : (
+                <>
+                  <Upload className="h-10 w-10 text-orange-300 mx-auto mb-2" />
+                  <p className="text-gray-700 font-semibold">Arraste a planilha SEDUC</p>
+                  <p className="text-gray-400 text-xs mt-1">ou clique para selecionar • .xlsx ou .xls</p>
+                </>
+              )}
+            </div>
+
+            {seducErro && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+                  <p className="text-red-700 text-xs">{seducErro}</p>
+                </div>
+              </div>
+            )}
+
+            {seducResultado && (
+              <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <p className="font-semibold text-green-800 text-sm">Importação SEDUC concluída</p>
+                </div>
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between border-b border-green-100 pb-1">
+                    <span className="text-green-700">Aulas criadas</span>
+                    <span className="font-bold text-green-800">{seducResultado.criadas}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-green-700">Aulas atualizadas</span>
+                    <span className="font-bold text-green-800">{seducResultado.atualizadas}</span>
+                  </div>
+                </div>
+                {seducResultado.erros?.length > 0 && (
+                  <div className="mt-2 p-2 bg-yellow-50 rounded border border-yellow-200">
+                    <p className="text-xs font-semibold text-yellow-800 mb-1">Avisos:</p>
+                    {seducResultado.erros.map((e, i) => (
+                      <p key={i} className="text-xs text-yellow-700">{e}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Rollback */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              {rollbackConfirm ? (
+                <>
+                  <span className="text-xs text-red-600 font-medium flex-1 min-w-0">
+                    Confirmar? Remove TODAS as aulas SEDUC importadas.
+                  </span>
+                  <button
+                    onClick={handleRollbackSeduc}
+                    disabled={rollbackLoading}
+                    className="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded-lg flex items-center gap-1 disabled:opacity-50"
+                  >
+                    {rollbackLoading
+                      ? <Loader2 className="h-3 w-3 animate-spin" />
+                      : <Trash2 className="h-3 w-3" />}
+                    Confirmar exclusão
+                  </button>
+                  <button
+                    onClick={() => setRollbackConfirm(false)}
+                    className="text-xs text-gray-500 underline"
+                  >
+                    Cancelar
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={handleRollbackSeduc}
+                  disabled={rollbackLoading}
+                  className="text-xs text-red-600 underline hover:no-underline flex items-center gap-1.5"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  Desfazer importação SEDUC (rollback)
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Info colunas SEDUC */}
+          <div className="space-y-3">
+            <div className="border rounded-lg p-3 border-orange-100 bg-orange-50">
+              <p className="text-xs font-bold text-orange-700 mb-2">Colunas esperadas na planilha SEDUC</p>
+              <p className="text-xs text-gray-600 font-mono leading-relaxed">
+                Data | Evento | Turno | <strong>HORA_INICIO</strong> | <strong>HORA_TERMINO</strong> |
+                Curso | Unidade Curricular | Aula | Subturma | Professor | Ambiente | Carga Horária |
+                Etapa | Modalidade | Área
+              </p>
+            </div>
+
+            <div className="border rounded-lg p-3">
+              <p className="text-xs font-semibold text-gray-700 mb-2">Como funciona o rollback</p>
+              <ol className="text-xs text-gray-500 space-y-1 list-decimal list-inside">
+                <li>Importe a planilha normalmente usando a área acima.</li>
+                <li>As aulas são inseridas no cronograma com uma marcação interna.</li>
+                <li>Se algo der errado, clique em <em>Desfazer importação SEDUC</em>.</li>
+                <li>Todas as aulas marcadas são removidas em bloco — o restante do cronograma não é afetado.</li>
+              </ol>
+            </div>
+
+            <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
+              <div className="flex items-start gap-2">
+                <Info className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-blue-700">
+                  Se uma aula com mesmo evento + data + horário já existir, ela é <strong>atualizada</strong>{" "}
+                  (não duplicada), e também recebe a marcação SEDUC para facilitar o rollback.
                 </p>
               </div>
             </div>
