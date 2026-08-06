@@ -991,6 +991,7 @@ export default function EventosPage() {
   const [ucFormAberto, setUcFormAberto] = useState(false);
   const [ucForm, setUcForm] = useState({ nome: "", carga_horaria: "" });
   const [limparAberto, setLimparAberto] = useState(false);
+  const [excluirEventoConfirm, setExcluirEventoConfirm] = useState(false);
   const [codigoVincular, setCodigoVincular] = useState("");
   const [cursosEncontrados, setCursosEncontrados] = useState<any[]>([]);
   const [ofertaBuscada, setOfertaBuscada] = useState<{id: number; codigo: string; nome: string} | null>(null);
@@ -1207,6 +1208,18 @@ export default function EventosPage() {
       qc.invalidateQueries({ queryKey: ["regencia-projetada", eventoSelecionado?.id] });
     },
     onError: (err: any) => toast.error(err?.response?.data?.detail || "Erro ao remover aulas"),
+  });
+
+  const excluirEventoMut = useMutation({
+    mutationFn: () => eventosApi.deletar(eventoSelecionado!.id),
+    onSuccess: () => {
+      toast.success("Evento excluído com sucesso.");
+      setEventoSelecionado(null);
+      setLimparAberto(false);
+      setExcluirEventoConfirm(false);
+      qc.invalidateQueries({ queryKey: ["eventos"] });
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.detail || "Erro ao excluir evento"),
   });
 
   // ── Handlers ───────────────────────────────────────────────────────────────
@@ -1525,7 +1538,7 @@ export default function EventosPage() {
                   </div>
                   <div className="relative shrink-0">
                     <button
-                      onClick={() => setLimparAberto(!limparAberto)}
+                      onClick={() => { setLimparAberto((v) => !v); setExcluirEventoConfirm(false); }}
                       disabled={apagarPlanejamentoMut.isPending}
                       className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-medium border border-red-200 hover:border-red-300 rounded px-2 py-1 bg-red-50 hover:bg-red-100 transition-colors disabled:opacity-50"
                     >
@@ -1560,11 +1573,44 @@ export default function EventosPage() {
                           </>
                         )}
                         <div className="border-t mt-1 pt-1">
+                          {excluirEventoConfirm ? (
+                            <div className="px-4 py-2 space-y-2">
+                              <p className="text-xs text-red-700 font-semibold">
+                                Excluir o evento e todas as aulas permanentemente?
+                              </p>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => excluirEventoMut.mutate()}
+                                  disabled={excluirEventoMut.isPending}
+                                  className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs py-1.5 rounded font-semibold flex items-center justify-center gap-1 disabled:opacity-50"
+                                >
+                                  {excluirEventoMut.isPending
+                                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                                    : <Trash2 className="h-3 w-3" />}
+                                  Sim, excluir tudo
+                                </button>
+                                <button
+                                  onClick={() => setExcluirEventoConfirm(false)}
+                                  className="flex-1 text-xs text-gray-500 hover:text-gray-700 border rounded py-1.5"
+                                >
+                                  Cancelar
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setExcluirEventoConfirm(true)}
+                              className="w-full text-left px-4 py-2.5 text-sm text-red-700 hover:bg-red-50 font-semibold flex items-center gap-2"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Excluir evento completamente
+                            </button>
+                          )}
                           <button
-                            onClick={() => setLimparAberto(false)}
+                            onClick={() => { setLimparAberto(false); setExcluirEventoConfirm(false); }}
                             className="w-full text-left px-4 py-2 text-xs text-gray-400 hover:text-gray-600"
                           >
-                            Cancelar
+                            Fechar
                           </button>
                         </div>
                       </div>
