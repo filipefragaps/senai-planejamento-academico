@@ -74,6 +74,7 @@ export default function CronogramaPage() {
   const [semana, setSemana] = useState(hoje);
   const [diaSelecionado, setDiaSelecionado] = useState<string | null>(null);
   const [aulaEditando, setAulaEditando] = useState<any | null>(null);
+  const [turnoFiltro, setTurnoFiltro] = useState<"todos" | "manha" | "tarde" | "noite">("todos");
   const [professorFiltro, setProfessorFiltro] = useState("");
   const [eventoFiltro, setEventoFiltro] = useState("");
   const [buscaEvento, setBuscaEvento] = useState("");
@@ -176,10 +177,19 @@ export default function CronogramaPage() {
   }, [aulas]);
 
   const hojeStr = hoje.toISOString().slice(0, 10);
+
+  function turnoDeHorario(h: string | null | undefined): "manha" | "tarde" | "noite" {
+    const hora = parseInt((h ?? "00").slice(0, 2), 10);
+    if (hora < 12) return "manha";
+    if (hora < 18) return "tarde";
+    return "noite";
+  }
+
   const aulasNoDia = diaSelecionado
-    ? (aulasPorDia.get(diaSelecionado) ?? []).slice().sort(
-        (a: any, b: any) => (a.horario_inicio ?? "").localeCompare(b.horario_inicio ?? "")
-      )
+    ? (aulasPorDia.get(diaSelecionado) ?? [])
+        .slice()
+        .sort((a: any, b: any) => (a.horario_inicio ?? "").localeCompare(b.horario_inicio ?? ""))
+        .filter((a: any) => turnoFiltro === "todos" || turnoDeHorario(a.horario_inicio) === turnoFiltro)
     : [];
 
   function imprimirDia() {
@@ -240,6 +250,7 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
   function handleDiaClick(d: string) {
     const novo = diaSelecionado === d ? null : d;
     setDiaSelecionado(novo);
+    setTurnoFiltro("todos");
     if (novo) setTimeout(() => tabelaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
   }
 
@@ -645,13 +656,36 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
                 {aulasNoDia.length === 0
                   ? "Nenhuma aula agendada"
                   : `${aulasNoDia.length} aula(s)`}
+                {turnoFiltro !== "todos" && ` · ${turnoFiltro === "manha" ? "Manhã" : turnoFiltro === "tarde" ? "Tarde" : "Noite"}`}
                 {eventoSelecionadoNome ? ` · ${eventoSelecionadoNome}` : ""}
                 {professorFiltro && (professores as any[]).find((p: any) => String(p.id) === professorFiltro)
                   ? ` · Prof. ${(professores as any[]).find((p: any) => String(p.id) === professorFiltro)?.nome}`
                   : ""}
               </p>
             </div>
-            <div className="flex items-center gap-2 print:hidden">
+            <div className="flex items-center gap-2 print:hidden flex-wrap">
+              {/* Filtro de turno */}
+              <div className="flex items-center gap-1 bg-white/10 rounded-lg p-1">
+                {([
+                  { key: "todos",  label: "Todos"  },
+                  { key: "manha",  label: "Manhã"  },
+                  { key: "tarde",  label: "Tarde"  },
+                  { key: "noite",  label: "Noite"  },
+                ] as const).map(({ key, label }) => (
+                  <button
+                    key={key}
+                    onClick={() => setTurnoFiltro(key)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-md text-xs font-semibold transition-all",
+                      turnoFiltro === key
+                        ? "bg-white text-blue-700 shadow"
+                        : "text-white/70 hover:text-white hover:bg-white/10"
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
               <button
                 onClick={imprimirDia}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition-colors"

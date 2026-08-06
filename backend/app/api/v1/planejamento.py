@@ -411,8 +411,16 @@ async def cronograma_geral(
     rows = []
     for a in aulas:
         ev = eventos.get(a.evento_id)
-        nome_evento = ev.nome_turma if ev else None
         nome_curso = cursos.get(ev.curso_id) if ev and ev.curso_id else None
+
+        # Garante que nome_evento sempre exibe: código – nome do curso
+        nome_evt = (ev.nome_turma or "") if ev else ""
+        disciplina = (ev.disciplina or "") if ev else ""
+        if disciplina and disciplina.lower() not in nome_evt.lower():
+            nome_evento = f"{nome_evt} – {disciplina}" if nome_evt else disciplina
+        else:
+            nome_evento = nome_evt or None
+
         rows.append(_serializar_aula(
             a,
             nome_prof=profs.get(a.professor_id),
