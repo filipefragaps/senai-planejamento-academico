@@ -392,10 +392,10 @@ function KpiCard({ title, value, subtitle, icon: Icon, color }: any) {
 function EficienciaChart({ dados }: { dados: any[] }) {
   const maxCH = Math.max(...dados.map((d) => d.ch_estimada), 1);
   const HEIGHT = 180;
-  const BAR_W = 32;
+  const BAR_W = 36;
   const GAP = 10;
   const PAD_LEFT = 44;
-  const PAD_TOP = 36;    // espaço para 2 linhas de % acima da barra mais alta
+  const PAD_TOP = 36;
   const PAD_BOTTOM = 28;
   const totalW = PAD_LEFT + dados.length * (BAR_W + GAP);
   const totalH = HEIGHT + PAD_TOP + PAD_BOTTOM;
@@ -434,17 +434,35 @@ function EficienciaChart({ dados }: { dados: any[] }) {
 
         return (
           <g key={d.mes}>
-            {/* Não realizada — cinza (topo) */}
+            {/* Não realizada — cinza (topo, resíduo de arredondamento) */}
             {hNao > 0.5 && (
               <rect x={x} y={yBase - barH} width={BAR_W} height={hNao} fill="#e5e7eb" />
             )}
-            {/* Externos — âmbar */}
+            {/* Externos / Sem docente — âmbar */}
             {hExt > 0.5 && (
               <rect x={x} y={yBase - hQ - hExt} width={BAR_W} height={hExt} fill="#f59e0b" />
+            )}
+            {/* Horas externos dentro do segmento âmbar */}
+            {hExt > 20 && (
+              <text
+                x={x + BAR_W / 2} y={yBase - hQ - hExt / 2 + 3.5}
+                textAnchor="middle" fontSize="7" fill="white" fontWeight="700"
+              >
+                {Math.round(d.ch_externos)}h
+              </text>
             )}
             {/* Quadro — verde (base) */}
             {hQ > 0.5 && (
               <rect x={x} y={yBase - hQ} width={BAR_W} height={hQ} fill="#16a34a" />
+            )}
+            {/* Horas quadro dentro do segmento verde */}
+            {hQ > 20 && (
+              <text
+                x={x + BAR_W / 2} y={yBase - hQ / 2 + 3.5}
+                textAnchor="middle" fontSize="7" fill="white" fontWeight="700"
+              >
+                {Math.round(d.ch_quadro)}h
+              </text>
             )}
             {/* Contorno da barra total */}
             {barH > 0 && (
@@ -641,14 +659,14 @@ export default function DashboardPage() {
                 {
                   label: "CH Quadro Próprio",
                   value: `${eficienciaData.total.ch_quadro.toFixed(0)}h`,
-                  sub: "Realizada pelo quadro",
+                  sub: "Realizado + previsto pelo quadro",
                   color: "text-green-700",
                   bg: "bg-green-50",
                 },
                 {
                   label: "CH Externos",
                   value: `${eficienciaData.total.ch_externos.toFixed(0)}h`,
-                  sub: "PJ · RPA",
+                  sub: "PJ · RPA · Sem docente",
                   color: "text-amber-700",
                   bg: "bg-amber-50",
                 },
@@ -670,7 +688,7 @@ export default function DashboardPage() {
 
             {/* Gráfico de barras */}
             <div className="overflow-x-auto rounded">
-              <div style={{ minWidth: Math.max(520, eficienciaData.por_mes.length * 44) }}>
+              <div style={{ minWidth: Math.max(520, eficienciaData.por_mes.length * 48) }}>
                 <EficienciaChart dados={eficienciaData.por_mes} />
               </div>
             </div>
@@ -679,17 +697,11 @@ export default function DashboardPage() {
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-4 justify-center">
               <div className="flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded-sm inline-block bg-green-600" />
-                <span className="text-[10px] text-gray-500">CH Quadro Próprio (CLT)</span>
-                <span className="text-[10px] font-semibold text-green-700">— % em verde acima</span>
+                <span className="text-[10px] text-gray-500">Quadro Próprio (CLT) — % e horas em verde</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded-sm inline-block bg-amber-400" />
-                <span className="text-[10px] text-gray-500">CH Externos (PJ · RPA)</span>
-                <span className="text-[10px] font-semibold text-amber-700">— % em âmbar acima</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-sm inline-block bg-gray-200" />
-                <span className="text-[10px] text-gray-500">Não Realizada (agendada/futura)</span>
+                <span className="text-[10px] text-gray-500">Externos + Sem Docente — % e horas em âmbar</span>
               </div>
             </div>
           </>

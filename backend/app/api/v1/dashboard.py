@@ -240,11 +240,14 @@ async def get_eficiencia(
             continue
         hrs = _hrs(row.horario_inicio, row.horario_fim)
         por_mes[key]["ch_estimada"] += hrs
-        if row.status == "Realizada":
-            if row.prof_tipo in _TIPOS_QUADRO:
-                por_mes[key]["ch_quadro"] += hrs
-            else:
-                por_mes[key]["ch_externos"] += hrs
+        # Classifica por tipo independente do status:
+        # - Realizada: produção efetiva
+        # - Agendada sem docente: considera extraquadro (sem professor = externo)
+        # - Agendada com docente: classifica pelo tipo do professor
+        if row.prof_tipo in _TIPOS_QUADRO:
+            por_mes[key]["ch_quadro"] += hrs
+        else:
+            por_mes[key]["ch_externos"] += hrs
 
     resultado = []
     for key in sorted(por_mes):
