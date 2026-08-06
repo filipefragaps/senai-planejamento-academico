@@ -67,6 +67,19 @@ async def _aplicar_migracoes(engine) -> None:
             "WHERE data < CURRENT_DATE "
             "AND status NOT IN ('Remarcada', 'Cancelada', 'Realizada')"
         ),
+        # Eventos que já iniciaram: Planejado → Ativo
+        (
+            "UPDATE eventos SET status = 'Ativo' "
+            "WHERE status = 'Planejado' "
+            "AND data_inicio <= CURRENT_DATE "
+            "AND data_fim >= CURRENT_DATE"
+        ),
+        # Eventos que já encerraram: Planejado/Ativo → Concluído
+        (
+            "UPDATE eventos SET status = 'Concluído' "
+            "WHERE status IN ('Planejado', 'Ativo') "
+            "AND data_fim < CURRENT_DATE"
+        ),
     ]:
         try:
             async with engine.begin() as conn:

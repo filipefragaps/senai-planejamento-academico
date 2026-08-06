@@ -1140,6 +1140,17 @@ export default function EventosPage() {
     onError: (err: any) => toast.error(err?.response?.data?.detail || "Erro ao importar"),
   });
 
+  const alterarStatus = useMutation({
+    mutationFn: (novoStatus: string) =>
+      eventosApi.atualizar(eventoSelecionado!.id, { status: novoStatus }),
+    onSuccess: (updated: any) => {
+      setEventoSelecionado((prev) => prev ? { ...prev, ...updated } : prev);
+      qc.invalidateQueries({ queryKey: ["eventos"] });
+      toast.success("Status atualizado.");
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.detail || "Erro ao atualizar status"),
+  });
+
   const salvarAgenda = useMutation({
     mutationFn: () => eventosApi.atualizar(eventoSelecionado!.id, {
       data_inicio: agendaForm.data_inicio || undefined,
@@ -1413,9 +1424,23 @@ export default function EventosPage() {
                     <p className="font-semibold text-gray-900 truncate">
                       {eventoSelecionado.nome_curso || eventoSelecionado.disciplina || eventoSelecionado.nome_turma}
                     </p>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {formatDate(eventoSelecionado.data_inicio)} – {formatDate(eventoSelecionado.data_fim)}
-                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="text-xs text-gray-500">
+                        {formatDate(eventoSelecionado.data_inicio)} – {formatDate(eventoSelecionado.data_fim)}
+                      </p>
+                      <StatusBadge status={eventoSelecionado.status} />
+                      <select
+                        className="text-[10px] border rounded px-1 py-0.5 text-gray-600 bg-white cursor-pointer"
+                        value={eventoSelecionado.status}
+                        onChange={(e) => alterarStatus.mutate(e.target.value)}
+                        disabled={alterarStatus.isPending}
+                        title="Alterar status do evento"
+                      >
+                        {["Planejado","Ativo","Concluído","Cancelado"].map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                   <div className="relative shrink-0">
                     <button
