@@ -276,9 +276,16 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
     return d;
   });
 
-  const eventoSelecionadoNome = eventoFiltro
-    ? ((todosEventos as any[]).find((e: any) => String(e.id) === eventoFiltro)?.nome_turma ?? "")
-    : "";
+  const eventoSelecionadoNome = useMemo(() => {
+    if (!eventoFiltro) return "";
+    const ev = (todosEventos as any[]).find((e: any) => String(e.id) === eventoFiltro);
+    if (!ev) return "";
+    const base = ev.nome_turma || String(ev.id);
+    const curso = ev.nome_curso || ev.disciplina || "";
+    return curso && !base.toLowerCase().includes(curso.toLowerCase().slice(0, 15))
+      ? `${base} – ${curso}`
+      : base;
+  }, [eventoFiltro, todosEventos]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -348,9 +355,14 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
                   ? `${eventosFiltrados.length} evento(s) encontrado(s)`
                   : "Todos os eventos"}
               </option>
-              {eventosFiltrados.map((e: any) => (
-                <option key={e.id} value={e.id}>{e.nome_turma}</option>
-              ))}
+              {eventosFiltrados.map((e: any) => {
+                const base = e.nome_turma || String(e.id);
+                const curso = e.nome_curso || e.disciplina || "";
+                const label = curso && !base.toLowerCase().includes(curso.toLowerCase().slice(0, 15))
+                  ? `${base} – ${curso}`
+                  : base;
+                return <option key={e.id} value={e.id}>{label}</option>;
+              })}
             </select>
           </div>
 
