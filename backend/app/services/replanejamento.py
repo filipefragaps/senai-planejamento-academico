@@ -4,7 +4,7 @@ Quando coordenador altera uma aula, recalcula automaticamente as aulas futuras.
 """
 from datetime import date, time, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, update as sql_update
 from app.models.aula import Aula
 from app.models.evento import Evento
 from app.models.professor import Professor
@@ -101,62 +101,52 @@ async def alterar_aula_e_replaneja(
     conflitos = []
 
     if replaneja_futuras and evento:
-        # Inclui Agendada E Realizada: aulas passadas são marcadas como Realizada
-        # pela migration de startup, mas ainda precisam ser atualizadas pelo coordenador.
-        # Cancelada e Remarcada são preservadas pois já foram tratadas individualmente.
-        filtros = [
+        # Filtros base: aulas futuras (após a data editada) da mesma UC (se definida),
+        # excluindo apenas Cancelada e Remarcada (Realizada é incluída — aulas passadas
+        # marcadas pelo startup devem ser atualizadas pelo coordenador)
+        filtros_base = [
             Aula.evento_id == evento.id,
             Aula.data > aula.data,
-            Aula.status.not_in(["Cancelada", "Remarcada"]),
+            ~Aula.status.in_(["Cancelada", "Remarcada"]),
         ]
-        # Propaga apenas dentro da mesma UC (quando definida)
         if aula.unidade_curricular_id is not None:
-            filtros.append(Aula.unidade_curricular_id == aula.unidade_curricular_id)
+            filtros_base.append(Aula.unidade_curricular_id == aula.unidade_curricular_id)
 
+        novo_professor_id = alteracoes.get("professor_id")
+        nova_sala = alteracoes.get("sala")
+
+        # UPDATE direto no banco — evita inconsistências de rastreamento de objetos
+        # na sessão async do SQLAlchemy ao modificar muitos objetos em loop
+        valores: dict = {}
+        if novo_professor_id is not None:
+            valores["professor_id"] = novo_professor_id
+        if nova_sala:
+            valores["sala"] = nova_sala
+
+        if valores:
+            await db.execute(
+                sql_update(Aula)
+                .where(and_(*filtros_base))
+                .values(**valores)
+                .execution_options(synchronize_session=False)
+            )
+
+        # Busca aulas para response e detecção de conflitos
         result_futuras = await db.execute(
-            select(Aula).where(and_(*filtros)).order_by(Aula.data)
+            select(Aula).where(and_(*filtros_base)).order_by(Aula.data)
         )
-        aulas_futuras = result_futuras.scalars().all()
+        aulas_replanejadas = result_futuras.scalars().all()
 
-        for aula_futura in aulas_futuras:
-            snap_antes = _snapshot_aula(aula_futura)
-
-            # Mantém professor atual do evento (pode ter mudado)
-            professor_id = evento.professor_id
-            if professor_id and aula_futura.professor_id != professor_id:
-                # Verifica se novo professor tem conflito
-                if not await verificar_conflito_professor(
-                    professor_id, aula_futura.data, aula_futura.horario_inicio, aula_futura.horario_fim, db, aula_futura.id
-                ):
-                    aula_futura.professor_id = professor_id
-
-            # Propaga professor escolhido explicitamente pelo coordenador
-            novo_professor_id = alteracoes.get("professor_id")
-            if novo_professor_id is not None and novo_professor_id != aula_futura.professor_id:
-                # Aplica diretamente — é decisão do coordenador, não do algoritmo automático
-                aula_futura.professor_id = novo_professor_id
-                # Registra como conflito apenas se houver dupla alocação real
+        if novo_professor_id:
+            for af in aulas_replanejadas:
                 if await verificar_conflito_professor(
-                    novo_professor_id, aula_futura.data, aula_futura.horario_inicio, aula_futura.horario_fim, db, aula_futura.id
+                    novo_professor_id, af.data, af.horario_inicio, af.horario_fim, db, af.id
                 ):
                     conflitos.append({
-                        "aula_id": aula_futura.id,
-                        "data": aula_futura.data.isoformat(),
+                        "aula_id": af.id,
+                        "data": af.data.isoformat(),
                         "motivo": "Professor com conflito de horário nesta data",
                     })
-
-            # Propaga sala se alterada
-            nova_sala = alteracoes.get("sala")
-            if nova_sala and nova_sala != aula_futura.sala:
-                if not await verificar_conflito_sala(
-                    nova_sala, aula_futura.data, aula_futura.horario_inicio, aula_futura.horario_fim, db, aula_futura.id
-                ):
-                    aula_futura.sala = nova_sala
-
-            snap_depois = _snapshot_aula(aula_futura)
-            if snap_antes != snap_depois:
-                await registrar_versao(db, aula_futura.id, evento.id, "replanejamento", snap_antes, snap_depois, "Replanejamento automático", usuario_id)
-                aulas_replanejadas.append(aula_futura)
 
     return {
         "aula_alterada": aula,
