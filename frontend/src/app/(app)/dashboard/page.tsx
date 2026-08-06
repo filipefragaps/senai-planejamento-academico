@@ -387,15 +387,97 @@ function KpiCard({ title, value, subtitle, icon: Icon, color }: any) {
 
 // ── Dashboard Page ────────────────────────────────────────────────────────────
 
+// ── Eficiência de Produção ────────────────────────────────────────────────────
+
+function EficienciaChart({ dados }: { dados: any[] }) {
+  const maxCH = Math.max(...dados.map((d) => d.ch_estimada), 1);
+  const HEIGHT = 180;
+  const BAR_W = 28;
+  const GAP = 8;
+  const PAD_LEFT = 48;
+  const PAD_BOTTOM = 32;
+  const totalW = PAD_LEFT + dados.length * (BAR_W + GAP);
+
+  return (
+    <svg width="100%" viewBox={`0 0 ${totalW} ${HEIGHT + PAD_BOTTOM}`} className="overflow-visible">
+      {/* Grid lines */}
+      {[0, 0.25, 0.5, 0.75, 1].map((frac) => {
+        const y = HEIGHT - frac * HEIGHT;
+        const val = Math.round(frac * maxCH);
+        return (
+          <g key={frac}>
+            <line x1={PAD_LEFT} y1={y} x2={totalW} y2={y} stroke="#e5e7eb" strokeWidth="1" />
+            <text x={PAD_LEFT - 4} y={y + 4} textAnchor="end" fontSize="9" fill="#9ca3af">
+              {val}h
+            </text>
+          </g>
+        );
+      })}
+
+      {/* Bars */}
+      {dados.map((d, i) => {
+        const x = PAD_LEFT + i * (BAR_W + GAP);
+        const total = d.ch_estimada || 0;
+        const hQ   = total > 0 ? (d.ch_quadro / total) * HEIGHT * (total / maxCH) : 0;
+        const hExt = total > 0 ? (d.ch_externos / total) * HEIGHT * (total / maxCH) : 0;
+        const hNao = total > 0 ? (d.ch_nao_realizada / total) * HEIGHT * (total / maxCH) : 0;
+        const barH = HEIGHT * (total / maxCH);
+        const yBase = HEIGHT;
+
+        return (
+          <g key={d.mes}>
+            {/* CH não realizada (topo — cinza) */}
+            {hNao > 0 && (
+              <rect x={x} y={yBase - hNao - hQ - hExt} width={BAR_W} height={hNao}
+                fill="#e5e7eb" rx="0" />
+            )}
+            {/* CH externos (meio — âmbar) */}
+            {hExt > 0 && (
+              <rect x={x} y={yBase - hQ - hExt} width={BAR_W} height={hExt}
+                fill="#f59e0b" rx="0" />
+            )}
+            {/* CH quadro (baixo — verde) */}
+            {hQ > 0 && (
+              <rect x={x} y={yBase - hQ} width={BAR_W} height={hQ}
+                fill="#16a34a" rx="0" />
+            )}
+            {/* Contorno total */}
+            {barH > 0 && (
+              <rect x={x} y={yBase - barH} width={BAR_W} height={barH}
+                fill="none" stroke="#d1d5db" strokeWidth="0.5" rx="1" />
+            )}
+            {/* Eficiência % acima da barra */}
+            {total > 0 && (
+              <text x={x + BAR_W / 2} y={yBase - barH - 4}
+                textAnchor="middle" fontSize="8" fill="#374151" fontWeight="600">
+                {d.eficiencia_pct.toFixed(0)}%
+              </text>
+            )}
+            {/* Label mês */}
+            <text x={x + BAR_W / 2} y={HEIGHT + PAD_BOTTOM - 4}
+              textAnchor="middle" fontSize="9" fill="#6b7280">
+              {d.label}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+// ── Dashboard Page ────────────────────────────────────────────────────────────
+
 export default function DashboardPage() {
   const hoje = new Date();
   const mesAtual = yyyyMM(hoje.getFullYear(), hoje.getMonth() + 1);
+  const anoAtual = hoje.getFullYear();
 
   const [profSelecionado, setProfSelecionado] = useState<any | null>(null);
   const [regInicio, setRegInicio] = useState(mesAtual);
   const [regFim, setRegFim] = useState(mesAtual);
   const [buscaTurma, setBuscaTurma] = useState("");
   const [filtroAndamento, setFiltroAndamento] = useState<"todos" | "nao_iniciada" | "em_andamento" | "concluida">("todos");
+  const [eficienciaAno, setEficienciaAno] = useState(anoAtual);
 
   const regDataInicio = `${regInicio}-01`;
   const regDataFim = ultimoDiaMes(regFim);
@@ -404,6 +486,12 @@ export default function DashboardPage() {
     queryKey: ["dashboard"],
     queryFn: dashboardApi.get,
     refetchInterval: 60_000,
+  });
+
+  const { data: eficienciaData, isLoading: loadingEficiencia } = useQuery({
+    queryKey: ["dashboard-eficiencia", eficienciaAno],
+    queryFn: () => dashboardApi.eficiencia(eficienciaAno),
+    staleTime: 120_000,
   });
 
   // Period-specific regência for the professor list
@@ -496,6 +584,94 @@ export default function DashboardPage() {
           icon={TrendingUp}
           color={g.taxa_regencia_media >= 70 ? "bg-green-500" : "bg-yellow-500"}
         />
+      </div>
+
+      {/* ── Eficiência de Produção ─────────────────────────────────────── */}
+      <div className="card p-5 mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">Eficiência de Produção</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              CH estimada dos eventos ativos × entrega pelos professores do quadro (Mensalista · Horista · Inclusão em Folha)
+            </p>
+          </div>
+          <select
+            className="input text-sm py-1 px-2"
+            value={eficienciaAno}
+            onChange={(e) => setEficienciaAno(+e.target.value)}
+          >
+            {[anoAtual - 1, anoAtual, anoAtual + 1].map((a) => (
+              <option key={a} value={a}>{a}</option>
+            ))}
+          </select>
+        </div>
+
+        {loadingEficiencia ? (
+          <div className="h-40 flex items-center justify-center text-gray-400 text-sm">Carregando...</div>
+        ) : eficienciaData ? (
+          <>
+            {/* Cards resumo */}
+            <div className="grid grid-cols-4 gap-3 mb-5">
+              {[
+                {
+                  label: "CH Estimada",
+                  value: `${eficienciaData.total.ch_estimada.toFixed(0)}h`,
+                  sub: "Total eventos ativos",
+                  color: "text-gray-700",
+                  bg: "bg-gray-50",
+                },
+                {
+                  label: "CH Quadro Próprio",
+                  value: `${eficienciaData.total.ch_quadro.toFixed(0)}h`,
+                  sub: "Realizada pelo quadro",
+                  color: "text-green-700",
+                  bg: "bg-green-50",
+                },
+                {
+                  label: "CH Externos",
+                  value: `${eficienciaData.total.ch_externos.toFixed(0)}h`,
+                  sub: "PJ · RPA",
+                  color: "text-amber-700",
+                  bg: "bg-amber-50",
+                },
+                {
+                  label: "Eficiência Quadro",
+                  value: `${eficienciaData.total.eficiencia_pct.toFixed(1)}%`,
+                  sub: "CH quadro / CH estimada",
+                  color: eficienciaData.total.eficiencia_pct >= 70 ? "text-green-700" : eficienciaData.total.eficiencia_pct >= 50 ? "text-amber-700" : "text-red-700",
+                  bg: eficienciaData.total.eficiencia_pct >= 70 ? "bg-green-50" : eficienciaData.total.eficiencia_pct >= 50 ? "bg-amber-50" : "bg-red-50",
+                },
+              ].map((c) => (
+                <div key={c.label} className={cn("rounded-lg p-3 border", c.bg)}>
+                  <p className="text-xs text-gray-500 mb-1">{c.label}</p>
+                  <p className={cn("text-2xl font-bold tabular-nums", c.color)}>{c.value}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">{c.sub}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Gráfico de barras */}
+            <div className="overflow-x-auto">
+              <div style={{ minWidth: 560 }}>
+                <EficienciaChart dados={eficienciaData.por_mes} />
+              </div>
+            </div>
+
+            {/* Legenda */}
+            <div className="flex items-center gap-5 mt-3 justify-center">
+              {[
+                { color: "bg-green-600", label: "CH Quadro Próprio (realizada)" },
+                { color: "bg-amber-400", label: "CH Externos (realizada)" },
+                { color: "bg-gray-200", label: "CH Não Realizada (agendada/futura)" },
+              ].map((l) => (
+                <div key={l.label} className="flex items-center gap-1.5">
+                  <span className={cn("w-3 h-3 rounded-sm inline-block", l.color)} />
+                  <span className="text-[10px] text-gray-500">{l.label}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : null}
       </div>
 
       <div className="grid grid-cols-3 gap-4 mb-8">

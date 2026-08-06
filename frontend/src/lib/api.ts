@@ -121,6 +121,8 @@ export const aulasApi = {
 // Dashboard
 export const dashboardApi = {
   get: () => api.get("/dashboard/").then((r) => r.data),
+  eficiencia: (ano?: number) =>
+    api.get("/dashboard/eficiencia", { params: ano ? { ano } : undefined }).then((r) => r.data),
 };
 
 // Ofertas / Eventos SENAI

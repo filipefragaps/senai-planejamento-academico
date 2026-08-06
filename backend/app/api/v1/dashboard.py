@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
@@ -9,6 +9,9 @@ from app.models.aula import Aula
 from app.schemas.dashboard import DashboardData, KPIGlobal, KPIProfessor, KPITurma
 from app.services.regencia import calcular_regencia_todos
 from app.core.deps import get_current_user
+
+_MESES_PT = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
+_TIPOS_QUADRO = {"Mensalista", "Horista", "Inclusão em Folha"}
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
@@ -176,3 +179,103 @@ async def get_dashboard(
         )
     except Exception:
         return _dashboard_vazio()
+
+
+@router.get("/eficiencia")
+async def get_eficiencia(
+    ano: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """
+    CH estimada (eventos ativos, mês a mês) × CH realizada pelos professores do quadro.
+    Quadro = Mensalista + Horista + Inclusão em Folha.
+    """
+    hoje = date.today()
+    ano = ano or hoje.year
+    data_inicio = date(ano, 1, 1)
+    data_fim = date(ano, 12, 31)
+
+    result = await db.execute(
+        select(
+            Aula.data,
+            Aula.status,
+            Evento.horario_inicio,
+            Evento.horario_fim,
+            Professor.tipo.label("prof_tipo"),
+        )
+        .join(Evento, Aula.evento_id == Evento.id)
+        .outerjoin(Professor, Aula.professor_id == Professor.id)
+        .where(
+            Evento.status != "Cancelado",
+            Aula.status != "Cancelada",
+            Aula.data >= data_inicio,
+            Aula.data <= data_fim,
+        )
+    )
+    rows = result.fetchall()
+
+    def _hrs(ini, fim) -> float:
+        if not ini or not fim:
+            return 1.0
+        dur = datetime.combine(date.today(), fim) - datetime.combine(date.today(), ini)
+        h = dur.seconds / 3600
+        return h if h > 0 else 1.0
+
+    # Inicializa todos os 12 meses com zero
+    por_mes: dict[str, dict] = {
+        f"{ano}-{i:02d}": {
+            "mes": f"{ano}-{i:02d}",
+            "label": f"{_MESES_PT[i - 1]}/{str(ano)[2:]}",
+            "ch_estimada": 0.0,
+            "ch_quadro": 0.0,
+            "ch_externos": 0.0,
+        }
+        for i in range(1, 13)
+    }
+
+    for row in rows:
+        key = f"{row.data.year}-{row.data.month:02d}"
+        if key not in por_mes:
+            continue
+        hrs = _hrs(row.horario_inicio, row.horario_fim)
+        por_mes[key]["ch_estimada"] += hrs
+        if row.status == "Realizada":
+            if row.prof_tipo in _TIPOS_QUADRO:
+                por_mes[key]["ch_quadro"] += hrs
+            else:
+                por_mes[key]["ch_externos"] += hrs
+
+    resultado = []
+    for key in sorted(por_mes):
+        m = por_mes[key]
+        est = round(m["ch_estimada"], 1)
+        q   = round(m["ch_quadro"], 1)
+        ext = round(m["ch_externos"], 1)
+        nao = round(max(0.0, est - q - ext), 1)
+        ef  = round(q / est * 100, 1) if est > 0 else 0.0
+        resultado.append({
+            "mes": key,
+            "label": m["label"],
+            "ch_estimada": est,
+            "ch_quadro": q,
+            "ch_externos": ext,
+            "ch_nao_realizada": nao,
+            "eficiencia_pct": ef,
+        })
+
+    total_est = round(sum(r["ch_estimada"] for r in resultado), 1)
+    total_q   = round(sum(r["ch_quadro"]   for r in resultado), 1)
+    total_ext = round(sum(r["ch_externos"] for r in resultado), 1)
+
+    return {
+        "ano": ano,
+        "por_mes": resultado,
+        "total": {
+            "ch_estimada": total_est,
+            "ch_quadro": total_q,
+            "ch_externos": total_ext,
+            "ch_nao_realizada": round(max(0.0, total_est - total_q - total_ext), 1),
+            "eficiencia_pct": round(total_q / total_est * 100, 1) if total_est > 0 else 0.0,
+        },
+    }
