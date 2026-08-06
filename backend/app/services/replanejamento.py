@@ -101,14 +101,20 @@ async def alterar_aula_e_replaneja(
     conflitos = []
 
     if replaneja_futuras and evento:
+        # Inclui Agendada E Realizada: aulas passadas são marcadas como Realizada
+        # pela migration de startup, mas ainda precisam ser atualizadas pelo coordenador.
+        # Cancelada e Remarcada são preservadas pois já foram tratadas individualmente.
+        filtros = [
+            Aula.evento_id == evento.id,
+            Aula.data > aula.data,
+            Aula.status.not_in(["Cancelada", "Remarcada"]),
+        ]
+        # Propaga apenas dentro da mesma UC (quando definida)
+        if aula.unidade_curricular_id is not None:
+            filtros.append(Aula.unidade_curricular_id == aula.unidade_curricular_id)
+
         result_futuras = await db.execute(
-            select(Aula).where(
-                and_(
-                    Aula.evento_id == evento.id,
-                    Aula.data > aula.data,
-                    Aula.status == "Agendada",
-                )
-            ).order_by(Aula.data)
+            select(Aula).where(and_(*filtros)).order_by(Aula.data)
         )
         aulas_futuras = result_futuras.scalars().all()
 
