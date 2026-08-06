@@ -91,13 +91,16 @@ export default function CronogramaPage() {
       ? new Date(ano, mes, 0).toISOString().slice(0, 10)
       : format(endOfWeek(semana, { weekStartsOn: 1 }), "yyyy-MM-dd");
 
+  const semProfessor = professorFiltro === "sem_professor";
+
   const { data: rawAulas = [], isLoading } = useQuery({
-    queryKey: ["cronograma-global", dataInicio, dataFim, professorFiltro, eventoFiltro],
+    queryKey: ["cronograma-global", dataInicio, dataFim, semProfessor ? "sem_professor" : professorFiltro, eventoFiltro],
     queryFn: () =>
       planejamentoApi.cronograma({
         data_inicio: dataInicio,
         data_fim: dataFim,
-        professor_id: professorFiltro ? +professorFiltro : undefined,
+        // "sem_professor" busca tudo e filtra no frontend
+        professor_id: professorFiltro && !semProfessor ? +professorFiltro : undefined,
         evento_id: eventoFiltro ? +eventoFiltro : undefined,
         limit: 2000,
       }),
@@ -139,15 +142,18 @@ export default function CronogramaPage() {
     [professores]
   );
 
-  // Enriquecer aulas com nomes caso não venham do backend
-  const aulas = useMemo(() =>
-    (rawAulas as any[]).map((a: any) => ({
+  // Enriquecer aulas com nomes e aplicar filtro "sem professor" se selecionado
+  const aulas = useMemo(() => {
+    let list = (rawAulas as any[]).map((a: any) => ({
       ...a,
       nome_evento: a.nome_evento || eventoMap.get(a.evento_id) || null,
       professor_nome: a.professor_nome || profMap.get(a.professor_id) || null,
-    })),
-    [rawAulas, eventoMap, profMap]
-  );
+    }));
+    if (semProfessor) {
+      list = list.filter((a: any) => !a.professor_id);
+    }
+    return list;
+  }, [rawAulas, eventoMap, profMap, semProfessor]);
 
   // Mapa de cores por UC
   const ucColorMap = useMemo(() => buildUcColorMap(aulas), [aulas]);
@@ -373,6 +379,7 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
             onChange={(e) => { setProfessorFiltro(e.target.value); setDiaSelecionado(null); }}
           >
             <option value="">Todos os professores</option>
+            <option value="sem_professor">⚠ Sem professor</option>
             {(professores as any[]).map((p: any) => (
               <option key={p.id} value={p.id}>{p.nome}</option>
             ))}
