@@ -376,6 +376,7 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose }: {
 // ── Constantes de modalidade ──────────────────────────────────────────────────
 
 const MODALIDADES = [
+  "11 - APRENDIZAGEM INDUSTRIAL BÁSICA - FORM. INICIAL",
   "3 - INICIAÇÃO PROFISSIONAL - FORM. INICIAL E CONTINUADA",
   "21 - QUALIFICAÇÃO PROFISSIONAL BÁSICA - FORM. INICIAL E CONTINUADA",
   "31 - HABILITAÇÃO TÉCNICA - EDUC. PROF. TÉCNICA",

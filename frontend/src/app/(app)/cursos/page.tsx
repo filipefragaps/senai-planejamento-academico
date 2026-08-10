@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 // ── Constantes ────────────────────────────────────────────────────────────────
 
 const TIPOS_CURSO = [
+  "11 - APRENDIZAGEM INDUSTRIAL BÁSICA - FORM. INICIAL",
   "21 - QUALIFICAÇÃO PROFISSIONAL BÁSICA - FORM. INICIAL E CONTINUADA",
   "3 - INICIAÇÃO PROFISSIONAL - FORM. INICIAL E CONTINUADA",
   "31 - HABILITAÇÃO TÉCNICA - EDUC. PROF. TÉCNICA",

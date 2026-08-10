@@ -519,6 +519,7 @@ export default function DashboardPage() {
 
   const TIPOS_QUADRO_DB = new Set(["Mensalista", "Horista", "Inclusão em Folha"]);
   const MODALIDADES_DB = [
+    "11 - APRENDIZAGEM INDUSTRIAL BÁSICA - FORM. INICIAL",
     "3 - INICIAÇÃO PROFISSIONAL - FORM. INICIAL E CONTINUADA",
     "21 - QUALIFICAÇÃO PROFISSIONAL BÁSICA - FORM. INICIAL E CONTINUADA",
     "31 - HABILITAÇÃO TÉCNICA - EDUC. PROF. TÉCNICA",

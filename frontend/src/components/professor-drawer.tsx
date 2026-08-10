@@ -1085,6 +1085,7 @@ export function ProfessorDrawer({ professor, onClose, onSaved, onDeleted }: Prop
 
 // ── Sub-componente: badge de modalidade ──────────────────────────
 export const MODALIDADE_OPTIONS = [
+  "11 - APRENDIZAGEM INDUSTRIAL BÁSICA - FORM. INICIAL",
   "21 - QUALIFICAÇÃO PROFISSIONAL BÁSICA - FORM. INICIAL E CONTINUADA",
   "3 - INICIAÇÃO PROFISSIONAL - FORM. INICIAL E CONTINUADA",
   "31 - HABILITAÇÃO TÉCNICA - EDUC. PROF. TÉCNICA",
@@ -1099,6 +1100,7 @@ export const MODALIDADE_OPTIONS = [
 ];
 
 const MODALIDADE_STYLES: Record<string, string> = {
+  "11": "bg-cyan-50 text-cyan-700",
   "21": "bg-amber-50 text-amber-700",
   "3":  "bg-yellow-50 text-yellow-700",
   "31": "bg-blue-50 text-blue-700",
@@ -1131,6 +1133,7 @@ export function filtrarCursosPorModalidade(cursos: any[], modalidade: string): a
   if (!modalidade) return cursos;
   const codigo = modalidade.split(" ")[0];
   const mapa: Record<string, string[]> = {
+    "11": ["aprendizagem"],
     "21": ["qualificação"],
     "3":  ["iniciação"],
     "31": ["habilitação técnica"],
