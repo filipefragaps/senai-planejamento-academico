@@ -373,6 +373,24 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose }: {
   );
 }
 
+// ── Constantes de modalidade ──────────────────────────────────────────────────
+
+const MODALIDADES = [
+  "3 - INICIAÇÃO PROFISSIONAL - FORM. INICIAL E CONTINUADA",
+  "21 - QUALIFICAÇÃO PROFISSIONAL BÁSICA - FORM. INICIAL E CONTINUADA",
+  "31 - HABILITAÇÃO TÉCNICA - EDUC. PROF. TÉCNICA",
+  "33 - HABILITAÇÃO TÉCNICA A DISTÂNCIA - EDUC. PROF. TÉCNICA",
+  "35 - TÉCNICO ENSINO MÉDIO - SEDUC",
+  "41 - GRADUAÇÃO TECNOLÓGICA - EDUCAÇÃO SUPERIOR",
+  "51 - APERFEIÇOAMENTO PROFISSIONAL - FORM. INICIAL E CONTINUADA",
+  "53 - APERFEIÇOAMENTO PROFISSIONAL - EDU. PROF. TEC",
+  "54 - APERFEIÇOAMENTO PROFISSIONAL - AÇÕES MÓVEIS",
+  "81 - GRADUAÇÃO - BACHARELADO (SUPERIOR)",
+  "91 - PÓS-GRADUAÇÃO LATO SENSU ESPECIALIZAÇÃO",
+];
+
+const TIPOS_QUADRO = new Set(["Mensalista", "Horista", "Inclusão em Folha"]);
+
 // ── Constantes de status ──────────────────────────────────────────────────────
 
 const FILTROS_STATUS = [
@@ -400,6 +418,8 @@ export default function RegenciaPage() {
   const [regFim, setRegFim] = useState(mesAtual);
   const [busca, setBusca] = useState("");
   const [filtroStatus, setFiltroStatus] = useState("todos");
+  const [filtroQuadro, setFiltroQuadro] = useState<"todos" | "quadro" | "extraquadro">("todos");
+  const [filtroModalidade, setFiltroModalidade] = useState("");
   const [ordem, setOrdem] = useState<"asc" | "desc">("asc"); // asc = pior primeiro
   const [profSelecionado, setProfSelecionado] = useState<any | null>(null);
 
@@ -412,13 +432,6 @@ export default function RegenciaPage() {
     staleTime: 60_000,
   });
 
-  // Contagem por status
-  const contagem = useMemo(() => {
-    const c: Record<string, number> = { OK: 0, Alerta: 0, Critico: 0, Sobrecarga: 0 };
-    for (const p of regencias) c[p.status ?? p.status_regencia] = (c[p.status ?? p.status_regencia] ?? 0) + 1;
-    return c;
-  }, [regencias]);
-
   // Filtro + busca + ordem
   const lista = useMemo(() => {
     let r = regencias.map((p: any) => ({
@@ -427,6 +440,14 @@ export default function RegenciaPage() {
       status_regencia: p.status ?? p.status_regencia,
     }));
     if (filtroStatus !== "todos") r = r.filter(p => p.status_regencia === filtroStatus);
+    if (filtroQuadro === "quadro")      r = r.filter(p => TIPOS_QUADRO.has(p.tipo));
+    if (filtroQuadro === "extraquadro") r = r.filter(p => !TIPOS_QUADRO.has(p.tipo));
+    if (filtroModalidade) {
+      const mod = filtroModalidade.toLowerCase();
+      r = r.filter(p =>
+        (p.modalidades as string[] ?? []).some((m: string) => m.toLowerCase().includes(mod))
+      );
+    }
     if (busca) r = r.filter(p => p.nome.toLowerCase().includes(busca.toLowerCase()));
     r.sort((a, b) =>
       ordem === "asc"
@@ -434,7 +455,21 @@ export default function RegenciaPage() {
         : b.percentual_regencia - a.percentual_regencia
     );
     return r;
-  }, [regencias, filtroStatus, busca, ordem]);
+  }, [regencias, filtroStatus, filtroQuadro, filtroModalidade, busca, ordem]);
+
+  // Contagem recalculada sobre a lista já filtrada por quadro+modalidade (ignora filtroStatus)
+  const contagem = useMemo(() => {
+    const c: Record<string, number> = { OK: 0, Alerta: 0, Critico: 0, Sobrecarga: 0 };
+    let base = regencias.map((p: any) => ({ ...p, status_regencia: p.status ?? p.status_regencia }));
+    if (filtroQuadro === "quadro")      base = base.filter(p => TIPOS_QUADRO.has(p.tipo));
+    if (filtroQuadro === "extraquadro") base = base.filter(p => !TIPOS_QUADRO.has(p.tipo));
+    if (filtroModalidade) {
+      const mod = filtroModalidade.toLowerCase();
+      base = base.filter(p => (p.modalidades as string[] ?? []).some((m: string) => m.toLowerCase().includes(mod)));
+    }
+    for (const p of base) c[p.status_regencia] = (c[p.status_regencia] ?? 0) + 1;
+    return c;
+  }, [regencias, filtroQuadro, filtroModalidade]);
 
   async function exportarExcel() {
     try {
@@ -497,6 +532,54 @@ export default function RegenciaPage() {
         })}
       </div>
 
+      {/* Filtros de Quadro e Modalidade */}
+      <div className="card px-4 py-3 flex items-center gap-3 flex-wrap">
+        {/* Quadro / Extraquadro */}
+        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+          {([
+            { key: "todos",       label: "Todos" },
+            { key: "quadro",      label: "Quadro" },
+            { key: "extraquadro", label: "Extraquadro" },
+          ] as const).map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setFiltroQuadro(key)}
+              className={cn(
+                "px-3 py-1 rounded-md text-xs font-medium transition-all",
+                filtroQuadro === key
+                  ? key === "quadro"
+                    ? "bg-blue-600 text-white shadow"
+                    : key === "extraquadro"
+                    ? "bg-amber-500 text-white shadow"
+                    : "bg-white text-gray-800 shadow"
+                  : "text-gray-500 hover:text-gray-800"
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Modalidade */}
+        <select
+          className="input text-sm py-1.5 px-2 min-w-[260px]"
+          value={filtroModalidade}
+          onChange={e => setFiltroModalidade(e.target.value)}
+        >
+          <option value="">Todas as modalidades</option>
+          {MODALIDADES.map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
+
+        {(filtroQuadro !== "todos" || filtroModalidade) && (
+          <button
+            onClick={() => { setFiltroQuadro("todos"); setFiltroModalidade(""); }}
+            className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700"
+          >
+            <X className="h-3.5 w-3.5" /> Limpar
+          </button>
+        )}
+      </div>
+
       {/* Barra de busca + controles */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 min-w-[200px] max-w-xs">
@@ -512,7 +595,7 @@ export default function RegenciaPage() {
         {(filtroStatus !== "todos" || busca) && (
           <button onClick={() => { setFiltroStatus("todos"); setBusca(""); }}
             className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700">
-            <X className="h-3.5 w-3.5" /> Limpar filtros
+            <X className="h-3.5 w-3.5" /> Limpar busca
           </button>
         )}
         <span className="text-xs text-gray-400 ml-auto">{lista.length} professor(es)</span>

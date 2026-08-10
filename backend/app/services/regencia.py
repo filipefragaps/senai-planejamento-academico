@@ -8,8 +8,12 @@ Cálculo de Regência docente.
 from datetime import date, datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
+from sqlalchemy.orm import selectinload
 from app.models.professor import Professor
 from app.models.aula import Aula
+from app.models.atuacao import Atuacao
+
+_TIPOS_QUADRO = {"Mensalista", "Horista", "Inclusão em Folha"}
 
 
 def _horas_aula(aula: Aula) -> float:
@@ -94,10 +98,22 @@ async def calcular_regencia_professor(
                 "Regência máxima atingida — horas excedentes são remuneradas normalmente."
             )
 
+    # Modalidades distintas do professor (vindas das atuações já carregadas ou lazy)
+    modalidades: list[str] = []
+    try:
+        for at in professor.atuacoes:
+            m = (at.modalidade or "").strip()
+            if m and m not in modalidades:
+                modalidades.append(m)
+    except Exception:
+        pass  # atuacoes não carregadas — filtragem no frontend usará lista vazia
+
     return {
         "professor_id": professor.id,
         "nome": professor.nome,
         "tipo": professor.tipo,
+        "quadro": professor.tipo in _TIPOS_QUADRO,
+        "modalidades": modalidades,
         "horas_contratadas": professor.horas_contratadas,
         "horas_ministradas": round(horas_ministradas, 2),
         "horas_periodo": round(horas_periodo, 2),
@@ -117,7 +133,11 @@ async def calcular_regencia_todos(
     data_inicio: date | None = None,
     data_fim: date | None = None,
 ) -> list[dict]:
-    result = await db.execute(select(Professor).where(Professor.ativo == True))
+    result = await db.execute(
+        select(Professor)
+        .options(selectinload(Professor.atuacoes))
+        .where(Professor.ativo == True)
+    )
     professores = result.scalars().all()
 
     resultados = []

@@ -511,9 +511,26 @@ export default function DashboardPage() {
   const [profSelecionado, setProfSelecionado] = useState<any | null>(null);
   const [regInicio, setRegInicio] = useState(mesAtual);
   const [regFim, setRegFim] = useState(mesAtual);
+  const [filtroQuadroDb, setFiltroQuadroDb] = useState<"todos" | "quadro" | "extraquadro">("todos");
+  const [filtroModalidadeDb, setFiltroModalidadeDb] = useState("");
   const [buscaTurma, setBuscaTurma] = useState("");
   const [filtroAndamento, setFiltroAndamento] = useState<"todos" | "nao_iniciada" | "em_andamento" | "concluida">("todos");
   const [eficienciaAno, setEficienciaAno] = useState(anoAtual);
+
+  const TIPOS_QUADRO_DB = new Set(["Mensalista", "Horista", "Inclusão em Folha"]);
+  const MODALIDADES_DB = [
+    "3 - INICIAÇÃO PROFISSIONAL - FORM. INICIAL E CONTINUADA",
+    "21 - QUALIFICAÇÃO PROFISSIONAL BÁSICA - FORM. INICIAL E CONTINUADA",
+    "31 - HABILITAÇÃO TÉCNICA - EDUC. PROF. TÉCNICA",
+    "33 - HABILITAÇÃO TÉCNICA A DISTÂNCIA - EDUC. PROF. TÉCNICA",
+    "35 - TÉCNICO ENSINO MÉDIO - SEDUC",
+    "41 - GRADUAÇÃO TECNOLÓGICA - EDUCAÇÃO SUPERIOR",
+    "51 - APERFEIÇOAMENTO PROFISSIONAL - FORM. INICIAL E CONTINUADA",
+    "53 - APERFEIÇOAMENTO PROFISSIONAL - EDU. PROF. TEC",
+    "54 - APERFEIÇOAMENTO PROFISSIONAL - AÇÕES MÓVEIS",
+    "81 - GRADUAÇÃO - BACHARELADO (SUPERIOR)",
+    "91 - PÓS-GRADUAÇÃO LATO SENSU ESPECIALIZAÇÃO",
+  ];
 
   const regDataInicio = `${regInicio}-01`;
   const regDataFim = ultimoDiaMes(regFim);
@@ -538,13 +555,15 @@ export default function DashboardPage() {
     staleTime: 60_000,
   });
 
-  // Normalize to a common shape regardless of data source, ordenado maior → menor regência
+  // Normalize + filtros de quadro e modalidade
   const professoresLista = useMemo(() => {
-    const lista = regenciasPeriodo
+    let lista = regenciasPeriodo
       ? (regenciasPeriodo as any[]).map((p: any) => ({
           professor_id: p.professor_id,
           nome: p.nome,
           tipo: p.tipo,
+          quadro: p.quadro ?? TIPOS_QUADRO_DB.has(p.tipo),
+          modalidades: p.modalidades ?? [],
           horas_contratadas: p.horas_contratadas,
           horas_ministradas_semana: p.horas_ministradas ?? 0,
           percentual_regencia: p.percentual_regencia,
@@ -552,8 +571,18 @@ export default function DashboardPage() {
           status_regencia: p.status_regencia ?? p.status,
         }))
       : (data?.professores ?? []);
+
+    if (filtroQuadroDb === "quadro")      lista = lista.filter((p: any) => TIPOS_QUADRO_DB.has(p.tipo));
+    if (filtroQuadroDb === "extraquadro") lista = lista.filter((p: any) => !TIPOS_QUADRO_DB.has(p.tipo));
+    if (filtroModalidadeDb) {
+      const mod = filtroModalidadeDb.toLowerCase();
+      lista = lista.filter((p: any) =>
+        (p.modalidades as string[]).some((m: string) => m.toLowerCase().includes(mod))
+      );
+    }
+
     return [...lista].sort((a: any, b: any) => b.percentual_regencia - a.percentual_regencia);
-  }, [regenciasPeriodo, data?.professores]);
+  }, [regenciasPeriodo, data?.professores, filtroQuadroDb, filtroModalidadeDb]);
 
   const periodoEhMultiploMeses = regInicio !== regFim;
 
@@ -737,7 +766,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Period selector */}
-          <div className="flex items-center gap-3 mt-3 mb-4 flex-wrap">
+          <div className="flex items-center gap-3 mt-3 flex-wrap">
             <span className="text-xs text-gray-500 font-medium">Período:</span>
             <input
               type="month"
@@ -752,6 +781,50 @@ export default function DashboardPage() {
               onChange={e => setRegFim(e.target.value)}
               className="border rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300"
             />
+          </div>
+
+          {/* Filtros Quadro + Modalidade */}
+          <div className="flex items-center gap-2 mt-2 mb-3 flex-wrap">
+            <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
+              {([
+                { key: "todos",       label: "Todos" },
+                { key: "quadro",      label: "Quadro" },
+                { key: "extraquadro", label: "Extra" },
+              ] as const).map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setFiltroQuadroDb(key)}
+                  className={cn(
+                    "px-2 py-0.5 rounded-md text-xs font-medium transition-all",
+                    filtroQuadroDb === key
+                      ? key === "quadro"
+                        ? "bg-blue-600 text-white shadow"
+                        : key === "extraquadro"
+                        ? "bg-amber-500 text-white shadow"
+                        : "bg-white text-gray-800 shadow"
+                      : "text-gray-500 hover:text-gray-700"
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <select
+              className="input text-xs py-1 px-1.5 flex-1 min-w-0"
+              value={filtroModalidadeDb}
+              onChange={e => setFiltroModalidadeDb(e.target.value)}
+            >
+              <option value="">Todas modalidades</option>
+              {MODALIDADES_DB.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+            {(filtroQuadroDb !== "todos" || filtroModalidadeDb) && (
+              <button
+                onClick={() => { setFiltroQuadroDb("todos"); setFiltroModalidadeDb(""); }}
+                className="text-xs text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
 
           {/* Professor list */}
