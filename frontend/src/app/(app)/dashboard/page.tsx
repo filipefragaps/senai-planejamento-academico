@@ -586,6 +586,25 @@ export default function DashboardPage() {
 
   const periodoEhMultiploMeses = regInicio !== regFim;
 
+  // Stats derivados da lista filtrada — substituem os valores globais do servidor
+  const statsFiltrados = useMemo(() => {
+    if (!regenciasPeriodo || professoresLista.length === 0) return null;
+    const total = professoresLista.length;
+    const somaReg = professoresLista.reduce((s: number, p: any) => s + (p.percentual_regencia ?? 0), 0);
+    const ok = professoresLista.filter((p: any) => (p.status_regencia ?? p.status) === "OK").length;
+    const alerta = professoresLista.filter((p: any) => (p.status_regencia ?? p.status) === "Alerta").length;
+    const critico = professoresLista.filter((p: any) => (p.status_regencia ?? p.status) === "Critico").length;
+    return {
+      total,
+      regenciaMedia: total > 0 ? somaReg / total : 0,
+      ok,
+      alerta,
+      critico,
+    };
+  }, [professoresLista, regenciasPeriodo]);
+
+  const filtroAtivo = filtroQuadroDb !== "todos" || !!filtroModalidadeDb;
+
   const turmasFiltradas = useMemo(() => {
     let lista = data?.turmas ?? [];
     if (buscaTurma) {
@@ -633,7 +652,13 @@ export default function DashboardPage() {
       />
 
 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <KpiCard title="Professores Ativos" value={g.total_professores_ativos} icon={Users} color="bg-blue-500" />
+        <KpiCard
+          title="Professores"
+          value={filtroAtivo && statsFiltrados ? statsFiltrados.total : g.total_professores_ativos}
+          subtitle={filtroAtivo ? (filtroQuadroDb !== "todos" ? filtroQuadroDb === "quadro" ? "Quadro próprio" : "Extraquadro" : "") : "Ativos no sistema"}
+          icon={Users}
+          color="bg-blue-500"
+        />
         <KpiCard title="Turmas Ativas" value={g.total_turmas_ativas} icon={BookOpen} color="bg-indigo-500" />
         <KpiCard
           title="Aulas Esta Semana"
@@ -642,13 +667,18 @@ export default function DashboardPage() {
           icon={Calendar}
           color="bg-green-500"
         />
-        <KpiCard
-          title="Regência Média"
-          value={`${g.taxa_regencia_media.toFixed(1)}%`}
-          subtitle="Meta: 70%"
-          icon={TrendingUp}
-          color={g.taxa_regencia_media >= 70 ? "bg-green-500" : "bg-yellow-500"}
-        />
+        {(() => {
+          const reg = filtroAtivo && statsFiltrados ? statsFiltrados.regenciaMedia : g.taxa_regencia_media;
+          return (
+            <KpiCard
+              title="Regência Média"
+              value={`${reg.toFixed(1)}%`}
+              subtitle={filtroAtivo ? (filtroQuadroDb !== "todos" ? filtroQuadroDb === "quadro" ? "Quadro próprio" : "Extraquadro" : "Filtro ativo") : "Meta: 70%"}
+              icon={TrendingUp}
+              color={reg >= 70 ? "bg-green-500" : "bg-yellow-500"}
+            />
+          );
+        })()}
       </div>
 
       {/* ── Eficiência de Produção ─────────────────────────────────────── */}
@@ -740,17 +770,23 @@ export default function DashboardPage() {
       <div className="grid grid-cols-3 gap-4 mb-8">
         <div className="card p-4 text-center border-green-200">
           <CheckCircle className="h-8 w-8 text-green-500 mx-auto mb-2" />
-          <p className="text-2xl font-bold text-green-700">{g.professores_ok}</p>
+          <p className="text-2xl font-bold text-green-700">
+            {filtroAtivo && statsFiltrados ? statsFiltrados.ok : g.professores_ok}
+          </p>
           <p className="text-sm text-gray-500">Regência OK (≥70%)</p>
         </div>
         <div className="card p-4 text-center border-yellow-200">
           <AlertTriangle className="h-8 w-8 text-yellow-500 mx-auto mb-2" />
-          <p className="text-2xl font-bold text-yellow-700">{g.professores_alerta}</p>
+          <p className="text-2xl font-bold text-yellow-700">
+            {filtroAtivo && statsFiltrados ? statsFiltrados.alerta : g.professores_alerta}
+          </p>
           <p className="text-sm text-gray-500">Em Alerta (50-70%)</p>
         </div>
         <div className="card p-4 text-center border-red-200">
           <AlertTriangle className="h-8 w-8 text-red-500 mx-auto mb-2" />
-          <p className="text-2xl font-bold text-red-700">{g.professores_criticos}</p>
+          <p className="text-2xl font-bold text-red-700">
+            {filtroAtivo && statsFiltrados ? statsFiltrados.critico : g.professores_criticos}
+          </p>
           <p className="text-sm text-gray-500">Críticos (&lt;50%)</p>
         </div>
       </div>
