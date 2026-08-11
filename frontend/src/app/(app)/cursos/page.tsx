@@ -732,7 +732,7 @@ function UCRow({ uc, idx, total, modulosExistentes, moduloAtual, onEditar, onDel
       </div>
       <span className="text-xs font-mono text-gray-400 w-14 shrink-0">{uc.codigo_uc}</span>
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-gray-800 leading-tight truncate">{uc.nome}</p>
+        <p className="text-sm text-gray-800 leading-tight break-words">{uc.nome}</p>
       </div>
       <div className="flex items-center gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
         {/* Mover para outro módulo */}
