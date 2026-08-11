@@ -800,7 +800,7 @@ function UCRowWithCandidatos({
   const { data: candidatos = [], isLoading } = useQuery({
     queryKey: ["candidatos", eventoId, uc.id],
     queryFn: () => planejamentoApi.candidatos(eventoId, uc.id),
-    staleTime: 120_000,
+    staleTime: 30_000,
   });
 
   const isEad = uc.tipo === "EaD" || uc.tipo === "ead" || uc.tipo?.toLowerCase() === "ead";
@@ -870,13 +870,16 @@ function UCRowWithCandidatos({
               <option value="">Auto (sistema escolhe)</option>
               {(candidatos as any[]).map((c: any) => (
                 <option key={c.professor_id} value={c.professor_id}>
-                  {c.nome}{c.nivel_competencia ? ` ★${c.nivel_competencia}` : ""}
+                  {c.nome}{c.nivel_competencia ? ` ★${c.nivel_competencia}` : ""}{c.disponivel === false ? " ⚠ sem disponib." : ""}
                 </option>
               ))}
             </select>
             {isLoading && <p className="text-[10px] text-gray-400 mt-0.5">Buscando aptos...</p>}
             {!isLoading && (candidatos as any[]).length === 0 && (
               <p className="text-[10px] text-amber-600 mt-0.5">Nenhum apto cadastrado</p>
+            )}
+            {!isLoading && uc.professor_preferido_id && (candidatos as any[]).find((c: any) => c.professor_id === uc.professor_preferido_id)?.disponivel === false && (
+              <p className="text-[10px] text-amber-600 mt-0.5">⚠ Sem disponibilidade cadastrada neste horário — o sistema pode não alocar automaticamente</p>
             )}
 
             {/* Picker de dia da semana */}

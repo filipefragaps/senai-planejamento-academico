@@ -81,12 +81,13 @@ async def _candidatos_uc(
     preferidos: list[int],
     regencias_atuais: dict[int, dict],
     db: AsyncSession,
+    verificar_disponibilidade: bool = True,
 ) -> list[dict]:
     """
     Retorna professores candidatos para uma UC, com score calculado.
     Critérios:
-      - Tem atuação para a disciplina (match por nome UC ou curso)
-      - Disponível nos dias/horário do evento
+      - Tem atuação para a disciplina (match por curso_id ou por nome da UC)
+      - Disponível nos dias/horário do evento (apenas quando verificar_disponibilidade=True)
     """
     result = await db.execute(
         select(Professor).where(Professor.ativo == True)
@@ -95,7 +96,7 @@ async def _candidatos_uc(
 
     candidatos = []
     for prof in todos:
-        # 1. Verifica habilitação: atuacao com disciplina ~ nome da UC ou curso vinculado
+        # 1. Verifica habilitação: atuacao vinculada ao mesmo curso da UC
         res_at = await db.execute(
             select(Atuacao).where(
                 and_(
@@ -111,7 +112,7 @@ async def _candidatos_uc(
             select(Atuacao).where(
                 and_(
                     Atuacao.professor_id == prof.id,
-                    Atuacao.disciplina.ilike(f"%{uc.nome[:20]}%"),
+                    Atuacao.disciplina.ilike(f"%{uc.nome[:30]}%"),
                 )
             )
         )
@@ -123,37 +124,38 @@ async def _candidatos_uc(
 
         nivel_competencia = max((a.nivel_competencia for a in todas_atuacoes), default=3)
 
-        # 2. Disponibilidade nos dias do evento
+        # 2. Disponibilidade nos dias do evento (só no planejamento automático)
         disponivel = True
-        for dia in (evento.dias_semana or []):
-            ok = await verificar_disponibilidade_professor(
-                prof.id, dia, evento.horario_inicio, evento.horario_fim, db
-            )
-            if not ok:
-                disponivel = False
-                break
-        if not disponivel:
-            continue
+        if verificar_disponibilidade:
+            for dia in (evento.dias_semana or []):
+                ok = await verificar_disponibilidade_professor(
+                    prof.id, dia, evento.horario_inicio, evento.horario_fim, db
+                )
+                if not ok:
+                    disponivel = False
+                    break
 
-        # 3. Score
+        # 3. Score (inclui penalidade leve se indisponível, mas não exclui)
         reg = regencias_atuais.get(prof.id, {})
         percentual = reg.get("percentual_regencia", 0) / 100
         meta = META_REGENCIA_MENSALISTA if prof.tipo == "Mensalista" else 1.0
 
         necessidade = max(0.0, 1.0 - (percentual / meta)) if meta > 0 else 0.5
         is_preferido = 1.0 if prof.id in preferidos else 0.0
+        bonus_disponivel = 0.1 if disponivel else 0.0
 
         score = (
             0.40 * necessidade
             + 0.30 * is_preferido
             + 0.20 * (nivel_competencia / 5)
-            + 0.10 * 1.0  # sem conflito (avaliado depois por data)
+            + 0.10 * bonus_disponivel
         )
 
         candidatos.append({
             "professor": prof,
             "nivel_competencia": nivel_competencia,
             "is_preferido": bool(is_preferido),
+            "disponivel": disponivel,
             "score": round(score, 4),
             "percentual_regencia": reg.get("percentual_regencia", 0),
             "status_regencia": reg.get("status", "N/A"),
