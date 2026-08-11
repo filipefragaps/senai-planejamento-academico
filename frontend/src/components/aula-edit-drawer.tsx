@@ -199,14 +199,18 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
 
   if (!aula) return null;
 
-  const professoresDisponiveis =
-    candidatos.length > 0
-      ? candidatos
-      : (todosProfessores as any[]).map((p: any) => ({
-          professor_id: p.id,
-          nome: p.nome,
-          percentual_regencia: null,
-        }));
+  // Candidatos aparecem primeiro (têm atuação vinculada à UC), depois todos os demais
+  const candidatoIds = new Set((candidatos as any[]).map((c: any) => c.professor_id));
+  const professoresDisponiveis = [
+    ...(candidatos as any[]),
+    ...(todosProfessores as any[])
+      .filter((p: any) => !candidatoIds.has(p.id))
+      .map((p: any) => ({
+        professor_id: p.id,
+        nome: p.nome,
+        percentual_regencia: null,
+      })),
+  ];
 
   return (
     <>
