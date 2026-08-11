@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { professoresApi, planejamentoApi, relatoriosApi, downloadBlob } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
@@ -8,7 +8,7 @@ import { RegenciaBar } from "@/components/regencia-bar";
 import { StatusBadge } from "@/components/status-badge";
 import { cn } from "@/lib/utils";
 import {
-  Search, X, TrendingUp, CheckCircle, AlertTriangle, Zap, Download, ArrowUpDown, Info,
+  Search, X, TrendingUp, CheckCircle, AlertTriangle, Zap, Download, ArrowUpDown, Info, ChevronDown,
 } from "lucide-react";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -420,8 +420,20 @@ export default function RegenciaPage() {
   const [busca, setBusca] = useState("");
   const [filtroStatus, setFiltroStatus] = useState("todos");
   const [filtroQuadro, setFiltroQuadro] = useState<"todos" | "quadro" | "extraquadro">("todos");
-  const [filtroModalidade, setFiltroModalidade] = useState("");
+  const [filtroModalidades, setFiltroModalidades] = useState<string[]>([]);
+  const [modalidadeOpen, setModalidadeOpen] = useState(false);
+  const modalidadeRef = useRef<HTMLDivElement>(null);
   const [ordem, setOrdem] = useState<"asc" | "desc">("asc"); // asc = pior primeiro
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (modalidadeRef.current && !modalidadeRef.current.contains(e.target as Node)) {
+        setModalidadeOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
   const [profSelecionado, setProfSelecionado] = useState<any | null>(null);
 
   const regDataInicio = `${regInicio}-01`;
@@ -443,10 +455,11 @@ export default function RegenciaPage() {
     if (filtroStatus !== "todos") r = r.filter(p => p.status_regencia === filtroStatus);
     if (filtroQuadro === "quadro")      r = r.filter(p => TIPOS_QUADRO.has(p.tipo));
     if (filtroQuadro === "extraquadro") r = r.filter(p => !TIPOS_QUADRO.has(p.tipo));
-    if (filtroModalidade) {
-      const mod = filtroModalidade.toLowerCase();
+    if (filtroModalidades.length > 0) {
       r = r.filter(p =>
-        (p.modalidades as string[] ?? []).some((m: string) => m.toLowerCase().includes(mod))
+        (p.modalidades as string[] ?? []).some((m: string) =>
+          filtroModalidades.some(fm => m.toLowerCase().includes(fm.toLowerCase()))
+        )
       );
     }
     if (busca) r = r.filter(p => p.nome.toLowerCase().includes(busca.toLowerCase()));
@@ -456,7 +469,7 @@ export default function RegenciaPage() {
         : b.percentual_regencia - a.percentual_regencia
     );
     return r;
-  }, [regencias, filtroStatus, filtroQuadro, filtroModalidade, busca, ordem]);
+  }, [regencias, filtroStatus, filtroQuadro, filtroModalidades, busca, ordem]);
 
   // Contagem recalculada sobre a lista já filtrada por quadro+modalidade (ignora filtroStatus)
   const contagem = useMemo(() => {
@@ -464,13 +477,16 @@ export default function RegenciaPage() {
     let base = regencias.map((p: any) => ({ ...p, status_regencia: p.status ?? p.status_regencia }));
     if (filtroQuadro === "quadro")      base = base.filter(p => TIPOS_QUADRO.has(p.tipo));
     if (filtroQuadro === "extraquadro") base = base.filter(p => !TIPOS_QUADRO.has(p.tipo));
-    if (filtroModalidade) {
-      const mod = filtroModalidade.toLowerCase();
-      base = base.filter(p => (p.modalidades as string[] ?? []).some((m: string) => m.toLowerCase().includes(mod)));
+    if (filtroModalidades.length > 0) {
+      base = base.filter(p =>
+        (p.modalidades as string[] ?? []).some((m: string) =>
+          filtroModalidades.some(fm => m.toLowerCase().includes(fm.toLowerCase()))
+        )
+      );
     }
     for (const p of base) c[p.status_regencia] = (c[p.status_regencia] ?? 0) + 1;
     return c;
-  }, [regencias, filtroQuadro, filtroModalidade]);
+  }, [regencias, filtroQuadro, filtroModalidades]);
 
   async function exportarExcel() {
     try {
@@ -561,19 +577,57 @@ export default function RegenciaPage() {
           ))}
         </div>
 
-        {/* Modalidade */}
-        <select
-          className="input text-sm py-1.5 px-2 min-w-[260px]"
-          value={filtroModalidade}
-          onChange={e => setFiltroModalidade(e.target.value)}
-        >
-          <option value="">Todas as modalidades</option>
-          {MODALIDADES.map(m => <option key={m} value={m}>{m}</option>)}
-        </select>
-
-        {(filtroQuadro !== "todos" || filtroModalidade) && (
+        {/* Modalidade — multi-select dropdown */}
+        <div ref={modalidadeRef} className="relative">
           <button
-            onClick={() => { setFiltroQuadro("todos"); setFiltroModalidade(""); }}
+            onClick={() => setModalidadeOpen(o => !o)}
+            className={cn(
+              "input text-sm py-1.5 px-3 min-w-[280px] flex items-center justify-between gap-2 text-left",
+              filtroModalidades.length > 0 && "border-blue-400 bg-blue-50"
+            )}
+          >
+            <span className="truncate text-gray-700">
+              {filtroModalidades.length === 0
+                ? "Todas as modalidades"
+                : filtroModalidades.length === 1
+                ? filtroModalidades[0]
+                : `${filtroModalidades.length} modalidades selecionadas`}
+            </span>
+            <ChevronDown className={cn("h-4 w-4 text-gray-400 shrink-0 transition-transform", modalidadeOpen && "rotate-180")} />
+          </button>
+
+          {modalidadeOpen && (
+            <div className="absolute top-full left-0 mt-1 z-30 bg-white border rounded-lg shadow-lg w-[360px] py-1 max-h-72 overflow-y-auto">
+              <div className="flex items-center justify-between px-3 py-1.5 border-b sticky top-0 bg-white">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Modalidades</span>
+                {filtroModalidades.length > 0 && (
+                  <button onClick={() => setFiltroModalidades([])} className="text-xs text-blue-600 hover:text-blue-800">
+                    Limpar seleção
+                  </button>
+                )}
+              </div>
+              {MODALIDADES.map(m => (
+                <label key={m} className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={filtroModalidades.includes(m)}
+                    onChange={e => {
+                      setFiltroModalidades(prev =>
+                        e.target.checked ? [...prev, m] : prev.filter(x => x !== m)
+                      );
+                    }}
+                    className="rounded border-gray-300 text-blue-600 h-4 w-4 shrink-0"
+                  />
+                  <span className="text-sm text-gray-700 leading-tight">{m}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {(filtroQuadro !== "todos" || filtroModalidades.length > 0) && (
+          <button
+            onClick={() => { setFiltroQuadro("todos"); setFiltroModalidades([]); }}
             className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700"
           >
             <X className="h-3.5 w-3.5" /> Limpar
