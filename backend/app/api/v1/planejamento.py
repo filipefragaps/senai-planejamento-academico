@@ -354,7 +354,6 @@ async def importar_historico(
 @router.get("/debug-modalidades")
 async def debug_modalidades(
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
 ):
     """Diagnóstico detalhado para resolver filtro de modalidade."""
     from sqlalchemy import func, text
