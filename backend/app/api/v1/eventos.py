@@ -39,20 +39,22 @@ async def listar_eventos(
         res = await db.execute(select(Curso).where(Curso.id.in_(ids_curso)))
         cursos = {c.id: {"nome": c.nome, "area": c.area, "tipo": c.tipo} for c in res.scalars().all()}
 
-    # Batch-fetch oferta areas as fallback (Curso.area may be null on master-data import)
+    # Batch-fetch oferta: modalidade (fonte principal do tipo_curso) e area como fallback
     ids_oferta = {e.oferta_id for e in eventos_list if e.oferta_id}
-    oferta_areas: dict[int, str | None] = {}
+    oferta_map: dict[int, dict] = {}
     if ids_oferta:
         res = await db.execute(select(OfertaCurso).where(OfertaCurso.id.in_(ids_oferta)))
-        oferta_areas = {o.id: o.area for o in res.scalars().all()}
+        oferta_map = {o.id: {"area": o.area, "modalidade": o.modalidade} for o in res.scalars().all()}
 
     out = []
     for e in eventos_list:
         d = EventoOut.model_validate(e).model_dump()
         curso_data = cursos.get(e.curso_id) or {}
+        oferta_data = oferta_map.get(e.oferta_id) if e.oferta_id else {}
         d["nome_curso"] = curso_data.get("nome")
-        d["area"] = curso_data.get("area") or (oferta_areas.get(e.oferta_id) if e.oferta_id else None)
-        d["tipo_curso"] = curso_data.get("tipo")
+        d["area"] = curso_data.get("area") or (oferta_data.get("area") if oferta_data else None)
+        # Modalidade vem da oferta (pasta) — fallback para tipo do curso
+        d["tipo_curso"] = (oferta_data.get("modalidade") if oferta_data else None) or curso_data.get("tipo")
         out.append(d)
     return out
 
