@@ -385,6 +385,123 @@ async def exportar_ofertas_formatado(db: AsyncSession) -> bytes:
     return buf.read()
 
 
+async def exportar_cronograma_contrato(
+    professor_id: int,
+    data_inicio: date,
+    data_fim: date,
+    db: AsyncSession,
+) -> bytes:
+    """Cronograma com resumo financeiro para professores Inclusão em Folha, PJ e RPA."""
+    result = await db.execute(select(Professor).where(Professor.id == professor_id))
+    professor = result.scalar_one_or_none()
+    if not professor:
+        raise ValueError("Professor não encontrado")
+
+    result_aulas = await db.execute(
+        select(Aula).where(
+            and_(
+                Aula.professor_id == professor_id,
+                Aula.data >= data_inicio,
+                Aula.data <= data_fim,
+            )
+        ).order_by(Aula.data, Aula.horario_inicio)
+    )
+    aulas = result_aulas.scalars().all()
+
+    evento_ids = list({a.evento_id for a in aulas})
+    eventos_map: dict = {}
+    if evento_ids:
+        res_ev = await db.execute(select(Evento).where(Evento.id.in_(evento_ids)))
+        for ev in res_ev.scalars().all():
+            eventos_map[ev.id] = ev
+
+    uc_ids = list({a.unidade_curricular_id for a in aulas if a.unidade_curricular_id})
+    ucs_map: dict = {}
+    if uc_ids:
+        res_uc = await db.execute(select(UnidadeCurricular).where(UnidadeCurricular.id.in_(uc_ids)))
+        for uc in res_uc.scalars().all():
+            ucs_map[uc.id] = uc
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Cronograma"
+
+    valor_hora = professor.valor_hora or 0
+
+    ws.merge_cells("A1:J1")
+    ws["A1"].value = (
+        f"Cronograma: {professor.nome} ({professor.tipo}) | "
+        f"{data_inicio.strftime('%d/%m/%Y')} – {data_fim.strftime('%d/%m/%Y')}"
+    )
+    ws["A1"].font = Font(bold=True, size=13)
+    ws["A1"].alignment = Alignment(horizontal="center")
+
+    ws.merge_cells("A2:J2")
+    ws["A2"].value = f"Valor/hora: R$ {valor_hora:.2f}" if valor_hora else "Valor/hora: não cadastrado"
+    ws["A2"].font = Font(italic=True, color="555555")
+    ws["A2"].alignment = Alignment(horizontal="center")
+
+    cols = ["Data", "Dia", "Início", "Fim", "Horas", "Turma / Evento", "UC / Disciplina", "Sala", "Status", "Valor (R$)"]
+    _apply_header(ws, 3, cols)
+
+    DIAS = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
+    total_horas = 0.0
+
+    for i, aula in enumerate(aulas, 4):
+        ev = eventos_map.get(aula.evento_id)
+        uc = ucs_map.get(aula.unidade_curricular_id) if aula.unidade_curricular_id else None
+        uc_nome = uc.nome if uc else (aula.uc_nome_original or "-")
+
+        if aula.horario_inicio and aula.horario_fim:
+            from datetime import datetime as _dtt
+            h_ini = _dtt.combine(aula.data, aula.horario_inicio)
+            h_fim = _dtt.combine(aula.data, aula.horario_fim)
+            horas = (h_fim - h_ini).seconds / 3600
+        else:
+            horas = 0.0
+        total_horas += horas
+
+        row_data = [
+            aula.data.strftime("%d/%m/%Y"),
+            DIAS[aula.data.weekday()],
+            str(aula.horario_inicio)[:5],
+            str(aula.horario_fim)[:5],
+            f"{horas:.1f}h",
+            (ev.nome_turma + (" – " + ev.disciplina if ev and ev.disciplina and ev.disciplina.lower() not in ev.nome_turma.lower() else "")) if ev else "-",
+            uc_nome,
+            aula.sala or aula.ambiente or "-",
+            aula.status,
+            f"R$ {horas * valor_hora:.2f}" if valor_hora else "-",
+        ]
+        for j, val in enumerate(row_data, 1):
+            cell = ws.cell(row=i, column=j, value=val)
+            if i % 2 == 0:
+                cell.fill = ALT_FILL
+            cell.border = BORDER
+            cell.alignment = Alignment(horizontal="center")
+
+    # Linha de totais
+    total_row = len(aulas) + 4
+    TOTAL_FILL = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
+    for col in range(1, 11):
+        cell = ws.cell(row=total_row, column=col)
+        cell.fill = TOTAL_FILL
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.border = BORDER
+        cell.alignment = Alignment(horizontal="center")
+    ws.cell(row=total_row, column=1).value = f"TOTAL: {len(aulas)} aula(s)"
+    ws.cell(row=total_row, column=5).value = f"{total_horas:.1f}h"
+    ws.cell(row=total_row, column=10).value = (
+        f"R$ {total_horas * valor_hora:.2f}" if valor_hora else "-"
+    )
+
+    _autofit(ws)
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.read()
+
+
 async def exportar_historico_aulas(
     db: AsyncSession,
     evento_id: int | None = None,

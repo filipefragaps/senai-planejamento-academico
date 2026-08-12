@@ -446,7 +446,7 @@ export function ProfessorDrawer({ professor, onClose, onSaved, onDeleted }: Prop
                     onChange={(e) => setBasic({ ...basic, horas_contratadas: +e.target.value })}
                   />
                 </div>
-                {["Horista", "PJ", "RPA"].includes(basic.tipo) && (  /* Inclusão em Folha = mensalista, sem valor/hora */
+                {["Horista", "PJ", "RPA", "Inclusão em Folha"].includes(basic.tipo) && (
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Valor por hora (R$)</label>
                     <input

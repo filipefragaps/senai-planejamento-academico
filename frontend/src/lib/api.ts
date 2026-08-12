@@ -234,6 +234,11 @@ export const relatoriosApi = {
       params: { data_inicio: dataInicio, data_fim: dataFim },
       responseType: "blob",
     }),
+  cronogramaContrato: (id: number, dataInicio: string, dataFim: string) =>
+    api.get(`/relatorios/cronograma-contrato/${id}`, {
+      params: { data_inicio: dataInicio, data_fim: dataFim },
+      responseType: "blob",
+    }),
   regencia: () =>
     api.get("/relatorios/regencia", { responseType: "blob" }),
   cronogramaTurma: (id: number) =>

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.services.excel_export import (
     exportar_cronograma_professor,
+    exportar_cronograma_contrato,
     exportar_regencia_excel,
     exportar_cronograma_turma,
     exportar_dados_mestres,
@@ -35,6 +36,25 @@ async def exportar_professor_excel(
         io.BytesIO(content),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename=cronograma_prof_{professor_id}.xlsx"},
+    )
+
+
+@router.get("/cronograma-contrato/{professor_id}")
+async def exportar_contrato_excel(
+    professor_id: int,
+    data_inicio: date,
+    data_fim: date,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    try:
+        content = await exportar_cronograma_contrato(professor_id, data_inicio, data_fim, db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=cronograma_contrato_{professor_id}.xlsx"},
     )
 
 

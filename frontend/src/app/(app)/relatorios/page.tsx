@@ -5,7 +5,9 @@ import { useQuery } from "@tanstack/react-query";
 import { relatoriosApi, professoresApi, eventosApi, downloadBlob } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { toast } from "sonner";
-import { Download, FileSpreadsheet, Users, BookOpen, Database, ShoppingBag, History } from "lucide-react";
+import { Download, FileSpreadsheet, Users, BookOpen, Database, ShoppingBag, History, Receipt } from "lucide-react";
+
+const TIPOS_CONTRATO = ["Inclusão em Folha", "RPA", "PJ"] as const;
 
 export default function RelatoriosPage() {
   const [loadingReg, setLoadingReg] = useState(false);
@@ -14,11 +16,17 @@ export default function RelatoriosPage() {
   const [loadingDados, setLoadingDados] = useState(false);
   const [loadingOfertas, setLoadingOfertas] = useState(false);
   const [loadingHistorico, setLoadingHistorico] = useState(false);
+  const [loadingContrato, setLoadingContrato] = useState(false);
   const [selectedProf, setSelectedProf] = useState("");
   const [selectedTurma, setSelectedTurma] = useState("");
   const [selectedEventoHist, setSelectedEventoHist] = useState("");
   const [dateIni, setDateIni] = useState("");
   const [dateFim, setDateFim] = useState("");
+  // Novo: relatório por tipo de contrato
+  const [tiposContrato, setTiposContrato] = useState<string[]>([]);
+  const [selectedProfContrato, setSelectedProfContrato] = useState("");
+  const [dateIniContrato, setDateIniContrato] = useState("");
+  const [dateFimContrato, setDateFimContrato] = useState("");
 
   const { data: professores = [] } = useQuery({
     queryKey: ["professores-ativos"],
@@ -102,6 +110,35 @@ export default function RelatoriosPage() {
       toast.error("Erro ao exportar ofertas");
     } finally {
       setLoadingOfertas(false);
+    }
+  }
+
+  const professoresFiltradosTipo = (professores as any[]).filter(
+    (p) => tiposContrato.length === 0 || tiposContrato.includes(p.tipo)
+  );
+
+  function toggleTipoContrato(tipo: string) {
+    setTiposContrato((prev) =>
+      prev.includes(tipo) ? prev.filter((t) => t !== tipo) : [...prev, tipo]
+    );
+    setSelectedProfContrato("");
+  }
+
+  async function baixarCronogramaContrato() {
+    if (!selectedProfContrato || !dateIniContrato || !dateFimContrato) {
+      toast.error("Selecione professor e período");
+      return;
+    }
+    setLoadingContrato(true);
+    try {
+      const res = await relatoriosApi.cronogramaContrato(+selectedProfContrato, dateIniContrato, dateFimContrato);
+      const prof = (professores as any[]).find((p) => p.id === +selectedProfContrato);
+      downloadBlob(res.data, `cronograma_contrato_${prof?.nome || selectedProfContrato}.xlsx`);
+      toast.success("Relatório exportado!");
+    } catch {
+      toast.error("Erro ao exportar relatório");
+    } finally {
+      setLoadingContrato(false);
     }
   }
 
@@ -220,6 +257,93 @@ export default function RelatoriosPage() {
             >
               <Download className="h-4 w-4" />
               {loadingTurma ? "Exportando..." : "Exportar Excel"}
+            </button>
+          </div>
+
+          {/* Cronograma por tipo de contrato */}
+          <div className="card p-6 lg:col-span-3">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-rose-100 rounded-lg">
+                <Receipt className="h-5 w-5 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-800">Cronograma por Tipo de Contrato</h3>
+                <p className="text-xs text-gray-400">Inclusão em Folha, RPA e PJ — com valor total</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+              {/* Tipo de contrato */}
+              <div>
+                <p className="text-xs text-gray-500 mb-2 font-medium">Tipo de contrato</p>
+                <div className="flex flex-wrap gap-3">
+                  {TIPOS_CONTRATO.map((tipo) => (
+                    <label key={tipo} className="flex items-center gap-2 cursor-pointer text-sm">
+                      <input
+                        type="checkbox"
+                        checked={tiposContrato.includes(tipo)}
+                        onChange={() => toggleTipoContrato(tipo)}
+                        className="rounded border-gray-300"
+                      />
+                      {tipo}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              {/* Professor filtrado */}
+              <div>
+                <label className="block text-xs text-gray-500 mb-1 font-medium">Professor</label>
+                <select
+                  className="input w-full"
+                  value={selectedProfContrato}
+                  onChange={(e) => setSelectedProfContrato(e.target.value)}
+                  disabled={professoresFiltradosTipo.length === 0}
+                >
+                  <option value="">
+                    {tiposContrato.length === 0
+                      ? "Selecione o tipo primeiro"
+                      : professoresFiltradosTipo.length === 0
+                      ? "Nenhum professor encontrado"
+                      : "Selecionar professor"}
+                  </option>
+                  {professoresFiltradosTipo.map((p: any) => (
+                    <option key={p.id} value={p.id}>
+                      {p.nome} ({p.tipo})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {/* Período */}
+              <div>
+                <p className="text-xs text-gray-500 mb-1 font-medium">Período</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Início</label>
+                    <input
+                      type="date"
+                      className="input w-full"
+                      value={dateIniContrato}
+                      onChange={(e) => setDateIniContrato(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Fim</label>
+                    <input
+                      type="date"
+                      className="input w-full"
+                      value={dateFimContrato}
+                      onChange={(e) => setDateFimContrato(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={baixarCronogramaContrato}
+              disabled={loadingContrato || !selectedProfContrato || !dateIniContrato || !dateFimContrato}
+              className="btn-primary flex items-center justify-center gap-2 px-6"
+            >
+              <Download className="h-4 w-4" />
+              {loadingContrato ? "Exportando..." : "Exportar Excel"}
             </button>
           </div>
         </div>
