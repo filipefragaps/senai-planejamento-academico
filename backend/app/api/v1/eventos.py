@@ -37,7 +37,7 @@ async def listar_eventos(
     cursos: dict[int, dict] = {}
     if ids_curso:
         res = await db.execute(select(Curso).where(Curso.id.in_(ids_curso)))
-        cursos = {c.id: {"nome": c.nome, "area": c.area} for c in res.scalars().all()}
+        cursos = {c.id: {"nome": c.nome, "area": c.area, "tipo": c.tipo} for c in res.scalars().all()}
 
     # Batch-fetch oferta areas as fallback (Curso.area may be null on master-data import)
     ids_oferta = {e.oferta_id for e in eventos_list if e.oferta_id}
@@ -52,6 +52,7 @@ async def listar_eventos(
         curso_data = cursos.get(e.curso_id) or {}
         d["nome_curso"] = curso_data.get("nome")
         d["area"] = curso_data.get("area") or (oferta_areas.get(e.oferta_id) if e.oferta_id else None)
+        d["tipo_curso"] = curso_data.get("tipo")
         out.append(d)
     return out
 

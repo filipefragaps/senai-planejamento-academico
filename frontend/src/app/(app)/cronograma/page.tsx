@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { planejamentoApi, professoresApi, eventosApi, relatoriosApi, downloadBlob } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { AulaEditDrawer } from "@/components/aula-edit-drawer";
 import { cn } from "@/lib/utils";
 import {
-  ChevronLeft, ChevronRight, Loader2, X, Printer, CalendarDays, LayoutGrid, Filter, FileDown, Search,
+  ChevronLeft, ChevronRight, Loader2, X, Printer, CalendarDays, LayoutGrid, Filter, FileDown, Search, ChevronDown,
 } from "lucide-react";
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -79,7 +79,20 @@ export default function CronogramaPage() {
   const [eventoFiltro, setEventoFiltro] = useState("");
   const [buscaEvento, setBuscaEvento] = useState("");
   const [areaFiltro, setAreaFiltro] = useState("");
+  const [filtroModalidades, setFiltroModalidades] = useState<string[]>([]);
+  const [modalidadeOpen, setModalidadeOpen] = useState(false);
+  const modalidadeRef = useRef<HTMLDivElement>(null);
   const tabelaRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (modalidadeRef.current && !modalidadeRef.current.contains(e.target as Node)) {
+        setModalidadeOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Datas de busca conforme modo
   const dataInicio =
@@ -128,15 +141,22 @@ export default function CronogramaPage() {
     return Array.from(s).sort();
   }, [todosEventos]);
 
+  const modalidadesDisponiveis = useMemo(() => {
+    const s = new Set<string>();
+    for (const e of todosEventos as any[]) if (e.tipo_curso) s.add(e.tipo_curso);
+    return Array.from(s).sort();
+  }, [todosEventos]);
+
   const eventosFiltrados = useMemo(() => {
     const q = buscaEvento.toLowerCase();
     return (todosEventos as any[]).filter((e: any) => {
       const matchQ = !q || [e.nome_turma ?? "", e.disciplina ?? "", e.nome_curso ?? ""]
         .some((s: string) => s.toLowerCase().includes(q));
       const matchA = !areaFiltro || e.area === areaFiltro;
-      return matchQ && matchA;
+      const matchM = filtroModalidades.length === 0 || filtroModalidades.includes(e.tipo_curso);
+      return matchQ && matchA && matchM;
     });
-  }, [todosEventos, buscaEvento, areaFiltro]);
+  }, [todosEventos, buscaEvento, areaFiltro, filtroModalidades]);
   const profMap = useMemo(() =>
     new Map((professores as any[]).map((p: any) => [p.id, p.nome ?? ""])),
     [professores]
@@ -348,7 +368,60 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
             </div>
           )}
 
-          {/* Select de evento (filtrado pela busca/área acima) */}
+          {/* Filtro por modalidade — multi-select */}
+          {modalidadesDisponiveis.length > 0 && (
+            <div className="relative" ref={modalidadeRef}>
+              <button
+                onClick={() => setModalidadeOpen((o) => !o)}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition-colors min-w-[200px] justify-between",
+                  filtroModalidades.length > 0
+                    ? "border-blue-400 bg-blue-50 text-blue-700"
+                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                )}
+              >
+                <span className="truncate">
+                  {filtroModalidades.length === 0
+                    ? "Modalidade"
+                    : filtroModalidades.length === 1
+                    ? filtroModalidades[0].split(" - ")[0]
+                    : `${filtroModalidades.length} modalidades`}
+                </span>
+                <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+              </button>
+              {modalidadeOpen && (
+                <div className="absolute left-0 top-full mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[280px] max-h-72 overflow-y-auto">
+                  {filtroModalidades.length > 0 && (
+                    <button
+                      onClick={() => { setFiltroModalidades([]); setEventoFiltro(""); setDiaSelecionado(null); }}
+                      className="w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50 border-b border-gray-100 font-medium"
+                    >
+                      Limpar seleção
+                    </button>
+                  )}
+                  {modalidadesDisponiveis.map((m) => (
+                    <label key={m} className="flex items-center gap-2.5 px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={filtroModalidades.includes(m)}
+                        onChange={() => {
+                          setFiltroModalidades((prev) =>
+                            prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]
+                          );
+                          setEventoFiltro("");
+                          setDiaSelecionado(null);
+                        }}
+                        className="rounded border-gray-300"
+                      />
+                      {m}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Select de evento (filtrado pela busca/área/modalidade acima) */}
           <div className="relative">
             <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
             <select
