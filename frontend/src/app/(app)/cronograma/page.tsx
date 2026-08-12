@@ -149,29 +149,41 @@ export default function CronogramaPage() {
     [todosEventos]
   );
 
+  // Extrai o código numérico do início da modalidade: "41 - GRADUAÇÃO..." → "41"
+  function codigoModalidade(s: string | null | undefined): string {
+    return (s ?? "").split(/\s*[-–]\s*/)[0].trim();
+  }
+
+  const codigosModalidadesFiltro = useMemo(
+    () => new Set(filtroModalidades.map(codigoModalidade)),
+    [filtroModalidades]
+  );
+
   const eventosFiltrados = useMemo(() => {
     const q = buscaEvento.toLowerCase();
     return (todosEventos as any[]).filter((e: any) => {
       const matchQ = !q || [e.nome_turma ?? "", e.disciplina ?? "", e.nome_curso ?? ""]
         .some((s: string) => s.toLowerCase().includes(q));
-      const matchM = filtroModalidades.length === 0 || filtroModalidades.includes(e.tipo_curso);
+      const matchM = codigosModalidadesFiltro.size === 0 ||
+        codigosModalidadesFiltro.has(codigoModalidade(e.tipo_curso));
       return matchQ && matchM;
     });
-  }, [todosEventos, buscaEvento, filtroModalidades]);
+  }, [todosEventos, buscaEvento, codigosModalidadesFiltro]);
+
   const profMap = useMemo(() =>
     new Map((professores as any[]).map((p: any) => [p.id, p.nome ?? ""])),
     [professores]
   );
 
-  // IDs de eventos que correspondem às modalidades selecionadas
+  // IDs de eventos que correspondem às modalidades selecionadas (match pelo código numérico)
   const eventoIdsPorModalidade = useMemo(() => {
-    if (filtroModalidades.length === 0) return null;
+    if (codigosModalidadesFiltro.size === 0) return null;
     const ids = new Set<number>();
     for (const e of todosEventos as any[]) {
-      if (filtroModalidades.includes(e.tipo_curso)) ids.add(e.id);
+      if (codigosModalidadesFiltro.has(codigoModalidade(e.tipo_curso))) ids.add(e.id);
     }
     return ids;
-  }, [todosEventos, filtroModalidades]);
+  }, [todosEventos, codigosModalidadesFiltro]);
 
   // Enriquecer aulas com nomes e aplicar filtros de professor e modalidade
   const aulas = useMemo(() => {
