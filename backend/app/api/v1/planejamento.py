@@ -383,10 +383,29 @@ async def debug_modalidades(
     )
     tipos_curso = [{"tipo": r[0], "qtd": r[1]} for r in res3.all()]
 
+    # Quantos eventos estão ligados a cada tipo de curso (via curso_id)
+    from sqlalchemy import text
+    res4 = await db.execute(text("""
+        SELECT c.tipo, COUNT(e.id) as qtd_eventos
+        FROM cursos c
+        LEFT JOIN eventos e ON e.curso_id = c.id
+        GROUP BY c.tipo
+        ORDER BY c.tipo
+    """))
+    eventos_por_tipo = [{"tipo": r[0], "qtd_eventos": r[1]} for r in res4.all()]
+
+    # Quantos eventos têm curso_id nulo
+    res5 = await db.execute(
+        select(func.count(Evento.id)).where(Evento.curso_id.is_(None))
+    )
+    eventos_sem_curso = res5.scalar()
+
     return {
         "eventos": eventos_info,
+        "eventos_sem_curso_id": eventos_sem_curso,
         "modalidades_em_ofertacurso": modalidades_oferta,
         "tipos_em_curso": tipos_curso,
+        "eventos_por_tipo_curso": eventos_por_tipo,
     }
 
 
