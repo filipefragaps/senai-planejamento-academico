@@ -587,17 +587,20 @@ export default function DashboardPage() {
 
   const periodoEhMultiploMeses = regInicio !== regFim;
 
+  const TIPOS_EXCLUIDOS_MEDIA = ["Inclusão em Folha", "PJ", "RPA"];
+
   // Stats derivados da lista filtrada — substituem os valores globais do servidor
   const statsFiltrados = useMemo(() => {
     if (!regenciasPeriodo || professoresLista.length === 0) return null;
     const total = professoresLista.length;
-    const somaReg = professoresLista.reduce((s: number, p: any) => s + (p.percentual_regencia ?? 0), 0);
+    const paraMedia = professoresLista.filter((p: any) => !TIPOS_EXCLUIDOS_MEDIA.includes(p.tipo));
+    const somaReg = paraMedia.reduce((s: number, p: any) => s + (p.percentual_regencia ?? 0), 0);
     const ok = professoresLista.filter((p: any) => (p.status_regencia ?? p.status) === "OK").length;
     const alerta = professoresLista.filter((p: any) => (p.status_regencia ?? p.status) === "Alerta").length;
     const critico = professoresLista.filter((p: any) => (p.status_regencia ?? p.status) === "Critico").length;
     return {
       total,
-      regenciaMedia: total > 0 ? somaReg / total : 0,
+      regenciaMedia: paraMedia.length > 0 ? somaReg / paraMedia.length : 0,
       ok,
       alerta,
       critico,

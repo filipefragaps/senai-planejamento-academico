@@ -42,8 +42,9 @@ async def get_dashboard(
 
         regencias = await calcular_regencia_todos(db, semana_inicio, semana_fim)
 
-        # PJ/RPA são extraquadro — excluídos da média de regência e contagens de status
-        regencias_quadro = [r for r in regencias if r["tipo"] not in ("PJ", "RPA")]
+        # Inclusão em Folha, PJ e RPA excluídos da média de regência e contagens de status
+        _TIPOS_EXCLUIDOS_MEDIA = {"Inclusão em Folha", "PJ", "RPA"}
+        regencias_quadro = [r for r in regencias if r["tipo"] not in _TIPOS_EXCLUIDOS_MEDIA]
         prof_ok = sum(1 for r in regencias_quadro if r["status"] == "OK")
         prof_alerta = sum(1 for r in regencias_quadro if r["status"] == "Alerta")
         prof_critico = sum(1 for r in regencias_quadro if r["status"] == "Critico")
