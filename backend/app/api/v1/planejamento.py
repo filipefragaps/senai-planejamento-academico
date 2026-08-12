@@ -356,78 +356,74 @@ async def debug_modalidades(
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    """Diagnóstico: modalidades nas ofertas e cobertura dos eventos."""
+    """Diagnóstico detalhado para resolver filtro de modalidade."""
     from sqlalchemy import func, text
 
-    # Modalidades distintas nas ofertas
-    res = await db.execute(
-        select(OfertaCurso.modalidade, func.count(OfertaCurso.id).label("qtd_ofertas"))
-        .group_by(OfertaCurso.modalidade)
-        .order_by(OfertaCurso.modalidade)
-    )
-    modalidades_oferta = [{"modalidade": r[0], "qtd_ofertas": r[1]} for r in res.all()]
+    # 1. Amostra de nome_turma dos eventos (primeiros 10)
+    r_ev = await db.execute(text(
+        "SELECT id, nome_turma, curso_id, oferta_id, tipo_modalidade FROM eventos ORDER BY id LIMIT 10"
+    ))
+    amostra_eventos = [
+        {"id": r[0], "nome_turma": r[1], "curso_id": r[2], "oferta_id": r[3], "tipo_modalidade": r[4]}
+        for r in r_ev.all()
+    ]
 
-    # Eventos: com e sem oferta_id
-    res2 = await db.execute(
-        select(
-            func.count(Evento.id).label("total"),
-            func.count(Evento.oferta_id).label("com_oferta_id"),
-        )
-    )
-    row = res2.one()
-    eventos_info = {"total": row[0], "com_oferta_id": row[1], "sem_oferta_id": row[0] - row[1]}
+    # 2. Amostra de Cursos (codigo + tipo)
+    r_cur = await db.execute(text(
+        "SELECT id, codigo, nome, tipo FROM cursos ORDER BY id LIMIT 10"
+    ))
+    amostra_cursos = [
+        {"id": r[0], "codigo": r[1], "nome": r[2], "tipo": r[3]}
+        for r in r_cur.all()
+    ]
 
-    # Tipos distintos nos cursos
-    res3 = await db.execute(
-        select(Curso.tipo, func.count(Curso.id).label("qtd"))
-        .group_by(Curso.tipo)
-        .order_by(Curso.tipo)
-    )
-    tipos_curso = [{"tipo": r[0], "qtd": r[1]} for r in res3.all()]
+    # 3. Quantos eventos têm tipo_modalidade preenchido
+    r_tm = await db.execute(text(
+        "SELECT COUNT(*) FROM eventos WHERE tipo_modalidade IS NOT NULL AND tipo_modalidade <> ''"
+    ))
+    eventos_com_tipo_modalidade = r_tm.scalar()
 
-    # Quantos eventos estão ligados a cada tipo de curso (via curso_id)
-    from sqlalchemy import text
-    res4 = await db.execute(text("""
-        SELECT c.tipo, COUNT(e.id) as qtd_eventos
-        FROM cursos c
-        LEFT JOIN eventos e ON e.curso_id = c.id
-        GROUP BY c.tipo
-        ORDER BY c.tipo
-    """))
-    eventos_por_tipo = [{"tipo": r[0], "qtd_eventos": r[1]} for r in res4.all()]
+    # 4. Quantos batem pelo padrão LIKE '% - ' || c.codigo
+    r_like = await db.execute(text(
+        "SELECT COUNT(DISTINCT e.id) FROM eventos e "
+        "JOIN cursos c ON e.nome_turma LIKE ('% - ' || c.codigo) "
+        "WHERE c.tipo IS NOT NULL AND c.tipo <> ''"
+    ))
+    eventos_match_pasta = r_like.scalar()
 
-    # Quantos eventos têm curso_id nulo
-    res5 = await db.execute(
-        select(func.count(Evento.id)).where(Evento.curso_id.is_(None))
-    )
-    eventos_sem_curso = res5.scalar()
+    # 5. Quantos batem pelo padrão ILIKE '%– ' || c.nome || '%'
+    r_nome = await db.execute(text(
+        "SELECT COUNT(DISTINCT e.id) FROM eventos e "
+        "JOIN cursos c ON e.nome_turma ILIKE ('%– ' || c.nome || '%') "
+        "WHERE c.tipo IS NOT NULL AND c.tipo <> ''"
+    ))
+    eventos_match_nome = r_nome.scalar()
 
-    # Cobertura pelo novo join: nome_turma = codigo_evento
-    res6 = await db.execute(text("""
-        SELECT o.modalidade, COUNT(DISTINCT e.id) as qtd_eventos
-        FROM eventos e
-        JOIN ofertas_cursos o ON e.nome_turma = o.codigo_evento
-        GROUP BY o.modalidade
-        ORDER BY o.modalidade
-    """))
-    eventos_por_modalidade_join = [{"modalidade": r[0], "qtd_eventos": r[1]} for r in res6.all()]
+    # 6. Tipos distintos nos cursos
+    r_tipos = await db.execute(text(
+        "SELECT tipo, COUNT(*) FROM cursos GROUP BY tipo ORDER BY tipo"
+    ))
+    tipos_curso = [{"tipo": r[0], "qtd": r[1]} for r in r_tipos.all()]
 
-    res7 = await db.execute(text("""
-        SELECT COUNT(DISTINCT e.id) FROM eventos e
-        JOIN ofertas_cursos o ON e.nome_turma = o.codigo_evento
-    """))
-    total_cobertos = res7.scalar()
+    # 7. Amostra: eventos que DEVERIAM bater pelo código da pasta
+    r_sample = await db.execute(text(
+        "SELECT e.nome_turma, c.codigo, c.tipo FROM eventos e "
+        "JOIN cursos c ON e.nome_turma LIKE ('% - ' || c.codigo) "
+        "LIMIT 5"
+    ))
+    amostra_match_pasta = [
+        {"nome_turma": r[0], "codigo_curso": r[1], "tipo_curso": r[2]}
+        for r in r_sample.all()
+    ]
 
     return {
-        "eventos": eventos_info,
-        "eventos_sem_curso_id": eventos_sem_curso,
-        "modalidades_em_ofertacurso": modalidades_oferta,
+        "amostra_eventos": amostra_eventos,
+        "amostra_cursos": amostra_cursos,
+        "eventos_com_tipo_modalidade": eventos_com_tipo_modalidade,
+        "eventos_match_pasta_codigo": eventos_match_pasta,
+        "eventos_match_nome_curso": eventos_match_nome,
         "tipos_em_curso": tipos_curso,
-        "eventos_por_tipo_curso": eventos_por_tipo,
-        "novo_join_nome_turma_codigo_evento": {
-            "eventos_cobertos": total_cobertos,
-            "por_modalidade": eventos_por_modalidade_join,
-        },
+        "amostra_match_pasta": amostra_match_pasta,
     }
 
 
