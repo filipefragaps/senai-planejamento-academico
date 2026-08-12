@@ -457,26 +457,26 @@ async def cronograma_geral(
     if status:
         filters.append(Aula.status == status)
     if modalidades:
-        # Usa "código " (com espaço) para não confundir "3" com "31", "33", "35"
+        from sqlalchemy import text as _text
         codes = [c.strip() for c in modalidades.split(",") if c.strip()]
-        modal_conds = [OfertaCurso.modalidade.ilike(f"{c} %") for c in codes]
+        # "41 %" para não confundir "3" com "31", "33", "35"
+        modal_patterns = {f"m{i}": f"{code} %" for i, code in enumerate(codes)}
+        modal_where = " OR ".join(f"o.modalidade ILIKE :m{i}" for i in range(len(codes)))
 
-        # Caminho 1: Evento.nome_turma = OfertaCurso.codigo_evento
-        # (eventos importados do cronograma — cobre ~95% dos eventos)
-        res1 = await db.execute(
-            select(Evento.id)
-            .join(OfertaCurso, Evento.nome_turma == OfertaCurso.codigo_evento)
-            .where(or_(*modal_conds))
+        # nome_turma tem formato "CODIGO – NOME - PASTA"; usa LIKE prefixo para bater
+        res_ev = await db.execute(
+            _text(f"""
+                SELECT DISTINCT e.id
+                FROM eventos e
+                JOIN ofertas_cursos o ON (
+                    e.nome_turma ILIKE (o.codigo_evento || '%%')
+                    OR e.oferta_id = o.id
+                )
+                WHERE {modal_where}
+            """),
+            modal_patterns,
         )
-        ev_ids_modal = set(res1.scalars().all())
-
-        # Caminho 2: Evento.oferta_id direto (eventos criados pelo planejamento)
-        res2 = await db.execute(
-            select(Evento.id)
-            .join(OfertaCurso, Evento.oferta_id == OfertaCurso.id)
-            .where(or_(*modal_conds))
-        )
-        ev_ids_modal.update(res2.scalars().all())
+        ev_ids_modal = set(res_ev.scalars().all())
 
         if ev_ids_modal:
             filters.append(Aula.evento_id.in_(list(ev_ids_modal)))
