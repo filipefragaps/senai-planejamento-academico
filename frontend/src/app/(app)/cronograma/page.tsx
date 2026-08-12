@@ -120,15 +120,20 @@ export default function CronogramaPage() {
 
   const semProfessor = professorFiltro === "sem_professor";
 
+  // Códigos numéricos das modalidades selecionadas para enviar ao backend
+  const modalidadesParam = filtroModalidades.length > 0
+    ? filtroModalidades.map(m => m.split(/\s*[-–]\s*/)[0].trim()).join(",")
+    : undefined;
+
   const { data: rawAulas = [], isLoading } = useQuery({
-    queryKey: ["cronograma-global", dataInicio, dataFim, semProfessor ? "sem_professor" : professorFiltro, eventoFiltro],
+    queryKey: ["cronograma-global", dataInicio, dataFim, semProfessor ? "sem_professor" : professorFiltro, eventoFiltro, modalidadesParam],
     queryFn: () =>
       planejamentoApi.cronograma({
         data_inicio: dataInicio,
         data_fim: dataFim,
-        // "sem_professor" busca tudo e filtra no frontend
         professor_id: professorFiltro && !semProfessor ? +professorFiltro : undefined,
         evento_id: eventoFiltro ? +eventoFiltro : undefined,
+        modalidades: modalidadesParam,
         limit: 2000,
       }),
   });
@@ -175,17 +180,7 @@ export default function CronogramaPage() {
     [professores]
   );
 
-  // IDs de eventos que correspondem às modalidades selecionadas (match pelo código numérico)
-  const eventoIdsPorModalidade = useMemo(() => {
-    if (codigosModalidadesFiltro.size === 0) return null;
-    const ids = new Set<number>();
-    for (const e of todosEventos as any[]) {
-      if (codigosModalidadesFiltro.has(codigoModalidade(e.tipo_curso))) ids.add(e.id);
-    }
-    return ids;
-  }, [todosEventos, codigosModalidadesFiltro]);
-
-  // Enriquecer aulas com nomes e aplicar filtros de professor e modalidade
+  // Enriquecer aulas com nomes e aplicar filtro de "sem professor"
   const aulas = useMemo(() => {
     let list = (rawAulas as any[]).map((a: any) => ({
       ...a,
@@ -195,11 +190,8 @@ export default function CronogramaPage() {
     if (semProfessor) {
       list = list.filter((a: any) => !a.professor_id);
     }
-    if (eventoIdsPorModalidade !== null) {
-      list = list.filter((a: any) => eventoIdsPorModalidade.has(a.evento_id));
-    }
     return list;
-  }, [rawAulas, eventoMap, profMap, semProfessor, eventoIdsPorModalidade]);
+  }, [rawAulas, eventoMap, profMap, semProfessor]);
 
   // Mapa de cores por UC
   const ucColorMap = useMemo(() => buildUcColorMap(aulas), [aulas]);

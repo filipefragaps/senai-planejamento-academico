@@ -9,7 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, or_
 
 from app.database import get_db
 from app.core.deps import get_current_user
@@ -357,6 +357,7 @@ async def cronograma_geral(
     data_inicio: Optional[date] = None,
     data_fim: Optional[date] = None,
     status: Optional[str] = None,
+    modalidades: Optional[str] = None,  # códigos separados por vírgula: "41,81"
     skip: int = 0,
     limit: int = 500,
     db: AsyncSession = Depends(get_db),
@@ -375,6 +376,20 @@ async def cronograma_geral(
         filters.append(Aula.data <= data_fim)
     if status:
         filters.append(Aula.status == status)
+    if modalidades:
+        # Filtra aulas cujo evento tem oferta com modalidade iniciando pelos códigos
+        codes = [c.strip() for c in modalidades.split(",") if c.strip()]
+        oferta_conds = [OfertaCurso.modalidade.ilike(f"{c}%") for c in codes]
+        res_of = await db.execute(select(OfertaCurso.id).where(or_(*oferta_conds)))
+        oferta_ids = list(res_of.scalars().all())
+        if oferta_ids:
+            res_ev = await db.execute(
+                select(Evento.id).where(Evento.oferta_id.in_(oferta_ids))
+            )
+            ev_ids_modal = list(res_ev.scalars().all())
+            filters.append(Aula.evento_id.in_(ev_ids_modal) if ev_ids_modal else and_(False))
+        else:
+            filters.append(and_(False))
     if filters:
         query = query.where(and_(*filters))
     query = query.order_by(Aula.data, Aula.horario_inicio).offset(skip).limit(limit)

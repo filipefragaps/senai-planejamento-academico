@@ -162,7 +162,7 @@ export const planejamentoApi = {
   }) => api.post(`/planejamento/from-oferta/${ofertaId}`, body).then((r) => r.data),
   cronograma: (params?: {
     evento_id?: number; professor_id?: number; data_inicio?: string;
-    data_fim?: string; status?: string; skip?: number; limit?: number;
+    data_fim?: string; status?: string; modalidades?: string; skip?: number; limit?: number;
   }) => api.get("/planejamento/cronograma", { params }).then((r) => r.data),
   modulos: (eventoId: number) =>
     api.get(`/planejamento/modulos/${eventoId}`).then((r) => r.data),
