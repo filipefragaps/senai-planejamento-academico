@@ -417,19 +417,23 @@ async def cronograma_geral(
     if status:
         filters.append(Aula.status == status)
     if modalidades:
-        # Filtra aulas cujo evento tem oferta com modalidade iniciando pelos códigos
+        # Filtra via Evento.curso_id → Curso.tipo (cobre 124/129 eventos)
+        # Usa "código " (com espaço) para não confundir "3" com "31", "33", "35"
         codes = [c.strip() for c in modalidades.split(",") if c.strip()]
-        oferta_conds = [OfertaCurso.modalidade.ilike(f"{c}%") for c in codes]
-        res_of = await db.execute(select(OfertaCurso.id).where(or_(*oferta_conds)))
-        oferta_ids = list(res_of.scalars().all())
-        if oferta_ids:
+        curso_conds = [Curso.tipo.ilike(f"{c} %") for c in codes]
+        res_cur = await db.execute(select(Curso.id).where(or_(*curso_conds)))
+        curso_ids = list(res_cur.scalars().all())
+        if curso_ids:
             res_ev = await db.execute(
-                select(Evento.id).where(Evento.oferta_id.in_(oferta_ids))
+                select(Evento.id).where(Evento.curso_id.in_(curso_ids))
             )
             ev_ids_modal = list(res_ev.scalars().all())
-            filters.append(Aula.evento_id.in_(ev_ids_modal) if ev_ids_modal else and_(False))
+            if ev_ids_modal:
+                filters.append(Aula.evento_id.in_(ev_ids_modal))
+            else:
+                filters.append(Aula.id < 0)
         else:
-            filters.append(and_(False))
+            filters.append(Aula.id < 0)
     if filters:
         query = query.where(and_(*filters))
     query = query.order_by(Aula.data, Aula.horario_inicio).offset(skip).limit(limit)
