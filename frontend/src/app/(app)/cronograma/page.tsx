@@ -163,7 +163,17 @@ export default function CronogramaPage() {
     [professores]
   );
 
-  // Enriquecer aulas com nomes e aplicar filtro "sem professor" se selecionado
+  // IDs de eventos que correspondem às modalidades selecionadas
+  const eventoIdsPorModalidade = useMemo(() => {
+    if (filtroModalidades.length === 0) return null;
+    const ids = new Set<number>();
+    for (const e of todosEventos as any[]) {
+      if (filtroModalidades.includes(e.tipo_curso)) ids.add(e.id);
+    }
+    return ids;
+  }, [todosEventos, filtroModalidades]);
+
+  // Enriquecer aulas com nomes e aplicar filtros de professor e modalidade
   const aulas = useMemo(() => {
     let list = (rawAulas as any[]).map((a: any) => ({
       ...a,
@@ -173,8 +183,11 @@ export default function CronogramaPage() {
     if (semProfessor) {
       list = list.filter((a: any) => !a.professor_id);
     }
+    if (eventoIdsPorModalidade !== null) {
+      list = list.filter((a: any) => eventoIdsPorModalidade.has(a.evento_id));
+    }
     return list;
-  }, [rawAulas, eventoMap, profMap, semProfessor]);
+  }, [rawAulas, eventoMap, profMap, semProfessor, eventoIdsPorModalidade]);
 
   // Mapa de cores por UC
   const ucColorMap = useMemo(() => buildUcColorMap(aulas), [aulas]);
