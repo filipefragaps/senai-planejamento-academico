@@ -78,23 +78,24 @@ async def _aplicar_migracoes(engine) -> None:
             "AND eventos.curso_id = c.id "
             "AND c.tipo IS NOT NULL AND c.tipo <> ''"
         ),
-        # Popula tipo_modalidade pelo código da pasta no final do nome_turma
-        # Formato: "CODIGO – NOME DO CURSO - PASTA_CODE"  (ex: "952230 – TECNOLOGIA EM AUTO... - 19043")
+        # Popula tipo_modalidade pelo código da pasta no campo disciplina
+        # disciplina tem formato "NOME DO CURSO - PASTA_CODE" (ex: "TECNOLOGIA EM AUTO... - 19043")
+        # Curso.codigo = pasta code (ex: "19043")
         (
             "UPDATE eventos SET tipo_modalidade = c.tipo "
             "FROM cursos c "
             "WHERE eventos.tipo_modalidade IS NULL "
             "AND c.tipo IS NOT NULL AND c.tipo <> '' "
-            "AND eventos.nome_turma LIKE ('% - ' || c.codigo)"
+            "AND eventos.disciplina LIKE ('% - ' || c.codigo)"
         ),
-        # Popula tipo_modalidade pelo nome do curso dentro do nome_turma
-        # Cobre eventos sem código de pasta: "CODIGO – NOME DO CURSO"
+        # Popula tipo_modalidade pelo nome do curso no início do campo disciplina
+        # Cobre eventos cujo disciplina começa com o nome do curso
         (
             "UPDATE eventos SET tipo_modalidade = c.tipo "
             "FROM cursos c "
             "WHERE eventos.tipo_modalidade IS NULL "
             "AND c.tipo IS NOT NULL AND c.tipo <> '' "
-            "AND eventos.nome_turma ILIKE ('%– ' || c.nome || '%')"
+            "AND eventos.disciplina ILIKE (c.nome || '%')"
         ),
         # Aulas passadas que não foram remarcadas/canceladas → Realizada
         (

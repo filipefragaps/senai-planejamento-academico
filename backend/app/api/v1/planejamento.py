@@ -358,12 +358,13 @@ async def debug_modalidades(
     """Diagnóstico detalhado para resolver filtro de modalidade."""
     from sqlalchemy import func, text
 
-    # 1. Amostra de nome_turma dos eventos (primeiros 10)
+    # 1. Amostra de eventos sem tipo_modalidade (para ver o formato real de disciplina)
     r_ev = await db.execute(text(
-        "SELECT id, nome_turma, curso_id, oferta_id, tipo_modalidade FROM eventos ORDER BY id LIMIT 10"
+        "SELECT id, nome_turma, disciplina, curso_id, oferta_id, tipo_modalidade "
+        "FROM eventos WHERE tipo_modalidade IS NULL ORDER BY id LIMIT 10"
     ))
     amostra_eventos = [
-        {"id": r[0], "nome_turma": r[1], "curso_id": r[2], "oferta_id": r[3], "tipo_modalidade": r[4]}
+        {"id": r[0], "nome_turma": r[1], "disciplina": r[2], "curso_id": r[3], "oferta_id": r[4], "tipo_modalidade": r[5]}
         for r in r_ev.all()
     ]
 
@@ -382,18 +383,18 @@ async def debug_modalidades(
     ))
     eventos_com_tipo_modalidade = r_tm.scalar()
 
-    # 4. Quantos batem pelo padrão LIKE '% - ' || c.codigo
+    # 4. Quantos batem pelo padrão disciplina LIKE '% - ' || c.codigo
     r_like = await db.execute(text(
         "SELECT COUNT(DISTINCT e.id) FROM eventos e "
-        "JOIN cursos c ON e.nome_turma LIKE ('% - ' || c.codigo) "
+        "JOIN cursos c ON e.disciplina LIKE ('% - ' || c.codigo) "
         "WHERE c.tipo IS NOT NULL AND c.tipo <> ''"
     ))
     eventos_match_pasta = r_like.scalar()
 
-    # 5. Quantos batem pelo padrão ILIKE '%– ' || c.nome || '%'
+    # 5. Quantos batem pelo padrão disciplina ILIKE c.nome || '%'
     r_nome = await db.execute(text(
         "SELECT COUNT(DISTINCT e.id) FROM eventos e "
-        "JOIN cursos c ON e.nome_turma ILIKE ('%– ' || c.nome || '%') "
+        "JOIN cursos c ON e.disciplina ILIKE (c.nome || '%') "
         "WHERE c.tipo IS NOT NULL AND c.tipo <> ''"
     ))
     eventos_match_nome = r_nome.scalar()
@@ -404,14 +405,14 @@ async def debug_modalidades(
     ))
     tipos_curso = [{"tipo": r[0], "qtd": r[1]} for r in r_tipos.all()]
 
-    # 7. Amostra: eventos que DEVERIAM bater pelo código da pasta
+    # 7. Amostra: eventos que batem pelo código da pasta via disciplina
     r_sample = await db.execute(text(
-        "SELECT e.nome_turma, c.codigo, c.tipo FROM eventos e "
-        "JOIN cursos c ON e.nome_turma LIKE ('% - ' || c.codigo) "
+        "SELECT e.nome_turma, e.disciplina, c.codigo, c.tipo FROM eventos e "
+        "JOIN cursos c ON e.disciplina LIKE ('% - ' || c.codigo) "
         "LIMIT 5"
     ))
     amostra_match_pasta = [
-        {"nome_turma": r[0], "codigo_curso": r[1], "tipo_curso": r[2]}
+        {"nome_turma": r[0], "disciplina": r[1], "codigo_curso": r[2], "tipo_curso": r[3]}
         for r in r_sample.all()
     ]
 
