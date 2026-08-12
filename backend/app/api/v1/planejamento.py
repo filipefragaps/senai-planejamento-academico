@@ -350,6 +350,47 @@ async def importar_historico(
     return resultado
 
 
+@router.get("/debug-modalidades")
+async def debug_modalidades(
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """Diagnóstico: modalidades nas ofertas e cobertura dos eventos."""
+    from sqlalchemy import func, text
+
+    # Modalidades distintas nas ofertas
+    res = await db.execute(
+        select(OfertaCurso.modalidade, func.count(OfertaCurso.id).label("qtd_ofertas"))
+        .group_by(OfertaCurso.modalidade)
+        .order_by(OfertaCurso.modalidade)
+    )
+    modalidades_oferta = [{"modalidade": r[0], "qtd_ofertas": r[1]} for r in res.all()]
+
+    # Eventos: com e sem oferta_id
+    res2 = await db.execute(
+        select(
+            func.count(Evento.id).label("total"),
+            func.count(Evento.oferta_id).label("com_oferta_id"),
+        )
+    )
+    row = res2.one()
+    eventos_info = {"total": row[0], "com_oferta_id": row[1], "sem_oferta_id": row[0] - row[1]}
+
+    # Tipos distintos nos cursos
+    res3 = await db.execute(
+        select(Curso.tipo, func.count(Curso.id).label("qtd"))
+        .group_by(Curso.tipo)
+        .order_by(Curso.tipo)
+    )
+    tipos_curso = [{"tipo": r[0], "qtd": r[1]} for r in res3.all()]
+
+    return {
+        "eventos": eventos_info,
+        "modalidades_em_ofertacurso": modalidades_oferta,
+        "tipos_em_curso": tipos_curso,
+    }
+
+
 @router.get("/cronograma")
 async def cronograma_geral(
     evento_id: Optional[int] = None,
