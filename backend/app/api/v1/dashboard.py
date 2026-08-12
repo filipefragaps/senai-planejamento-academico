@@ -11,7 +11,7 @@ from app.services.regencia import calcular_regencia_todos
 from app.core.deps import get_current_user
 
 _MESES_PT = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
-_TIPOS_QUADRO = {"Mensalista", "Horista", "Inclusão em Folha"}
+_TIPOS_QUADRO = {"Mensalista", "Horista"}
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
@@ -189,8 +189,8 @@ async def get_eficiencia(
     _=Depends(get_current_user),
 ):
     """
-    CH estimada (eventos ativos, mês a mês) × CH realizada pelos professores do quadro.
-    Quadro = Mensalista + Horista + Inclusão em Folha.
+    CH estimada (eventos Ativo ou Concluído, mês a mês) × CH realizada pelos professores do quadro.
+    Quadro = Mensalista + Horista. CH externo = Inclusão em Folha, PJ, RPA e aulas sem professor.
     """
     hoje = date.today()
     ano = ano or hoje.year
@@ -208,7 +208,7 @@ async def get_eficiencia(
         .join(Evento, Aula.evento_id == Evento.id)
         .outerjoin(Professor, Aula.professor_id == Professor.id)
         .where(
-            Evento.status != "Cancelado",
+            Evento.status.in_(["Ativo", "Concluído"]),
             Aula.status != "Cancelada",
             Aula.data >= data_inicio,
             Aula.data <= data_fim,
@@ -241,10 +241,8 @@ async def get_eficiencia(
             continue
         hrs = _hrs(row.horario_inicio, row.horario_fim)
         por_mes[key]["ch_estimada"] += hrs
-        # Classifica por tipo independente do status:
-        # - Realizada: produção efetiva
-        # - Agendada sem docente: considera extraquadro (sem professor = externo)
-        # - Agendada com docente: classifica pelo tipo do professor
+        # Quadro próprio: Mensalista e Horista.
+        # CH externo: Inclusão em Folha, PJ, RPA e aulas sem professor alocado.
         if row.prof_tipo in _TIPOS_QUADRO:
             por_mes[key]["ch_quadro"] += hrs
         else:
