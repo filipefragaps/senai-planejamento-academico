@@ -14,6 +14,21 @@ import { ptBR } from "date-fns/locale";
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
+const MODALIDADES_DB = [
+  "11 - APRENDIZAGEM INDUSTRIAL BÁSICA - FORM. INICIAL",
+  "21 - QUALIFICAÇÃO PROFISSIONAL BÁSICA - FORM. INICIAL E CONTINUADA",
+  "3 - INICIAÇÃO PROFISSIONAL - FORM. INICIAL E CONTINUADA",
+  "31 - HABILITAÇÃO TÉCNICA - EDUC. PROF. TÉCNICA",
+  "33 - HABILITAÇÃO TÉCNICA A DISTÂNCIA - EDUC. PROF. TÉCNICA",
+  "35 - TÉCNICO ENSINO MÉDIO - SEDUC",
+  "41 - GRADUAÇÃO TECNOLÓGICA - EDUCAÇÃO SUPERIOR",
+  "51 - APERFEIÇOAMENTO PROFISSIONAL - FORM. INICIAL E CONTINUADA",
+  "53 - APERFEIÇOAMENTO PROFISSIONAL - EDU. PROF. TEC.",
+  "54 - APERFEIÇOAMENTO PROFISSIONAL - AÇÕES MÓVEIS",
+  "81 - GRADUAÇÃO - BACHARELADO (SUPERIOR)",
+  "91 - PÓS-GRADUAÇÃO LATO SENSU ESPECIALIZAÇÃO",
+];
+
 const MESES_PT = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
@@ -78,7 +93,6 @@ export default function CronogramaPage() {
   const [professorFiltro, setProfessorFiltro] = useState("");
   const [eventoFiltro, setEventoFiltro] = useState("");
   const [buscaEvento, setBuscaEvento] = useState("");
-  const [areaFiltro, setAreaFiltro] = useState("");
   const [filtroModalidades, setFiltroModalidades] = useState<string[]>([]);
   const [modalidadeOpen, setModalidadeOpen] = useState(false);
   const modalidadeRef = useRef<HTMLDivElement>(null);
@@ -135,28 +149,15 @@ export default function CronogramaPage() {
     [todosEventos]
   );
 
-  const areasDisponiveis = useMemo(() => {
-    const s = new Set<string>();
-    for (const e of todosEventos as any[]) if (e.area) s.add(e.area);
-    return Array.from(s).sort();
-  }, [todosEventos]);
-
-  const modalidadesDisponiveis = useMemo(() => {
-    const s = new Set<string>();
-    for (const e of todosEventos as any[]) if (e.tipo_curso) s.add(e.tipo_curso);
-    return Array.from(s).sort();
-  }, [todosEventos]);
-
   const eventosFiltrados = useMemo(() => {
     const q = buscaEvento.toLowerCase();
     return (todosEventos as any[]).filter((e: any) => {
       const matchQ = !q || [e.nome_turma ?? "", e.disciplina ?? "", e.nome_curso ?? ""]
         .some((s: string) => s.toLowerCase().includes(q));
-      const matchA = !areaFiltro || e.area === areaFiltro;
       const matchM = filtroModalidades.length === 0 || filtroModalidades.includes(e.tipo_curso);
-      return matchQ && matchA && matchM;
+      return matchQ && matchM;
     });
-  }, [todosEventos, buscaEvento, areaFiltro, filtroModalidades]);
+  }, [todosEventos, buscaEvento, filtroModalidades]);
   const profMap = useMemo(() =>
     new Map((professores as any[]).map((p: any) => [p.id, p.nome ?? ""])),
     [professores]
@@ -337,91 +338,58 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
             )}
           </div>
 
-          {/* Filtro por área — pills */}
-          {areasDisponiveis.length > 0 && (
-            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-              <button
-                onClick={() => { setAreaFiltro(""); setEventoFiltro(""); setDiaSelecionado(null); }}
-                className={cn(
-                  "px-3 py-1 rounded-md text-xs font-medium transition-all",
-                  areaFiltro === ""
-                    ? "bg-white shadow text-gray-800"
-                    : "text-gray-500 hover:text-gray-700"
-                )}
-              >
-                Todas
-              </button>
-              {areasDisponiveis.map((a) => (
-                <button
-                  key={a}
-                  onClick={() => { setAreaFiltro(a); setEventoFiltro(""); setDiaSelecionado(null); }}
-                  className={cn(
-                    "px-3 py-1 rounded-md text-xs font-medium transition-all",
-                    areaFiltro === a
-                      ? "bg-blue-600 text-white shadow"
-                      : "text-gray-500 hover:text-gray-700"
-                  )}
-                >
-                  {a}
-                </button>
-              ))}
-            </div>
-          )}
-
           {/* Filtro por modalidade — multi-select */}
-          {modalidadesDisponiveis.length > 0 && (
-            <div className="relative" ref={modalidadeRef}>
-              <button
-                onClick={() => setModalidadeOpen((o) => !o)}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition-colors min-w-[200px] justify-between",
-                  filtroModalidades.length > 0
-                    ? "border-blue-400 bg-blue-50 text-blue-700"
-                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
-                )}
-              >
-                <span className="truncate">
-                  {filtroModalidades.length === 0
-                    ? "Modalidade"
-                    : filtroModalidades.length === 1
-                    ? filtroModalidades[0].split(" - ")[0]
-                    : `${filtroModalidades.length} modalidades`}
-                </span>
-                <ChevronDown className="h-3.5 w-3.5 shrink-0" />
-              </button>
-              {modalidadeOpen && (
-                <div className="absolute left-0 top-full mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[280px] max-h-72 overflow-y-auto">
-                  {filtroModalidades.length > 0 && (
-                    <button
-                      onClick={() => { setFiltroModalidades([]); setEventoFiltro(""); setDiaSelecionado(null); }}
-                      className="w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50 border-b border-gray-100 font-medium"
-                    >
-                      Limpar seleção
-                    </button>
-                  )}
-                  {modalidadesDisponiveis.map((m) => (
-                    <label key={m} className="flex items-center gap-2.5 px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm text-gray-700">
-                      <input
-                        type="checkbox"
-                        checked={filtroModalidades.includes(m)}
-                        onChange={() => {
-                          setFiltroModalidades((prev) =>
-                            prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]
-                          );
-                          setEventoFiltro("");
-                          setDiaSelecionado(null);
-                        }}
-                        className="rounded border-gray-300"
-                      />
-                      {m}
-                    </label>
-                  ))}
-                </div>
+          <div className="relative" ref={modalidadeRef}>
+            <button
+              onClick={() => setModalidadeOpen((o) => !o)}
+              className={cn(
+                "flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition-colors min-w-[180px] justify-between",
+                filtroModalidades.length > 0
+                  ? "border-blue-400 bg-blue-50 text-blue-700"
+                  : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
               )}
-            </div>
-          )}
+            >
+              <span className="truncate">
+                {filtroModalidades.length === 0
+                  ? "Modalidade"
+                  : filtroModalidades.length === 1
+                  ? filtroModalidades[0].split(" - ")[0]
+                  : `${filtroModalidades.length} modalidades`}
+              </span>
+              <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+            </button>
+            {modalidadeOpen && (
+              <div className="absolute left-0 top-full mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[300px] max-h-72 overflow-y-auto">
+                {filtroModalidades.length > 0 && (
+                  <button
+                    onClick={() => { setFiltroModalidades([]); setEventoFiltro(""); setDiaSelecionado(null); }}
+                    className="w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50 border-b border-gray-100 font-medium"
+                  >
+                    Limpar seleção
+                  </button>
+                )}
+                {MODALIDADES_DB.map((m) => (
+                  <label key={m} className="flex items-center gap-2.5 px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={filtroModalidades.includes(m)}
+                      onChange={() => {
+                        setFiltroModalidades((prev) =>
+                          prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]
+                        );
+                        setEventoFiltro("");
+                        setDiaSelecionado(null);
+                      }}
+                      className="rounded border-gray-300"
+                    />
+                    {m}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
 
-          {/* Select de evento (filtrado pela busca/área/modalidade acima) */}
+          {/* Select de evento (filtrado pela busca/modalidade acima) */}
           <div className="relative">
             <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
             <select
@@ -430,7 +398,7 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
               onChange={(e) => { setEventoFiltro(e.target.value); setDiaSelecionado(null); }}
             >
               <option value="">
-                {buscaEvento || areaFiltro
+                {buscaEvento || filtroModalidades.length > 0
                   ? `${eventosFiltrados.length} evento(s) encontrado(s)`
                   : "Todos os eventos"}
               </option>
