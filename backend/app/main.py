@@ -43,6 +43,7 @@ async def _aplicar_migracoes(engine) -> None:
         "ALTER TABLE ofertas_cursos ALTER COLUMN hora_aula TYPE FLOAT",
         "ALTER TABLE atuacoes ALTER COLUMN modalidade TYPE VARCHAR(200)",
         "ALTER TABLE aulas ADD COLUMN fonte VARCHAR(50)",
+        "ALTER TABLE eventos ADD COLUMN tipo_modalidade VARCHAR(100)",
     ]
 
     # Cada ALTER TABLE em transação própria — PostgreSQL aborta toda a transação
@@ -61,6 +62,13 @@ async def _aplicar_migracoes(engine) -> None:
             "UPDATE calendario_academico SET letivo = 0 "
             "WHERE LOWER(tipo) IN ('feriado','recesso','ferias','férias','folga',"
             "'compensacao','compensação','sem aula') AND letivo = 1"
+        ),
+        # Popula tipo_modalidade para eventos já existentes via OfertaCurso (join por prefixo)
+        (
+            "UPDATE eventos SET tipo_modalidade = o.modalidade "
+            "FROM ofertas_cursos o "
+            "WHERE eventos.tipo_modalidade IS NULL "
+            "AND (eventos.oferta_id = o.id OR eventos.nome_turma ILIKE (o.codigo_evento || '%'))"
         ),
         # Aulas passadas que não foram remarcadas/canceladas → Realizada
         (

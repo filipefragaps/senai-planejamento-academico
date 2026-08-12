@@ -315,6 +315,7 @@ async def criar_evento_from_oferta(
         horario_inicio=horario_inicio,
         horario_fim=horario_fim,
         modalidade=modalidade,
+        tipo_modalidade=oferta.modalidade,
         status="Planejado",
         sala=None,
     )
@@ -457,24 +458,12 @@ async def cronograma_geral(
     if status:
         filters.append(Aula.status == status)
     if modalidades:
-        from sqlalchemy import text as _text
         codes = [c.strip() for c in modalidades.split(",") if c.strip()]
-        # "41 %" para não confundir "3" com "31", "33", "35"
-        modal_patterns = {f"m{i}": f"{code} %" for i, code in enumerate(codes)}
-        modal_where = " OR ".join(f"o.modalidade ILIKE :m{i}" for i in range(len(codes)))
-
-        # nome_turma tem formato "CODIGO – NOME - PASTA"; usa LIKE prefixo para bater
+        # Busca direto no campo tipo_modalidade do Evento (ex: "41 - GRADUAÇÃO TECNOLÓGICA...")
+        # Usa "código " (com espaço) para não confundir "3" com "31"
+        modal_conds = [Evento.tipo_modalidade.ilike(f"{code} %") for code in codes]
         res_ev = await db.execute(
-            _text(f"""
-                SELECT DISTINCT e.id
-                FROM eventos e
-                JOIN ofertas_cursos o ON (
-                    e.nome_turma ILIKE (o.codigo_evento || '%%')
-                    OR e.oferta_id = o.id
-                )
-                WHERE {modal_where}
-            """),
-            modal_patterns,
+            select(Evento.id).where(or_(*modal_conds))
         )
         ev_ids_modal = set(res_ev.scalars().all())
 

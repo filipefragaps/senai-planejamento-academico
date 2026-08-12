@@ -179,24 +179,24 @@ async def _lookup_professor(nome: str, db: AsyncSession) -> int | None:
 
 
 async def _lookup_ou_criar_evento(
-    nome_turma: str, disciplina: str, curso_id: int | None, db: AsyncSession
+    nome_turma: str, disciplina: str, curso_id: int | None, db: AsyncSession,
+    tipo_modalidade: str | None = None,
 ) -> Evento:
     """Busca evento por nome; cria um rascunho se não existir.
-    Em reimportação, atualiza disciplina e curso_id se tiver valores melhores."""
+    Em reimportação, atualiza disciplina, curso_id e tipo_modalidade se tiver valores melhores."""
     result = await db.execute(
         select(Evento).where(Evento.nome_turma.ilike(f"%{nome_turma.strip()}%"))
     )
     evento = result.scalars().first()
     if evento:
-        # Atualiza disciplina se tiver valor melhor (nome do curso, não código/UC)
         if disciplina and disciplina != nome_turma.strip():
             evento.disciplina = disciplina
-        # Atualiza curso_id se ainda não estava vinculado
         if curso_id and not evento.curso_id:
             evento.curso_id = curso_id
+        if tipo_modalidade and not evento.tipo_modalidade:
+            evento.tipo_modalidade = tipo_modalidade
         return evento
 
-    # Cria um rascunho mínimo para agrupar as aulas importadas
     evento = Evento(
         nome_turma=nome_turma.strip(),
         disciplina=disciplina or nome_turma.strip(),
@@ -208,6 +208,7 @@ async def _lookup_ou_criar_evento(
         horario_inicio=time(8, 0),
         horario_fim=time(12, 0),
         curso_id=curso_id,
+        tipo_modalidade=tipo_modalidade,
         status="Ativo",
         observacoes="Importado do histórico",
     )
@@ -360,8 +361,12 @@ async def importar_historico(conteudo: bytes, db: AsyncSession) -> dict:
             # disciplina deve ser o nome do CURSO, não da UC
             disciplina = nome_curso or _get(row, "unidade_c", "unidade_curricular", "uc") or nome_turma
 
+            tipo_modalidade = _get(row, "modalidade") or None
+
             if nome_turma not in cache_evento:
-                cache_evento[nome_turma] = await _lookup_ou_criar_evento(nome_turma, disciplina, curso_id, db)
+                cache_evento[nome_turma] = await _lookup_ou_criar_evento(
+                    nome_turma, disciplina, curso_id, db, tipo_modalidade=tipo_modalidade
+                )
             evento = cache_evento[nome_turma]
 
             nome_prof = _get(row, "professor")

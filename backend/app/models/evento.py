@@ -27,6 +27,7 @@ class Evento(Base):
     oferta_id: Mapped[int | None] = mapped_column(ForeignKey("ofertas_cursos.id", ondelete="SET NULL"))
     professores_preferidos: Mapped[list | None] = mapped_column(JSON)   # [professor_id, ...]
     modulo_etapa_inicial: Mapped[str | None] = mapped_column(String(50))  # ex: "BÁSICO"
+    tipo_modalidade: Mapped[str | None] = mapped_column(String(100))  # ex: "41 - GRADUAÇÃO TECNOLÓGICA"
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     atualizado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
