@@ -353,6 +353,7 @@ async def importar_historico(
 @router.get("/debug-modalidades")
 async def debug_modalidades(
     db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
 ):
     """Diagnóstico: modalidades nas ofertas e cobertura dos eventos."""
     from sqlalchemy import func, text
@@ -400,12 +401,32 @@ async def debug_modalidades(
     )
     eventos_sem_curso = res5.scalar()
 
+    # Cobertura pelo novo join: nome_turma = codigo_evento
+    res6 = await db.execute(text("""
+        SELECT o.modalidade, COUNT(DISTINCT e.id) as qtd_eventos
+        FROM eventos e
+        JOIN ofertas_cursos o ON e.nome_turma = o.codigo_evento
+        GROUP BY o.modalidade
+        ORDER BY o.modalidade
+    """))
+    eventos_por_modalidade_join = [{"modalidade": r[0], "qtd_eventos": r[1]} for r in res6.all()]
+
+    res7 = await db.execute(text("""
+        SELECT COUNT(DISTINCT e.id) FROM eventos e
+        JOIN ofertas_cursos o ON e.nome_turma = o.codigo_evento
+    """))
+    total_cobertos = res7.scalar()
+
     return {
         "eventos": eventos_info,
         "eventos_sem_curso_id": eventos_sem_curso,
         "modalidades_em_ofertacurso": modalidades_oferta,
         "tipos_em_curso": tipos_curso,
         "eventos_por_tipo_curso": eventos_por_tipo,
+        "novo_join_nome_turma_codigo_evento": {
+            "eventos_cobertos": total_cobertos,
+            "por_modalidade": eventos_por_modalidade_join,
+        },
     }
 
 
@@ -436,21 +457,29 @@ async def cronograma_geral(
     if status:
         filters.append(Aula.status == status)
     if modalidades:
-        # Filtra via Evento.curso_id → Curso.tipo (cobre 124/129 eventos)
         # Usa "código " (com espaço) para não confundir "3" com "31", "33", "35"
         codes = [c.strip() for c in modalidades.split(",") if c.strip()]
-        curso_conds = [Curso.tipo.ilike(f"{c} %") for c in codes]
-        res_cur = await db.execute(select(Curso.id).where(or_(*curso_conds)))
-        curso_ids = list(res_cur.scalars().all())
-        if curso_ids:
-            res_ev = await db.execute(
-                select(Evento.id).where(Evento.curso_id.in_(curso_ids))
-            )
-            ev_ids_modal = list(res_ev.scalars().all())
-            if ev_ids_modal:
-                filters.append(Aula.evento_id.in_(ev_ids_modal))
-            else:
-                filters.append(Aula.id < 0)
+        modal_conds = [OfertaCurso.modalidade.ilike(f"{c} %") for c in codes]
+
+        # Caminho 1: Evento.nome_turma = OfertaCurso.codigo_evento
+        # (eventos importados do cronograma — cobre ~95% dos eventos)
+        res1 = await db.execute(
+            select(Evento.id)
+            .join(OfertaCurso, Evento.nome_turma == OfertaCurso.codigo_evento)
+            .where(or_(*modal_conds))
+        )
+        ev_ids_modal = set(res1.scalars().all())
+
+        # Caminho 2: Evento.oferta_id direto (eventos criados pelo planejamento)
+        res2 = await db.execute(
+            select(Evento.id)
+            .join(OfertaCurso, Evento.oferta_id == OfertaCurso.id)
+            .where(or_(*modal_conds))
+        )
+        ev_ids_modal.update(res2.scalars().all())
+
+        if ev_ids_modal:
+            filters.append(Aula.evento_id.in_(list(ev_ids_modal)))
         else:
             filters.append(Aula.id < 0)
     if filters:
