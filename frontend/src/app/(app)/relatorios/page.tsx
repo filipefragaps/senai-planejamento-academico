@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { relatoriosApi, professoresApi, eventosApi, downloadBlob } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { toast } from "sonner";
-import { Download, FileSpreadsheet, Users, BookOpen, Database, ShoppingBag, History, Receipt } from "lucide-react";
+import { Download, FileSpreadsheet, Users, BookOpen, Database, ShoppingBag, History, Receipt, ListChecks } from "lucide-react";
 
 const TIPOS_CONTRATO = ["Inclusão em Folha", "RPA", "PJ"] as const;
 
@@ -27,6 +27,16 @@ export default function RelatoriosPage() {
   const [selectedProfContrato, setSelectedProfContrato] = useState("");
   const [dateIniContrato, setDateIniContrato] = useState("");
   const [dateFimContrato, setDateFimContrato] = useState("");
+
+  const [selectedEventoUC, setSelectedEventoUC] = useState("");
+  const [loadingUCExcel, setLoadingUCExcel] = useState(false);
+
+  const { data: ucsEvento, isLoading: loadingUCs } = useQuery({
+    queryKey: ["ucs-evento", selectedEventoUC],
+    queryFn: () => relatoriosApi.ucsEvento(+selectedEventoUC),
+    enabled: !!selectedEventoUC,
+    staleTime: 60_000,
+  });
 
   const { data: professores = [] } = useQuery({
     queryKey: ["professores-ativos"],
@@ -139,6 +149,21 @@ export default function RelatoriosPage() {
       toast.error("Erro ao exportar relatório");
     } finally {
       setLoadingContrato(false);
+    }
+  }
+
+  async function baixarUCsExcel() {
+    if (!selectedEventoUC) return;
+    setLoadingUCExcel(true);
+    try {
+      const res = await relatoriosApi.ucsEventoExcel(+selectedEventoUC);
+      const ev = (eventos as any[]).find((e) => e.id === +selectedEventoUC);
+      downloadBlob(res.data, `ucs_${ev?.nome_turma || selectedEventoUC}.xlsx`);
+      toast.success("Relatório exportado!");
+    } catch {
+      toast.error("Erro ao exportar relatório");
+    } finally {
+      setLoadingUCExcel(false);
     }
   }
 
@@ -346,6 +371,154 @@ export default function RelatoriosPage() {
               {loadingContrato ? "Exportando..." : "Exportar Excel"}
             </button>
           </div>
+        </div>
+      </section>
+
+      {/* ── UCs por Evento ────────────────────────────────────────────────── */}
+      <section>
+        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+          Planejamento por UC
+        </h2>
+        <div className="card p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-purple-100 rounded-lg">
+              <ListChecks className="h-5 w-5 text-purple-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-800">UCs por Evento</h3>
+              <p className="text-xs text-gray-400">CH prevista vs CH planejada por Unidade Curricular</p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-end gap-3 mb-5">
+            <div className="flex-1 min-w-48">
+              <label className="block text-xs text-gray-500 mb-1 font-medium">Evento / Turma</label>
+              <select
+                className="input w-full"
+                value={selectedEventoUC}
+                onChange={(e) => setSelectedEventoUC(e.target.value)}
+              >
+                <option value="">Selecionar evento</option>
+                {(eventos as any[]).map((e) => (
+                  <option key={e.id} value={e.id}>{e.nome_turma} — {e.disciplina}</option>
+                ))}
+              </select>
+            </div>
+            {selectedEventoUC && (
+              <button
+                onClick={baixarUCsExcel}
+                disabled={loadingUCExcel || loadingUCs}
+                className="btn-primary flex items-center gap-2 px-4"
+              >
+                <Download className="h-4 w-4" />
+                {loadingUCExcel ? "Exportando..." : "Exportar Excel"}
+              </button>
+            )}
+          </div>
+
+          {/* Tabela de UCs */}
+          {loadingUCs && <p className="text-sm text-gray-400 py-4">Carregando UCs...</p>}
+
+          {ucsEvento && !loadingUCs && (() => {
+            const dados = ucsEvento as any;
+            const ucs: any[] = dados.ucs ?? [];
+
+            if (!dados.curso_id && ucs.length === 0) {
+              return (
+                <p className="text-sm text-amber-600 bg-amber-50 rounded-lg p-3">
+                  Este evento não está vinculado a nenhuma pasta/curso com UCs cadastradas.
+                </p>
+              );
+            }
+
+            const chPrev = ucs.reduce((s: number, u: any) => s + (u.carga_horaria ?? 0), 0);
+            const chPlan = ucs.reduce((s: number, u: any) => s + u.ch_planejada, 0);
+            const planejadas = ucs.filter((u: any) => u.status === "Planejada").length;
+            const naoPlan = ucs.filter((u: any) => u.status === "Não planejada").length;
+
+            return (
+              <div>
+                {/* Resumo */}
+                <div className="flex flex-wrap gap-4 mb-4">
+                  <div className="rounded-lg bg-gray-50 border px-4 py-2 text-center">
+                    <p className="text-xs text-gray-500">Total UCs</p>
+                    <p className="text-lg font-bold text-gray-800">{dados.total_ucs}</p>
+                  </div>
+                  <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-2 text-center">
+                    <p className="text-xs text-green-600">Planejadas</p>
+                    <p className="text-lg font-bold text-green-700">{planejadas}</p>
+                  </div>
+                  <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-2 text-center">
+                    <p className="text-xs text-red-600">Não planejadas</p>
+                    <p className="text-lg font-bold text-red-700">{naoPlan}</p>
+                  </div>
+                  <div className="rounded-lg bg-blue-50 border border-blue-200 px-4 py-2 text-center">
+                    <p className="text-xs text-blue-600">CH Prevista</p>
+                    <p className="text-lg font-bold text-blue-700">{chPrev}h</p>
+                  </div>
+                  <div className="rounded-lg bg-indigo-50 border border-indigo-200 px-4 py-2 text-center">
+                    <p className="text-xs text-indigo-600">CH Planejada</p>
+                    <p className="text-lg font-bold text-indigo-700">{chPlan.toFixed(1)}h</p>
+                  </div>
+                </div>
+
+                {/* Tabela */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr className="bg-gray-100 text-gray-600 text-xs uppercase">
+                        <th className="text-left px-3 py-2 border-b">Módulo/Etapa</th>
+                        <th className="text-left px-3 py-2 border-b">Código</th>
+                        <th className="text-left px-3 py-2 border-b">Nome da UC</th>
+                        <th className="text-right px-3 py-2 border-b">CH Prevista</th>
+                        <th className="text-right px-3 py-2 border-b">CH Planejada</th>
+                        <th className="text-right px-3 py-2 border-b">Saldo</th>
+                        <th className="text-center px-3 py-2 border-b">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ucs.map((uc: any, idx: number) => (
+                        <tr key={uc.uc_id ?? `nome-${idx}`} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                          <td className="px-3 py-2 border-b text-gray-500 text-xs">{uc.modulo_etapa || "—"}</td>
+                          <td className="px-3 py-2 border-b text-gray-500 font-mono text-xs">{uc.codigo_uc || "—"}</td>
+                          <td className="px-3 py-2 border-b font-medium text-gray-800">{uc.nome}</td>
+                          <td className="px-3 py-2 border-b text-right text-gray-600">
+                            {uc.carga_horaria != null ? `${uc.carga_horaria}h` : "—"}
+                          </td>
+                          <td className="px-3 py-2 border-b text-right font-semibold text-gray-800">
+                            {uc.ch_planejada > 0 ? `${uc.ch_planejada}h` : "—"}
+                          </td>
+                          <td className={`px-3 py-2 border-b text-right text-xs font-medium ${uc.saldo != null ? (uc.saldo > 0 ? "text-red-600" : uc.saldo < 0 ? "text-amber-600" : "text-green-600") : "text-gray-400"}`}>
+                            {uc.saldo != null ? `${uc.saldo > 0 ? "+" : ""}${uc.saldo}h` : "—"}
+                          </td>
+                          <td className="px-3 py-2 border-b text-center">
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                              uc.status === "Planejada" ? "bg-green-100 text-green-700"
+                              : uc.status === "Não planejada" ? "bg-red-100 text-red-700"
+                              : "bg-gray-100 text-gray-600"
+                            }`}>
+                              {uc.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-gray-100 font-bold">
+                        <td colSpan={3} className="px-3 py-2 border-t text-gray-700">Total</td>
+                        <td className="px-3 py-2 border-t text-right">{chPrev}h</td>
+                        <td className="px-3 py-2 border-t text-right">{chPlan.toFixed(1)}h</td>
+                        <td className={`px-3 py-2 border-t text-right text-xs ${chPrev - chPlan > 0 ? "text-red-600" : "text-green-600"}`}>
+                          {(chPrev - chPlan) >= 0 ? "+" : ""}{(chPrev - chPlan).toFixed(1)}h
+                        </td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </section>
 

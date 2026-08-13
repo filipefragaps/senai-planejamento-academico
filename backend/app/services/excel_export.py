@@ -603,3 +603,154 @@ async def exportar_historico_aulas(
     wb.save(buf)
     buf.seek(0)
     return buf.read()
+
+
+async def calcular_ucs_evento(evento_id: int, db: AsyncSession) -> dict:
+    """Retorna UCs da pasta vinculada ao evento com CH planejada."""
+    from datetime import datetime as _dt, date as _date
+    from collections import defaultdict
+
+    res = await db.execute(select(Evento).where(Evento.id == evento_id))
+    evento = res.scalar_one_or_none()
+    if not evento:
+        raise ValueError("Evento não encontrado")
+
+    # Resolve curso_id: direto ou via disciplina "NOME - CODIGO"
+    curso_id = evento.curso_id
+    if not curso_id and evento.disciplina and " - " in evento.disciplina:
+        codigo = evento.disciplina.rsplit(" - ", 1)[-1].strip()
+        res_c = await db.execute(select(Curso).where(Curso.codigo == codigo))
+        curso = res_c.scalar_one_or_none()
+        if curso:
+            curso_id = curso.id
+
+    ucs: list = []
+    if curso_id:
+        res_ucs = await db.execute(
+            select(UnidadeCurricular)
+            .where(UnidadeCurricular.curso_id == curso_id)
+            .order_by(UnidadeCurricular.modulo_etapa, UnidadeCurricular.sequencia, UnidadeCurricular.nome)
+        )
+        ucs = res_ucs.scalars().all()
+
+    # Aulas não canceladas do evento
+    res_aulas = await db.execute(
+        select(Aula).where(Aula.evento_id == evento_id, Aula.status != "Cancelada")
+    )
+    aulas = res_aulas.scalars().all()
+
+    def _h(a) -> float:
+        if a.horario_inicio and a.horario_fim:
+            dur = _dt.combine(_date.today(), a.horario_fim) - _dt.combine(_date.today(), a.horario_inicio)
+            return max(dur.seconds / 3600, 0.0)
+        return 0.0
+
+    horas_por_uc: dict[int, float] = defaultdict(float)
+    horas_por_nome: dict[str, float] = defaultdict(float)
+    for aula in aulas:
+        h = _h(aula)
+        if aula.unidade_curricular_id:
+            horas_por_uc[aula.unidade_curricular_id] += h
+        elif aula.uc_nome_original:
+            horas_por_nome[aula.uc_nome_original.strip()] += h
+
+    resultado = []
+    for uc in ucs:
+        ch_plan = round(horas_por_uc.get(uc.id, 0.0), 1)
+        saldo = round((uc.carga_horaria or 0) - ch_plan, 1)
+        resultado.append({
+            "uc_id": uc.id,
+            "codigo_uc": uc.codigo_uc,
+            "nome": uc.nome,
+            "modulo_etapa": uc.modulo_etapa or "",
+            "sequencia": uc.sequencia,
+            "carga_horaria": uc.carga_horaria or 0,
+            "ch_planejada": ch_plan,
+            "saldo": saldo,
+            "status": "Planejada" if ch_plan > 0 else "Não planejada",
+        })
+
+    # Aulas com nome de UC mas sem vínculo com as UCs da pasta
+    for nome, h in horas_por_nome.items():
+        resultado.append({
+            "uc_id": None,
+            "codigo_uc": None,
+            "nome": nome,
+            "modulo_etapa": "",
+            "sequencia": None,
+            "carga_horaria": None,
+            "ch_planejada": round(h, 1),
+            "saldo": None,
+            "status": "Planejada (sem vínculo)",
+        })
+
+    return {
+        "evento_id": evento.id,
+        "nome_turma": evento.nome_turma,
+        "disciplina": evento.disciplina,
+        "curso_id": curso_id,
+        "total_ucs": len(ucs),
+        "ucs": resultado,
+    }
+
+
+async def exportar_ucs_evento_excel(evento_id: int, db: AsyncSession) -> bytes:
+    """Exporta para Excel as UCs do evento com CH prevista × planejada."""
+    PLAN_FILL = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+    NAO_FILL  = PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid")
+    SEM_FILL  = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+
+    dados = await calcular_ucs_evento(evento_id, db)
+    ucs = dados["ucs"]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "UCs por Evento"
+
+    ws.merge_cells("A1:H1")
+    t = ws["A1"]
+    t.value = f"UCs do Evento: {dados['nome_turma']} — {dados['disciplina']}"
+    t.font = Font(bold=True, size=13)
+    t.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 22
+
+    cols = ["Módulo/Etapa", "Seq", "Código UC", "Nome da UC", "CH Prevista (h)", "CH Planejada (h)", "Saldo (h)", "Status"]
+    _apply_header(ws, 2, cols)
+
+    for i, uc in enumerate(ucs, 3):
+        fill = (
+            PLAN_FILL if uc["status"] == "Planejada"
+            else NAO_FILL if uc["status"] == "Não planejada"
+            else SEM_FILL
+        )
+        row_data = [
+            uc["modulo_etapa"],
+            uc["sequencia"],
+            uc["codigo_uc"],
+            uc["nome"],
+            uc["carga_horaria"],
+            uc["ch_planejada"],
+            uc["saldo"],
+            uc["status"],
+        ]
+        for j, val in enumerate(row_data, 1):
+            cell = ws.cell(row=i, column=j, value=val)
+            cell.fill = fill
+            cell.border = BORDER
+            cell.alignment = Alignment(vertical="center")
+
+    row_tot = len(ucs) + 3
+    ch_prev = sum(u["carga_horaria"] or 0 for u in ucs)
+    ch_plan_total = sum(u["ch_planejada"] for u in ucs)
+    ws.cell(row=row_tot, column=4, value="TOTAL").font = Font(bold=True)
+    ws.cell(row=row_tot, column=5, value=round(ch_prev, 1)).font = Font(bold=True)
+    ws.cell(row=row_tot, column=6, value=round(ch_plan_total, 1)).font = Font(bold=True)
+    ws.cell(row=row_tot, column=7, value=round(ch_prev - ch_plan_total, 1)).font = Font(bold=True)
+
+    _autofit(ws)
+    ws.column_dimensions["D"].width = 45
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.read()

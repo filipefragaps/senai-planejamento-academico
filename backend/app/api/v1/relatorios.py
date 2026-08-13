@@ -13,6 +13,8 @@ from app.services.excel_export import (
     exportar_dados_mestres,
     exportar_ofertas_formatado,
     exportar_historico_aulas,
+    calcular_ucs_evento,
+    exportar_ucs_evento_excel,
 )
 from app.core.deps import get_current_user
 
@@ -112,6 +114,35 @@ async def exportar_ofertas_endpoint(
         io.BytesIO(content),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=ofertas_senai.xlsx"},
+    )
+
+
+@router.get("/ucs-evento/{evento_id}")
+async def ucs_por_evento(
+    evento_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    try:
+        return await calcular_ucs_evento(evento_id, db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/ucs-evento/{evento_id}/excel")
+async def ucs_por_evento_excel(
+    evento_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    try:
+        content = await exportar_ucs_evento_excel(evento_id, db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=ucs_evento_{evento_id}.xlsx"},
     )
 
 

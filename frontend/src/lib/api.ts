@@ -257,6 +257,10 @@ export const relatoriosApi = {
       params,
       responseType: "blob",
     }),
+  ucsEvento: (eventoId: number) =>
+    api.get(`/relatorios/ucs-evento/${eventoId}`).then((r) => r.data),
+  ucsEventoExcel: (eventoId: number) =>
+    api.get(`/relatorios/ucs-evento/${eventoId}/excel`, { responseType: "blob" }),
 };
 
 // Administração / Limpeza de BD
