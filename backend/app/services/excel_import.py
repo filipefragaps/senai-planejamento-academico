@@ -308,7 +308,7 @@ class ExcelImportService:
                 )
                 existing_uc = res_uc.scalar_one_or_none()
                 dados_uc = {
-                    "nome":        nome_uc,
+                    "nome":        nome_uc.upper(),
                     "tipo":        _str(row.get(tipo_col), "Presencial").capitalize() if tipo_col else "Presencial",
                     "modulo_etapa": _str(row.get(modulo_col)) if modulo_col else None,
                     "sequencia":   int(_parse_float(row.get(uc_seq_col))) if uc_seq_col else None,
@@ -418,7 +418,7 @@ class ExcelImportService:
                 )
                 existing_uc = res_uc.scalar_one_or_none()
                 dados_uc = {
-                    "nome":        nome_uc,
+                    "nome":        nome_uc.upper(),
                     "tipo":        _str(row.get(tipo_col), "Presencial").capitalize() if tipo_col else "Presencial",
                     "modulo_etapa": _str(row.get(modulo_col)) if modulo_col else None,
                     "sequencia":   int(_parse_float(row.get(uc_seq_col))) if uc_seq_col else None,

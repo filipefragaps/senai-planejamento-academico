@@ -267,6 +267,8 @@ export const relatoriosApi = {
 export const adminApi = {
   limpar: (tipo: "aulas" | "planejamento" | "ofertas" | "importacao" | "tudo") =>
     api.delete(`/admin/limpar/${tipo}`).then((r) => r.data),
+  normalizarMaiusculas: () =>
+    api.post("/admin/normalizar-maiusculas").then((r) => r.data),
 };
 
 // IA

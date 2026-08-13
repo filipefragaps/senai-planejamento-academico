@@ -458,7 +458,7 @@ async def importar_historico(conteudo: bytes, db: AsyncSession) -> dict:
                 curso_id = cache_curso[oferta.pasta]
 
             # disciplina deve ser o nome do CURSO, não da UC
-            disciplina = nome_curso or _get(row, "unidade_c", "unidade_curricular", "uc") or nome_turma
+            disciplina = (nome_curso or _get(row, "unidade_c", "unidade_curricular", "uc") or nome_turma).upper()
 
             tipo_modalidade = _get(row, "modalidade") or (oferta.modalidade if oferta else None) or None
 
@@ -480,7 +480,7 @@ async def importar_historico(conteudo: bytes, db: AsyncSession) -> dict:
                 cache_prof[nome_prof] = await _lookup_professor(nome_prof, db)
             professor_id = cache_prof[nome_prof]
 
-            uc_nome = _get(row, "unidade_c", "unidade_curricular", "uc")
+            uc_nome = _get(row, "unidade_c", "unidade_curricular", "uc").upper()
             uc_id = await _lookup_uc(uc_nome, curso_id, db)
 
             etapa = _get(row, "etapa", "modulo", "etapa_modulo")

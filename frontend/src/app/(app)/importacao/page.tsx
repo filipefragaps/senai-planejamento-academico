@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { PageHeader } from "@/components/page-header";
-import { importacaoApi } from "@/lib/api";
+import { importacaoApi, adminApi } from "@/lib/api";
 import { LimparBdButton } from "@/components/limpar-bd-button";
 import { toast } from "sonner";
 import {
@@ -516,6 +516,63 @@ export default function ImportacaoPage() {
           </div>
         </div>
       </div>
+      {/* ── Manutenção de dados ───────────────────────────────────────── */}
+      <div className="card p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="rounded-lg bg-gray-100 p-2">
+            <FileSpreadsheet className="h-5 w-5 text-gray-600" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-gray-800">Manutenção de Dados</h2>
+            <p className="text-xs text-gray-400">Rotinas de normalização e consistência</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <NormalizarButton />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NormalizarButton() {
+  const [loading, setLoading] = useState(false);
+  const [resultado, setResultado] = useState<any>(null);
+
+  async function normalizar() {
+    setLoading(true);
+    try {
+      const res = await adminApi.normalizarMaiusculas();
+      setResultado(res);
+      toast.success(
+        `Normalizado: ${res.ucs_atualizadas} UCs, ${res.aulas_atualizadas} aulas, ${res.eventos_atualizados} eventos`
+      );
+    } catch {
+      toast.error("Erro ao normalizar");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="border rounded-lg p-4 flex-1 min-w-64">
+      <p className="text-sm font-medium text-gray-700 mb-1">Normalizar UCs e Disciplinas para Maiúsculas</p>
+      <p className="text-xs text-gray-400 mb-3">
+        Converte nomes de UCs, disciplinas de aulas e eventos para letras maiúsculas em todo o banco.
+      </p>
+      {resultado && (
+        <p className="text-xs text-green-700 bg-green-50 rounded p-2 mb-3">
+          ✓ {resultado.ucs_atualizadas} UCs · {resultado.aulas_atualizadas} aulas · {resultado.eventos_atualizados} eventos atualizados
+        </p>
+      )}
+      <button
+        onClick={normalizar}
+        disabled={loading}
+        className="btn-secondary text-sm flex items-center gap-2"
+      >
+        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+        {loading ? "Normalizando..." : "Executar normalização"}
+      </button>
     </div>
   );
 }

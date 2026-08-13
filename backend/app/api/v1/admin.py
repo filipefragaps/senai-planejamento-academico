@@ -61,6 +61,30 @@ async def listar_opcoes(_=Depends(require_admin)):
     ]
 
 
+@router.post("/normalizar-maiusculas")
+async def normalizar_maiusculas(
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_admin),
+):
+    """Converte para maiúsculas: nomes de UCs, uc_nome_original das aulas e disciplina dos eventos."""
+    res_uc = await db.execute(
+        text("UPDATE unidades_curriculares SET nome = UPPER(nome) WHERE nome <> UPPER(nome)")
+    )
+    res_aula = await db.execute(
+        text("UPDATE aulas SET uc_nome_original = UPPER(uc_nome_original) WHERE uc_nome_original IS NOT NULL AND uc_nome_original <> UPPER(uc_nome_original)")
+    )
+    res_ev = await db.execute(
+        text("UPDATE eventos SET disciplina = UPPER(disciplina) WHERE disciplina <> UPPER(disciplina)")
+    )
+    await db.commit()
+    return {
+        "ok": True,
+        "ucs_atualizadas": res_uc.rowcount,
+        "aulas_atualizadas": res_aula.rowcount,
+        "eventos_atualizados": res_ev.rowcount,
+    }
+
+
 @router.delete("/limpar/{tipo}")
 async def limpar_dados(
     tipo: str,

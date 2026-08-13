@@ -605,6 +605,34 @@ async def exportar_historico_aulas(
     return buf.read()
 
 
+def _norm_uc(s: str) -> str:
+    """Normaliza nome de UC: maiúsculas, sem acentos, sem espaços extras."""
+    import unicodedata as _ud
+    s = _ud.normalize("NFD", s.upper().strip())
+    return "".join(c for c in s if _ud.category(c) != "Mn").strip()
+
+
+def _match_uc_por_nome(nome_orig: str, uc_norm_map: dict[str, int]) -> int | None:
+    """Tenta vincular uc_nome_original a uma UC pelo nome (exato normalizado ou fuzzy)."""
+    if not nome_orig:
+        return None
+    norm = _norm_uc(nome_orig)
+    if norm in uc_norm_map:
+        return uc_norm_map[norm]
+    # fuzzy: palavras com ≥4 letras
+    palavras = [p for p in norm.split() if len(p) >= 4]
+    if not palavras:
+        return None
+    melhor_id: int | None = None
+    melhor_score = 0.0
+    for nome_uc, uid in uc_norm_map.items():
+        score = sum(1 for p in palavras if p in nome_uc) / len(palavras)
+        if score > melhor_score and score >= 0.70:
+            melhor_score = score
+            melhor_id = uid
+    return melhor_id
+
+
 async def calcular_ucs_evento(evento_id: int, db: AsyncSession) -> dict:
     """Retorna UCs da pasta vinculada ao evento com CH planejada."""
     from datetime import datetime as _dt, date as _date
@@ -633,6 +661,9 @@ async def calcular_ucs_evento(evento_id: int, db: AsyncSession) -> dict:
         )
         ucs = res_ucs.scalars().all()
 
+    # Mapa normalizado nome → uc_id para matching por texto
+    uc_norm_map: dict[str, int] = {_norm_uc(uc.nome): uc.id for uc in ucs}
+
     # Aulas não canceladas do evento
     res_aulas = await db.execute(
         select(Aula).where(Aula.evento_id == evento_id, Aula.status != "Cancelada")
@@ -646,13 +677,30 @@ async def calcular_ucs_evento(evento_id: int, db: AsyncSession) -> dict:
         return 0.0
 
     horas_por_uc: dict[int, float] = defaultdict(float)
-    horas_por_nome: dict[str, float] = defaultdict(float)
+    sem_vinculo: dict[str, float] = defaultdict(float)  # nome_orig → horas (não resolvidas)
+
+    uc_ids_validos = {uc.id for uc in ucs}
+
     for aula in aulas:
         h = _h(aula)
-        if aula.unidade_curricular_id:
+        if aula.unidade_curricular_id and aula.unidade_curricular_id in uc_ids_validos:
+            # FK direto válido
             horas_por_uc[aula.unidade_curricular_id] += h
+        elif aula.unidade_curricular_id and aula.unidade_curricular_id not in uc_ids_validos:
+            # FK aponta para UC de outro curso — tenta por nome_original
+            nome = aula.uc_nome_original or ""
+            uid = _match_uc_por_nome(nome, uc_norm_map)
+            if uid:
+                horas_por_uc[uid] += h
+            else:
+                sem_vinculo[nome or f"UC #{aula.unidade_curricular_id}"] += h
         elif aula.uc_nome_original:
-            horas_por_nome[aula.uc_nome_original.strip()] += h
+            # Sem FK — tenta por nome
+            uid = _match_uc_por_nome(aula.uc_nome_original, uc_norm_map)
+            if uid:
+                horas_por_uc[uid] += h
+            else:
+                sem_vinculo[aula.uc_nome_original.strip()] += h
 
     resultado = []
     for uc in ucs:
@@ -670,8 +718,8 @@ async def calcular_ucs_evento(evento_id: int, db: AsyncSession) -> dict:
             "status": "Planejada" if ch_plan > 0 else "Não planejada",
         })
 
-    # Aulas com nome de UC mas sem vínculo com as UCs da pasta
-    for nome, h in horas_por_nome.items():
+    # Aulas sem vínculo resolvido (não ficam sem mostrar)
+    for nome, h in sem_vinculo.items():
         resultado.append({
             "uc_id": None,
             "codigo_uc": None,
