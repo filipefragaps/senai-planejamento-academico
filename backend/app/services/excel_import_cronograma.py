@@ -18,6 +18,7 @@ from app.models.evento import Evento
 from app.models.professor import Professor
 from app.models.curso import Curso
 from app.models.unidade_curricular import UnidadeCurricular
+from app.models.oferta import OfertaCurso
 
 
 # ── helpers ────────────────────────────────────────────────────────────────────
@@ -166,6 +167,82 @@ def _turno(h: time | None) -> str:
     return "Noite"
 
 
+# ── mapa de dias da semana ─────────────────────────────────────────────────────
+
+_DIAS_MAP: dict[str, int] = {
+    "seg": 0, "segunda": 0, "mon": 0,
+    "ter": 1, "terca": 1, "tue": 1,
+    "qua": 2, "quarta": 2, "wed": 2,
+    "qui": 3, "quinta": 3, "thu": 3,
+    "sex": 4, "sexta": 4, "fri": 4,
+    "sab": 5, "sabado": 5, "sat": 5,
+    "dom": 6, "domingo": 6, "sun": 6,
+}
+
+
+def _parse_dias_semana(texto: str) -> list[int]:
+    """Converte 'Ter/Qui' ou 'Segunda, Sexta' em [1, 3] ou [0, 4]."""
+    if not texto:
+        return []
+    norm = unicodedata.normalize("NFD", texto)
+    norm = "".join(c for c in norm if unicodedata.category(c) != "Mn")
+    tokens = re.split(r"[/,;\s]+", norm.lower().strip())
+    dias: list[int] = []
+    for t in tokens:
+        t = t.strip()
+        if not t:
+            continue
+        if t in _DIAS_MAP:
+            d = _DIAS_MAP[t]
+        else:
+            # prefixo de 3 letras (ex: "ter" de "terca")
+            d = next((v for k, v in _DIAS_MAP.items() if len(k) >= 3 and t.startswith(k[:3])), None)
+        if d is not None and d not in dias:
+            dias.append(d)
+    return sorted(dias)
+
+
+def _enrich_from_oferta(evento: "Evento", oferta: "OfertaCurso") -> None:
+    """Preenche campos do evento com dados da OfertaCurso ao criar/atualizar."""
+    from datetime import datetime as _dt, date as _d
+
+    if not evento.oferta_id:
+        evento.oferta_id = oferta.id
+
+    if oferta.hora_inicio and oferta.hora_termino:
+        evento.horario_inicio = oferta.hora_inicio
+        evento.horario_fim = oferta.hora_termino
+
+    if oferta.carga_horaria:
+        evento.carga_horaria_total = float(oferta.carga_horaria)
+
+    if oferta.data_inicio:
+        evento.data_inicio = oferta.data_inicio
+    if oferta.data_termino:
+        evento.data_fim = oferta.data_termino
+
+    if oferta.dias_semana_texto:
+        dias = _parse_dias_semana(oferta.dias_semana_texto)
+        if dias:
+            evento.dias_semana = dias
+            if evento.horario_inicio and evento.horario_fim:
+                h_ini = _dt.combine(_d.today(), evento.horario_inicio)
+                h_fim = _dt.combine(_d.today(), evento.horario_fim)
+                horas_dia = max((h_fim - h_ini).seconds / 3600, 0.0)
+                evento.horas_semanais = round(horas_dia * len(dias), 2)
+
+    # Área e cidade vão para observações (não há campo específico no Evento)
+    partes: list[str] = []
+    if oferta.area:
+        partes.append(f"Área: {oferta.area}")
+    if oferta.cidade:
+        partes.append(f"Cidade: {oferta.cidade}")
+    if oferta.turno:
+        partes.append(f"Turno: {oferta.turno}")
+    if partes:
+        evento.observacoes = "Importado do histórico | " + " | ".join(partes)
+
+
 # ── lookup helpers ─────────────────────────────────────────────────────────────
 
 async def _lookup_professor(nome: str, db: AsyncSession) -> int | None:
@@ -181,9 +258,10 @@ async def _lookup_professor(nome: str, db: AsyncSession) -> int | None:
 async def _lookup_ou_criar_evento(
     nome_turma: str, disciplina: str, curso_id: int | None, db: AsyncSession,
     tipo_modalidade: str | None = None,
+    oferta: "OfertaCurso | None" = None,
 ) -> Evento:
     """Busca evento por nome; cria um rascunho se não existir.
-    Em reimportação, atualiza disciplina, curso_id e tipo_modalidade se tiver valores melhores."""
+    Quando oferta é fornecida, enriquece com dados da OfertaCurso (pasta, horário, dias, CH, etc.)."""
     result = await db.execute(
         select(Evento).where(Evento.nome_turma.ilike(f"%{nome_turma.strip()}%"))
     )
@@ -195,6 +273,8 @@ async def _lookup_ou_criar_evento(
             evento.curso_id = curso_id
         if tipo_modalidade and not evento.tipo_modalidade:
             evento.tipo_modalidade = tipo_modalidade
+        if oferta and not evento.oferta_id:
+            _enrich_from_oferta(evento, oferta)
         return evento
 
     evento = Evento(
@@ -212,6 +292,8 @@ async def _lookup_ou_criar_evento(
         status="Ativo",
         observacoes="Importado do histórico",
     )
+    if oferta:
+        _enrich_from_oferta(evento, oferta)
     db.add(evento)
     await db.flush()
     return evento
@@ -304,13 +386,16 @@ async def importar_historico(conteudo: bytes, db: AsyncSession) -> dict:
     ignoradas = 0
     ignoradas_sem_data = 0
     ignoradas_sem_horario = 0
+    eventos_criados = 0
     erros: list[str] = []
     vistos: set[tuple] = set()
+    eventos_antes: set[str] = set()  # controla quais eventos já existiam
 
     # Cache para evitar múltiplas queries do mesmo nome
     cache_prof: dict[str, int | None] = {}
     cache_evento: dict[str, Evento] = {}
     cache_curso: dict[str, int | None] = {}
+    cache_oferta: dict[str, "OfertaCurso | None"] = {}
 
     for idx, row in df.iterrows():
         linha = idx + 2  # número da linha no Excel (considerando cabeçalho)
@@ -358,15 +443,36 @@ async def importar_historico(conteudo: bytes, db: AsyncSession) -> dict:
                 cache_curso[nome_curso] = await _lookup_curso(nome_curso, db)
             curso_id = cache_curso[nome_curso]
 
+            # Busca oferta pelo código do evento (nome_turma)
+            if nome_turma not in cache_oferta:
+                res_of = await db.execute(
+                    select(OfertaCurso).where(OfertaCurso.codigo_evento == nome_turma.strip())
+                )
+                cache_oferta[nome_turma] = res_of.scalar_one_or_none()
+            oferta = cache_oferta[nome_turma]
+
+            # Se não resolveu curso_id pela planilha, tenta via pasta da oferta
+            if not curso_id and oferta and oferta.pasta:
+                if oferta.pasta not in cache_curso:
+                    cache_curso[oferta.pasta] = await _lookup_curso(oferta.pasta, db)
+                curso_id = cache_curso[oferta.pasta]
+
             # disciplina deve ser o nome do CURSO, não da UC
             disciplina = nome_curso or _get(row, "unidade_c", "unidade_curricular", "uc") or nome_turma
 
-            tipo_modalidade = _get(row, "modalidade") or None
+            tipo_modalidade = _get(row, "modalidade") or (oferta.modalidade if oferta else None) or None
 
             if nome_turma not in cache_evento:
+                era_novo = not (await db.execute(
+                    select(Evento.id).where(Evento.nome_turma.ilike(f"%{nome_turma.strip()}%"))
+                )).scalar_one_or_none()
                 cache_evento[nome_turma] = await _lookup_ou_criar_evento(
-                    nome_turma, disciplina, curso_id, db, tipo_modalidade=tipo_modalidade
+                    nome_turma, disciplina, curso_id, db,
+                    tipo_modalidade=tipo_modalidade,
+                    oferta=oferta,
                 )
+                if era_novo:
+                    eventos_criados += 1
             evento = cache_evento[nome_turma]
 
             nome_prof = _get(row, "professor")
@@ -450,6 +556,7 @@ async def importar_historico(conteudo: bytes, db: AsyncSession) -> dict:
         "ignoradas": ignoradas,
         "ignoradas_sem_data": ignoradas_sem_data,
         "ignoradas_sem_horario": ignoradas_sem_horario,
+        "eventos_criados": eventos_criados,
         "colunas_encontradas": list(df.columns),
         "erros": erros[:20],
     }
