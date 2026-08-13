@@ -705,7 +705,7 @@ async def calcular_ucs_evento(evento_id: int, db: AsyncSession) -> dict:
     resultado = []
     for uc in ucs:
         ch_plan = round(horas_por_uc.get(uc.id, 0.0), 1)
-        saldo = round((uc.carga_horaria or 0) - ch_plan, 1)
+        saldo = round(ch_plan - (uc.carga_horaria or 0), 1)
         resultado.append({
             "uc_id": uc.id,
             "codigo_uc": uc.codigo_uc,
@@ -793,7 +793,7 @@ async def exportar_ucs_evento_excel(evento_id: int, db: AsyncSession) -> bytes:
     ws.cell(row=row_tot, column=4, value="TOTAL").font = Font(bold=True)
     ws.cell(row=row_tot, column=5, value=round(ch_prev, 1)).font = Font(bold=True)
     ws.cell(row=row_tot, column=6, value=round(ch_plan_total, 1)).font = Font(bold=True)
-    ws.cell(row=row_tot, column=7, value=round(ch_prev - ch_plan_total, 1)).font = Font(bold=True)
+    ws.cell(row=row_tot, column=7, value=round(ch_plan_total - ch_prev, 1)).font = Font(bold=True)
 
     _autofit(ws)
     ws.column_dimensions["D"].width = 45

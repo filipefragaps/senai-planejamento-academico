@@ -488,7 +488,7 @@ export default function RelatoriosPage() {
                           <td className="px-3 py-2 border-b text-right font-semibold text-gray-800">
                             {uc.ch_planejada > 0 ? `${uc.ch_planejada}h` : "—"}
                           </td>
-                          <td className={`px-3 py-2 border-b text-right text-xs font-medium ${uc.saldo != null ? (uc.saldo > 0 ? "text-red-600" : uc.saldo < 0 ? "text-amber-600" : "text-green-600") : "text-gray-400"}`}>
+                          <td className={`px-3 py-2 border-b text-right text-xs font-medium ${uc.saldo != null ? (uc.saldo >= 0 ? "text-green-600" : "text-red-600") : "text-gray-400"}`}>
                             {uc.saldo != null ? `${uc.saldo > 0 ? "+" : ""}${uc.saldo}h` : "—"}
                           </td>
                           <td className="px-3 py-2 border-b text-center">
@@ -508,8 +508,8 @@ export default function RelatoriosPage() {
                         <td colSpan={3} className="px-3 py-2 border-t text-gray-700">Total</td>
                         <td className="px-3 py-2 border-t text-right">{chPrev}h</td>
                         <td className="px-3 py-2 border-t text-right">{chPlan.toFixed(1)}h</td>
-                        <td className={`px-3 py-2 border-t text-right text-xs ${chPrev - chPlan > 0 ? "text-red-600" : "text-green-600"}`}>
-                          {(chPrev - chPlan) >= 0 ? "+" : ""}{(chPrev - chPlan).toFixed(1)}h
+                        <td className={`px-3 py-2 border-t text-right text-xs font-bold ${chPlan - chPrev >= 0 ? "text-green-600" : "text-red-600"}`}>
+                          {(chPlan - chPrev) > 0 ? "+" : ""}{(chPlan - chPrev).toFixed(1)}h
                         </td>
                         <td />
                       </tr>
