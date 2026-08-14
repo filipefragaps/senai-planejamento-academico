@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { relatoriosApi, professoresApi, eventosApi, pagamentosApi, contratosApi, downloadBlob } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
@@ -14,8 +14,13 @@ const TIPOS_CONTRATO = ["Inclusão em Folha", "RPA", "PJ"] as const;
 
 export default function RelatoriosPage() {
   const qc = useQueryClient();
-  const me = getCurrentUser();
-  const isAdmin = me?.perfil === "admin";
+  const [perfil, setPerfil] = useState("");
+  useEffect(() => {
+    const me = getCurrentUser();
+    if (me?.perfil) setPerfil(me.perfil);
+  }, []);
+  const isAdmin = perfil === "admin";
+  const podeEncaminhar = ["admin", "coordenador", "analista"].includes(perfil);
 
   const [loadingReg, setLoadingReg] = useState(false);
   const [loadingProf, setLoadingProf] = useState(false);
@@ -221,6 +226,7 @@ export default function RelatoriosPage() {
       qc.invalidateQueries({ queryKey: ["pagamentos-encaminhados"] });
       setAulasSel(new Set());
       setContratoIdSel("");
+      setStatusFiltro("encaminhado"); // mostra as aulas recém-encaminhadas
       toast.success(`${data.encaminhados} aula(s) encaminhada(s) para pagamento!`);
       if (data.ja_processadas?.length > 0)
         toast.warning(`${data.ja_processadas.length} aula(s) já tinham pagamento ativo e foram ignoradas.`);
@@ -821,15 +827,17 @@ export default function RelatoriosPage() {
               <table className="w-full text-xs border-collapse">
                 <thead>
                   <tr className="bg-gray-50 text-gray-500 uppercase text-[10px]">
-                    <th className="px-3 py-2 border-b w-8">
-                      <input
-                        type="checkbox"
-                        onChange={toggleTodosAulas}
-                        checked={(aulasPag as any[]).filter(a => a.status_pagamento === "pendente").length > 0
-                          && (aulasPag as any[]).filter(a => a.status_pagamento === "pendente").every(a => aulasSel.has(a.id))}
-                        className="rounded"
-                      />
-                    </th>
+                    {podeEncaminhar && (
+                      <th className="px-3 py-2 border-b w-8">
+                        <input
+                          type="checkbox"
+                          onChange={toggleTodosAulas}
+                          checked={(aulasPag as any[]).filter(a => a.status_pagamento === "pendente").length > 0
+                            && (aulasPag as any[]).filter(a => a.status_pagamento === "pendente").every(a => aulasSel.has(a.id))}
+                          className="rounded"
+                        />
+                      </th>
+                    )}
                     <th className="px-3 py-2 border-b text-left">Data</th>
                     <th className="px-3 py-2 border-b text-left">Professor</th>
                     <th className="px-3 py-2 border-b text-left">Evento / Turma</th>
@@ -847,19 +855,21 @@ export default function RelatoriosPage() {
                       <tr
                         key={a.id}
                         className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}
-                        onClick={() => isPendente && toggleAula(a.id)}
+                        onClick={() => podeEncaminhar && isPendente && toggleAula(a.id)}
                       >
-                        <td className="px-3 py-2 border-b">
-                          {isPendente && (
-                            <input
-                              type="checkbox"
-                              checked={aulasSel.has(a.id)}
-                              onChange={() => toggleAula(a.id)}
-                              onClick={e => e.stopPropagation()}
-                              className="rounded"
-                            />
-                          )}
-                        </td>
+                        {podeEncaminhar && (
+                          <td className="px-3 py-2 border-b">
+                            {isPendente && (
+                              <input
+                                type="checkbox"
+                                checked={aulasSel.has(a.id)}
+                                onChange={() => toggleAula(a.id)}
+                                onClick={e => e.stopPropagation()}
+                                className="rounded"
+                              />
+                            )}
+                          </td>
+                        )}
                         <td className="px-3 py-2 border-b whitespace-nowrap font-mono text-gray-600">
                           {a.data?.replace(/(\d{4})-(\d{2})-(\d{2})/, "$3/$2/$1")}
                         </td>
@@ -904,7 +914,7 @@ export default function RelatoriosPage() {
           )}
 
           {/* Ação: vincular contrato e encaminhar */}
-          {aulasSel.size > 0 && (
+          {podeEncaminhar && aulasSel.size > 0 && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <p className="text-sm font-medium text-blue-800 mb-3">
                 {aulasSel.size} aula(s) selecionada(s) — vincule a um contrato e encaminhe
@@ -969,8 +979,14 @@ export default function RelatoriosPage() {
                 <CheckCircle2 className="h-5 w-5 text-green-600" />
               </div>
               <div>
-                <h3 className="font-semibold text-gray-800">Confirmar Pagamentos</h3>
-                <p className="text-xs text-gray-400">Aulas encaminhadas aguardando confirmação</p>
+                <h3 className="font-semibold text-gray-800">
+                  {isAdmin ? "Confirmar Pagamentos" : "Pagamentos Encaminhados"}
+                </h3>
+                <p className="text-xs text-gray-400">
+                  {isAdmin
+                    ? "Aulas encaminhadas aguardando sua confirmação"
+                    : "Acompanhe o status dos encaminhamentos realizados"}
+                </p>
               </div>
             </div>
             <button
