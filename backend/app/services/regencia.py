@@ -72,7 +72,15 @@ async def calcular_regencia_professor(
 
     result = await db.execute(select(Aula).where(and_(*filters)))
     aulas_lista = result.scalars().all()
-    horas_ministradas = sum(_horas_aula(a) for a in aulas_lista)
+
+    # Turmas juntas (ensalamento conjunto): mesmo professor, mesmo dia e horário em
+    # eventos diferentes → conta o slot uma única vez para não duplicar a regência.
+    slots_unicos: dict[tuple, Aula] = {}
+    for a in aulas_lista:
+        chave = (a.data, a.horario_inicio, a.horario_fim)
+        if chave not in slots_unicos:
+            slots_unicos[chave] = a
+    horas_ministradas = sum(_horas_aula(a) for a in slots_unicos.values())
 
     semanas = max(1, (data_fim - data_inicio).days / 7)
     horas_excedentes = 0.0
