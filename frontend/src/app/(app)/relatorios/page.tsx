@@ -189,6 +189,7 @@ export default function RelatoriosPage() {
   const [encaminhadosSel, setEncaminhadosSel] = useState<Set<number>>(new Set());
   const [modalReverter, setModalReverter] = useState<{ open: boolean; pagamentoId: number | null; obs: string }>({ open: false, pagamentoId: null, obs: "" });
   const [loadingExcelPag, setLoadingExcelPag] = useState(false);
+  const [abaConfirmar, setAbaConfirmar] = useState<"encaminhado" | "pago">("encaminhado");
 
   const professoresPag = (professores as any[]).filter(p => TIPOS_CONTRATO_PAG.includes(p.tipo));
 
@@ -216,6 +217,12 @@ export default function RelatoriosPage() {
     staleTime: 30_000,
   });
 
+  const { data: aulasPagas = [], isLoading: loadingPagos } = useQuery({
+    queryKey: ["pagamentos-pagos"],
+    queryFn: () => pagamentosApi.aulas({ status: "pago" }),
+    staleTime: 30_000,
+  });
+
   const contratoSelecionado = (contratosPag as any[]).find(c => c.id === +contratoIdSel);
 
   const encaminharMutation = useMutation({
@@ -239,6 +246,7 @@ export default function RelatoriosPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pagamentos-encaminhados"] });
       qc.invalidateQueries({ queryKey: ["pagamentos-aulas"] });
+      qc.invalidateQueries({ queryKey: ["pagamentos-pagos"] });
       setEncaminhadosSel(new Set());
       toast.success("Pagamento(s) confirmado(s)!");
     },
@@ -250,6 +258,7 @@ export default function RelatoriosPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pagamentos-encaminhados"] });
       qc.invalidateQueries({ queryKey: ["pagamentos-aulas"] });
+      qc.invalidateQueries({ queryKey: ["pagamentos-pagos"] });
       setModalReverter({ open: false, pagamentoId: null, obs: "" });
       toast.success("Pagamento revertido!");
     },
@@ -999,109 +1008,219 @@ export default function RelatoriosPage() {
             </button>
           </div>
 
-          {loadingEnc ? (
-            <p className="text-sm text-gray-400 py-2">Carregando...</p>
-          ) : (encaminhados as any[]).length === 0 ? (
-            <div className="flex items-center gap-2 text-gray-400 text-sm py-4">
-              <AlertCircle className="h-4 w-4" />
-              Nenhum pagamento aguardando confirmação.
-            </div>
-          ) : (
-            <>
-              {isAdmin && encaminhadosSel.size > 0 && (
-                <div className="flex items-center gap-3 mb-3 bg-green-50 border border-green-200 rounded-lg p-3">
-                  <span className="text-sm text-green-700 flex-1">
-                    {encaminhadosSel.size} pagamento(s) selecionado(s) — total:{" "}
-                    <strong>{fmt((encaminhados as any[]).filter(e => encaminhadosSel.has(e.id)).reduce((s, e: any) => s + e.valor, 0))}</strong>
-                  </span>
-                  <button
-                    onClick={() => confirmarMutation.mutate([...encaminhadosSel])}
-                    disabled={confirmarMutation.isPending}
-                    className="btn-primary flex items-center gap-1.5 text-sm"
-                  >
-                    <CheckCircle2 className="h-4 w-4" />
-                    {confirmarMutation.isPending ? "Confirmando..." : "Confirmar Pagamento"}
-                  </button>
-                </div>
+          {/* Abas */}
+          <div className="flex gap-1 mb-4 border-b border-gray-200">
+            <button
+              onClick={() => setAbaConfirmar("encaminhado")}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                abaConfirmar === "encaminhado"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Encaminhados
+              {(encaminhados as any[]).length > 0 && (
+                <span className="ml-2 px-1.5 py-0.5 rounded-full text-[10px] bg-amber-100 text-amber-700 font-semibold">
+                  {(encaminhados as any[]).length}
+                </span>
               )}
+            </button>
+            <button
+              onClick={() => setAbaConfirmar("pago")}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                abaConfirmar === "pago"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Confirmados / Pagos
+              {(aulasPagas as any[]).length > 0 && (
+                <span className="ml-2 px-1.5 py-0.5 rounded-full text-[10px] bg-green-100 text-green-700 font-semibold">
+                  {(aulasPagas as any[]).length}
+                </span>
+              )}
+            </button>
+          </div>
 
+          {/* ── Aba Encaminhados ── */}
+          {abaConfirmar === "encaminhado" && (
+            loadingEnc ? (
+              <p className="text-sm text-gray-400 py-2">Carregando...</p>
+            ) : (encaminhados as any[]).length === 0 ? (
+              <div className="flex items-center gap-2 text-gray-400 text-sm py-4">
+                <AlertCircle className="h-4 w-4" />
+                Nenhum pagamento aguardando confirmação.
+              </div>
+            ) : (
+              <>
+                {isAdmin && encaminhadosSel.size > 0 && (
+                  <div className="flex items-center gap-3 mb-3 bg-green-50 border border-green-200 rounded-lg p-3">
+                    <span className="text-sm text-green-700 flex-1">
+                      {encaminhadosSel.size} pagamento(s) selecionado(s) — total:{" "}
+                      <strong>{fmt((encaminhados as any[]).filter(e => encaminhadosSel.has(e.id)).reduce((s, e: any) => s + e.valor, 0))}</strong>
+                    </span>
+                    <button
+                      onClick={() => confirmarMutation.mutate([...encaminhadosSel])}
+                      disabled={confirmarMutation.isPending}
+                      className="btn-primary flex items-center gap-1.5 text-sm"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      {confirmarMutation.isPending ? "Confirmando..." : "Confirmar Pagamento"}
+                    </button>
+                  </div>
+                )}
+
+                <div className="overflow-x-auto rounded-lg border border-gray-200">
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50 text-gray-500 uppercase text-[10px]">
+                        {isAdmin && (
+                          <th className="px-3 py-2 border-b w-8">
+                            <input
+                              type="checkbox"
+                              onChange={toggleTodosEncaminhados}
+                              checked={(encaminhados as any[]).length > 0 && (encaminhados as any[]).every((e: any) => encaminhadosSel.has(e.id))}
+                              className="rounded"
+                            />
+                          </th>
+                        )}
+                        <th className="px-3 py-2 border-b text-left">Data Aula</th>
+                        <th className="px-3 py-2 border-b text-left">Professor</th>
+                        <th className="px-3 py-2 border-b text-left">Evento</th>
+                        <th className="px-3 py-2 border-b text-left">Contrato</th>
+                        <th className="px-3 py-2 border-b text-right">Horas</th>
+                        <th className="px-3 py-2 border-b text-right">Valor</th>
+                        <th className="px-3 py-2 border-b text-left">Encaminhado por</th>
+                        {isAdmin && <th className="px-3 py-2 border-b text-center">Ações</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(encaminhados as any[]).map((enc: any, idx: number) => (
+                        <tr key={enc.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                          {isAdmin && (
+                            <td className="px-3 py-2 border-b">
+                              <input
+                                type="checkbox"
+                                checked={encaminhadosSel.has(enc.id)}
+                                onChange={() => toggleEncaminhado(enc.id)}
+                                className="rounded"
+                              />
+                            </td>
+                          )}
+                          <td className="px-3 py-2 border-b font-mono text-gray-600 whitespace-nowrap">
+                            {enc.aula_data?.replace(/(\d{4})-(\d{2})-(\d{2})/, "$3/$2/$1")}
+                          </td>
+                          <td className="px-3 py-2 border-b font-medium text-gray-800 max-w-[120px] truncate">
+                            {enc.professor_nome}
+                          </td>
+                          <td className="px-3 py-2 border-b text-gray-600 max-w-[120px] truncate">
+                            {enc.evento_nome}
+                          </td>
+                          <td className="px-3 py-2 border-b text-gray-500 font-mono">
+                            {enc.contrato_numero || "—"}
+                          </td>
+                          <td className="px-3 py-2 border-b text-right font-semibold tabular-nums">
+                            {enc.horas}h
+                          </td>
+                          <td className="px-3 py-2 border-b text-right font-semibold text-amber-700 tabular-nums">
+                            {fmt(enc.valor)}
+                          </td>
+                          <td className="px-3 py-2 border-b text-gray-400">
+                            {enc.encaminhado_por}
+                          </td>
+                          {isAdmin && (
+                            <td className="px-3 py-2 border-b text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  onClick={() => confirmarMutation.mutate([enc.id])}
+                                  disabled={confirmarMutation.isPending}
+                                  className="p-1 rounded hover:bg-green-100 text-green-600"
+                                  title="Confirmar pagamento"
+                                >
+                                  <CheckCircle2 className="h-4 w-4" />
+                                </button>
+                                <button
+                                  onClick={() => setModalReverter({ open: true, pagamentoId: enc.id, obs: "" })}
+                                  className="p-1 rounded hover:bg-red-100 text-red-500"
+                                  title="Reverter encaminhamento"
+                                >
+                                  <RotateCcw className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-gray-100 font-bold">
+                        <td colSpan={isAdmin ? 6 : 5} className="px-3 py-2 border-t text-gray-700">Total</td>
+                        <td className="px-3 py-2 border-t text-right text-amber-700 tabular-nums">
+                          {fmt((encaminhados as any[]).reduce((s, e: any) => s + e.valor, 0))}
+                        </td>
+                        <td colSpan={isAdmin ? 2 : 1} />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </>
+            )
+          )}
+
+          {/* ── Aba Confirmados / Pagos ── */}
+          {abaConfirmar === "pago" && (
+            loadingPagos ? (
+              <p className="text-sm text-gray-400 py-2">Carregando...</p>
+            ) : (aulasPagas as any[]).length === 0 ? (
+              <div className="flex items-center gap-2 text-gray-400 text-sm py-4">
+                <AlertCircle className="h-4 w-4" />
+                Nenhum pagamento confirmado encontrado.
+              </div>
+            ) : (
               <div className="overflow-x-auto rounded-lg border border-gray-200">
                 <table className="w-full text-xs border-collapse">
                   <thead>
                     <tr className="bg-gray-50 text-gray-500 uppercase text-[10px]">
-                      {isAdmin && (
-                        <th className="px-3 py-2 border-b w-8">
-                          <input
-                            type="checkbox"
-                            onChange={toggleTodosEncaminhados}
-                            checked={(encaminhados as any[]).length > 0 && (encaminhados as any[]).every((e: any) => encaminhadosSel.has(e.id))}
-                            className="rounded"
-                          />
-                        </th>
-                      )}
                       <th className="px-3 py-2 border-b text-left">Data Aula</th>
                       <th className="px-3 py-2 border-b text-left">Professor</th>
                       <th className="px-3 py-2 border-b text-left">Evento</th>
                       <th className="px-3 py-2 border-b text-left">Contrato</th>
                       <th className="px-3 py-2 border-b text-right">Horas</th>
                       <th className="px-3 py-2 border-b text-right">Valor</th>
-                      <th className="px-3 py-2 border-b text-left">Encaminhado por</th>
-                      {isAdmin && <th className="px-3 py-2 border-b text-center">Ações</th>}
+                      {isAdmin && <th className="px-3 py-2 border-b text-center">Reverter</th>}
                     </tr>
                   </thead>
                   <tbody>
-                    {(encaminhados as any[]).map((enc: any, idx: number) => (
-                      <tr key={enc.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                        {isAdmin && (
-                          <td className="px-3 py-2 border-b">
-                            <input
-                              type="checkbox"
-                              checked={encaminhadosSel.has(enc.id)}
-                              onChange={() => toggleEncaminhado(enc.id)}
-                              className="rounded"
-                            />
-                          </td>
-                        )}
+                    {(aulasPagas as any[]).map((a: any, idx: number) => (
+                      <tr key={a.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                         <td className="px-3 py-2 border-b font-mono text-gray-600 whitespace-nowrap">
-                          {enc.aula_data?.replace(/(\d{4})-(\d{2})-(\d{2})/, "$3/$2/$1")}
+                          {a.data?.replace(/(\d{4})-(\d{2})-(\d{2})/, "$3/$2/$1")}
                         </td>
                         <td className="px-3 py-2 border-b font-medium text-gray-800 max-w-[120px] truncate">
-                          {enc.professor_nome}
+                          {a.professor_nome}
+                          <span className="ml-1 text-[10px] text-gray-400">({a.professor_tipo})</span>
                         </td>
-                        <td className="px-3 py-2 border-b text-gray-600 max-w-[120px] truncate">
-                          {enc.evento_nome}
+                        <td className="px-3 py-2 border-b text-gray-600 max-w-[130px] truncate">
+                          {a.evento_nome}
                         </td>
                         <td className="px-3 py-2 border-b text-gray-500 font-mono">
-                          {enc.contrato_numero || "—"}
+                          {a.contrato_numero || "—"}
                         </td>
                         <td className="px-3 py-2 border-b text-right font-semibold tabular-nums">
-                          {enc.horas}h
+                          {a.horas}h
                         </td>
                         <td className="px-3 py-2 border-b text-right font-semibold text-green-700 tabular-nums">
-                          {fmt(enc.valor)}
-                        </td>
-                        <td className="px-3 py-2 border-b text-gray-400">
-                          {enc.encaminhado_por}
+                          {a.valor_pagamento != null ? fmt(a.valor_pagamento) : "—"}
                         </td>
                         {isAdmin && (
                           <td className="px-3 py-2 border-b text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                onClick={() => confirmarMutation.mutate([enc.id])}
-                                disabled={confirmarMutation.isPending}
-                                className="p-1 rounded hover:bg-green-100 text-green-600"
-                                title="Confirmar pagamento"
-                              >
-                                <CheckCircle2 className="h-4 w-4" />
-                              </button>
-                              <button
-                                onClick={() => setModalReverter({ open: true, pagamentoId: enc.id, obs: "" })}
-                                className="p-1 rounded hover:bg-red-100 text-red-500"
-                                title="Reverter"
-                              >
-                                <RotateCcw className="h-4 w-4" />
-                              </button>
-                            </div>
+                            <button
+                              onClick={() => setModalReverter({ open: true, pagamentoId: a.pagamento_id, obs: "" })}
+                              className="p-1 rounded hover:bg-red-100 text-red-500"
+                              title="Reverter pagamento confirmado"
+                            >
+                              <RotateCcw className="h-4 w-4" />
+                            </button>
                           </td>
                         )}
                       </tr>
@@ -1109,16 +1228,16 @@ export default function RelatoriosPage() {
                   </tbody>
                   <tfoot>
                     <tr className="bg-gray-100 font-bold">
-                      <td colSpan={isAdmin ? 6 : 5} className="px-3 py-2 border-t text-gray-700">Total</td>
+                      <td colSpan={isAdmin ? 5 : 4} className="px-3 py-2 border-t text-gray-700">Total</td>
                       <td className="px-3 py-2 border-t text-right text-green-700 tabular-nums">
-                        {fmt((encaminhados as any[]).reduce((s, e: any) => s + e.valor, 0))}
+                        {fmt((aulasPagas as any[]).reduce((s, a: any) => s + (a.valor_pagamento || 0), 0))}
                       </td>
-                      <td colSpan={isAdmin ? 2 : 1} />
+                      {isAdmin && <td />}
                     </tr>
                   </tfoot>
                 </table>
               </div>
-            </>
+            )
           )}
         </div>
       </section>
