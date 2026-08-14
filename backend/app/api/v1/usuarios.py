@@ -9,7 +9,7 @@ from app.core.deps import require_admin, get_current_user
 
 router = APIRouter(prefix="/usuarios", tags=["Usuários"])
 
-PERFIS_VALIDOS = {"admin", "coordenador", "visualizador"}
+PERFIS_VALIDOS = {"admin", "coordenador", "analista", "secretario", "atendente", "consultor", "professor"}
 
 
 @router.get("/", response_model=list[UsuarioOut])
