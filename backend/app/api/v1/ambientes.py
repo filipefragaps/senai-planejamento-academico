@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func, or_
 
 from app.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_admin
 from app.models.ambiente import Ambiente
 
 router = APIRouter(prefix="/ambientes", tags=["Ambientes"])
@@ -177,7 +177,7 @@ async def atualizar(
 async def deletar(
     amb_id: int,
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    _=Depends(require_admin),
 ):
     result = await db.execute(select(Ambiente).where(Ambiente.id == amb_id))
     amb = result.scalar_one_or_none()
@@ -194,7 +194,7 @@ async def deletar_todos(
     tipo: Optional[str] = Query(default=None),
     confirmar: bool = Query(default=False),
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    _=Depends(require_admin),
 ):
     """Remove todos (ou por bloco/tipo). Requer confirmar=true."""
     if not confirmar:

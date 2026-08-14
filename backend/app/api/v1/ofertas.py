@@ -7,7 +7,7 @@ from sqlalchemy import select, func, or_
 from app.database import get_db
 from app.models.oferta import OfertaCurso
 from app.models.evento import Evento
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_admin
 from app.config import settings
 
 router = APIRouter(prefix="/ofertas", tags=["Eventos / Ofertas SENAI"])
@@ -263,7 +263,7 @@ async def atualizar_oferta(
 async def deletar_oferta(
     oferta_id: int,
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    _=Depends(require_admin),
 ):
     result = await db.execute(select(OfertaCurso).where(OfertaCurso.id == oferta_id))
     o = result.scalar_one_or_none()

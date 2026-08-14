@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.services.excel_import import excel_import_service, _norm_col
 from app.services.excel_import_seduc import importar_cronograma_seduc, reverter_importacao_seduc
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_admin
 from app.config import settings
 
 router = APIRouter(prefix="/importacao", tags=["Importação"])
@@ -120,7 +120,7 @@ async def importar_seduc(
 @router.delete("/cronograma-seduc")
 async def reverter_seduc(
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    _=Depends(require_admin),
 ):
     """Remove todas as aulas importadas via planilha SEDUC (fonte='seduc')."""
     try:

@@ -5,12 +5,16 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { usuariosApi } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
 import { useRouter } from "next/navigation";
-import { UserPlus, Pencil, KeyRound, Power, Shield, Eye, BookOpen } from "lucide-react";
+import { UserPlus, Pencil, KeyRound, Power, Shield, BookOpen, BarChart3, ClipboardList, Headphones, Briefcase, GraduationCap } from "lucide-react";
 
 const PERFIS = [
-  { value: "admin", label: "Administrador", icon: Shield, color: "text-red-600 bg-red-50" },
-  { value: "coordenador", label: "Coordenador", icon: BookOpen, color: "text-blue-600 bg-blue-50" },
-  { value: "visualizador", label: "Visualizador", icon: Eye, color: "text-gray-600 bg-gray-100" },
+  { value: "admin",      label: "Administrador",       icon: Shield,        color: "text-red-600 bg-red-50" },
+  { value: "coordenador",label: "Coordenador",          icon: BookOpen,      color: "text-blue-600 bg-blue-50" },
+  { value: "analista",   label: "Analista Educacional", icon: BarChart3,     color: "text-purple-600 bg-purple-50" },
+  { value: "secretario", label: "Secretário",           icon: ClipboardList, color: "text-green-600 bg-green-50" },
+  { value: "atendente",  label: "Atendente",            icon: Headphones,    color: "text-orange-600 bg-orange-50" },
+  { value: "consultor",  label: "Consultor",            icon: Briefcase,     color: "text-teal-600 bg-teal-50" },
+  { value: "professor",  label: "Professor",            icon: GraduationCap, color: "text-gray-600 bg-gray-100" },
 ];
 
 function PerfilBadge({ perfil }: { perfil: string }) {
@@ -48,9 +52,9 @@ export default function UsuariosPage() {
   const qc = useQueryClient();
   const me = getCurrentUser();
 
-  // Redireciona se não for admin
+  // Redireciona se não for admin (middleware já protege, mas garante no cliente)
   if (typeof window !== "undefined" && me?.perfil !== "admin") {
-    router.replace("/dashboard");
+    router.replace("/cronograma");
     return null;
   }
 
@@ -224,20 +228,25 @@ export default function UsuariosPage() {
       </div>
 
       {/* Legenda de perfis */}
-      <div className="mt-4 flex gap-4">
+      <div className="mt-4 grid grid-cols-2 gap-2">
         {PERFIS.map((p) => {
           const Icon = p.icon;
+          const descricoes: Record<string, string> = {
+            admin:       "Acesso total, pode excluir qualquer dado",
+            coordenador: "Cronograma, Planejamento, Professores, Cursos, IA — pode excluir planejamentos",
+            analista:    "Cronograma, Eventos, Professores, Cursos, Relatórios",
+            secretario:  "Cronograma, Eventos SENAI, Cursos, Relatórios",
+            atendente:   "Eventos SENAI e Cursos",
+            consultor:   "Eventos SENAI e Cursos",
+            professor:   "Somente Cronograma",
+          };
           return (
-            <div key={p.value} className="flex items-center gap-1.5 text-xs text-gray-500">
-              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium ${p.color}`}>
+            <div key={p.value} className="flex items-start gap-2 text-xs text-gray-500">
+              <span className={`mt-0.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium whitespace-nowrap ${p.color}`}>
                 <Icon className="h-3 w-3" />
                 {p.label}
               </span>
-              <span>
-                {p.value === "admin" && "— acesso total"}
-                {p.value === "coordenador" && "— cria e edita planejamentos"}
-                {p.value === "visualizador" && "— somente leitura"}
-              </span>
+              <span>{descricoes[p.value]}</span>
             </div>
           );
         })}

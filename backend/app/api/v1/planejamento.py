@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
 
 from app.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_pode_deletar_planejamento
 from app.config import settings
 from app.models.aula import Aula
 from app.models.evento import Evento
@@ -986,7 +986,7 @@ async def apagar_planejamento(
     evento_id: int,
     uc_id: Optional[int] = Query(default=None, description="Se informado, remove apenas as aulas desta UC"),
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    _=Depends(require_pode_deletar_planejamento),
 ):
     """
     Remove aulas planejadas de um evento do banco de dados.

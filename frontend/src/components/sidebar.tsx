@@ -23,26 +23,38 @@ import { cn } from "@/lib/utils";
 import { clearAuth, getCurrentUser } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 
-const NAV_PRINCIPAL = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/ofertas", label: "Eventos SENAI", icon: ClipboardList },
-  { href: "/professores", label: "Professores", icon: Users },
-  { href: "/cursos", label: "Cursos", icon: BookOpen },
-  { href: "/eventos", label: "Planejamento", icon: Calendar },
-  { href: "/cronograma", label: "Cronograma", icon: Calendar },
-  { href: "/importacao", label: "Importar Dados", icon: Upload },
-  { href: "/ambientes", label: "Salas e Labs", icon: DoorOpen },
-  { href: "/regencia", label: "Regência", icon: TrendingUp },
-  { href: "/relatorios", label: "Relatórios", icon: BarChart3 },
-  { href: "/historico", label: "Histórico", icon: History },
-  { href: "/ia", label: "Análise com IA", icon: Brain },
+type NavItem = {
+  href: string;
+  label: string;
+  icon: React.ElementType;
+  perfis?: string[];
+};
+
+const NAV_PRINCIPAL: NavItem[] = [
+  { href: "/dashboard",   label: "Dashboard",       icon: LayoutDashboard,  perfis: ["admin"] },
+  { href: "/cronograma",  label: "Cronograma",       icon: Calendar,         perfis: ["admin", "coordenador", "analista", "secretario", "professor"] },
+  { href: "/ofertas",     label: "Eventos SENAI",    icon: ClipboardList,    perfis: ["admin", "coordenador", "analista", "secretario", "atendente", "consultor"] },
+  { href: "/professores", label: "Professores",      icon: Users,            perfis: ["admin", "coordenador", "analista"] },
+  { href: "/cursos",      label: "Cursos",           icon: BookOpen,         perfis: ["admin", "coordenador", "analista", "secretario", "atendente", "consultor"] },
+  { href: "/eventos",     label: "Planejamento",     icon: Calendar,         perfis: ["admin", "coordenador"] },
+  { href: "/importacao",  label: "Importar Dados",   icon: Upload,           perfis: ["admin"] },
+  { href: "/ambientes",   label: "Salas e Labs",     icon: DoorOpen,         perfis: ["admin", "coordenador"] },
+  { href: "/regencia",    label: "Regência",         icon: TrendingUp,       perfis: ["admin"] },
+  { href: "/relatorios",  label: "Relatórios",       icon: BarChart3,        perfis: ["admin", "coordenador", "analista", "secretario"] },
+  { href: "/historico",   label: "Histórico",        icon: History,          perfis: ["admin"] },
+  { href: "/ia",          label: "Análise com IA",   icon: Brain,            perfis: ["admin", "coordenador"] },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const me = getCurrentUser();
-  const isAdmin = me?.perfil === "admin";
+  const perfil: string = me?.perfil ?? "";
+  const isAdmin = perfil === "admin";
+
+  const navVisivel = NAV_PRINCIPAL.filter(
+    (item) => !item.perfis || item.perfis.includes(perfil)
+  );
 
   function handleLogout() {
     clearAuth();
@@ -66,7 +78,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
-        {NAV_PRINCIPAL.map(({ href, label, icon: Icon }) => (
+        {navVisivel.map(({ href, label, icon: Icon }) => (
           <Link
             key={href}
             href={href}

@@ -9,6 +9,9 @@ export function getToken(): string | null {
 
 export function setToken(token: string, userData: any) {
   Cookies.set(TOKEN_KEY, token, { expires: 1, sameSite: "lax" });
+  if (userData?.perfil) {
+    Cookies.set("user_perfil", userData.perfil, { expires: 1, sameSite: "lax" });
+  }
   if (typeof window !== "undefined") {
     localStorage.setItem(USER_KEY, JSON.stringify(userData));
   }
@@ -16,6 +19,7 @@ export function setToken(token: string, userData: any) {
 
 export function clearAuth() {
   Cookies.remove(TOKEN_KEY);
+  Cookies.remove("user_perfil");
   if (typeof window !== "undefined") {
     localStorage.removeItem(USER_KEY);
   }

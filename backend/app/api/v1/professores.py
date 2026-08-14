@@ -12,7 +12,7 @@ from app.schemas.professor import (
     ProfessorCreate, ProfessorUpdate, ProfessorOut, ProfessorComDetalhes, RegenciaInfo
 )
 from app.services.regencia import calcular_regencia_professor, calcular_regencia_todos
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_admin
 
 router = APIRouter(prefix="/professores", tags=["Professores"])
 
@@ -266,7 +266,7 @@ async def remover_disponibilidade(
     professor_id: int,
     disp_id: int,
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    _=Depends(require_admin),
 ):
     result = await db.execute(
         select(DisponibilidadeDetalhada).where(
@@ -327,7 +327,7 @@ async def remover_atuacao(
     professor_id: int,
     atuacao_id: int,
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    _=Depends(require_admin),
 ):
     result = await db.execute(
         select(Atuacao).where(
@@ -346,7 +346,7 @@ async def remover_atuacao(
 async def excluir_professor(
     professor_id: int,
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    _=Depends(require_admin),
 ):
     """
     Exclui permanentemente um professor. Bloqueado se houver aulas vinculadas.

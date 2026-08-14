@@ -5,7 +5,7 @@ from app.database import get_db
 from app.models.curso import Curso
 from app.models.unidade_curricular import UnidadeCurricular
 from app.schemas.curso import CursoCreate, CursoUpdate, CursoOut, UCCreate, UCUpdate, UCOut, UCReorderItem
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_admin
 
 router = APIRouter(prefix="/cursos", tags=["Cursos"])
 
@@ -89,7 +89,7 @@ async def atualizar_curso(
 
 
 @router.delete("/{curso_id}", status_code=204)
-async def deletar_curso(curso_id: int, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
+async def deletar_curso(curso_id: int, db: AsyncSession = Depends(get_db), _=Depends(require_admin)):
     result = await db.execute(select(Curso).where(Curso.id == curso_id))
     curso = result.scalar_one_or_none()
     if not curso:
@@ -216,7 +216,7 @@ async def deletar_uc(
     curso_id: int,
     uc_id: int,
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    _=Depends(require_admin),
 ):
     res = await db.execute(
         select(UnidadeCurricular).where(

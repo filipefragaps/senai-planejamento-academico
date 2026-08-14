@@ -9,7 +9,7 @@ from app.models.curso import Curso
 from app.models.oferta import OfertaCurso
 from app.schemas.evento import EventoCreate, EventoUpdate, EventoOut, EventoComAulas
 from app.algorithms.constraint_solver import gerar_aulas_evento
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_admin
 
 router = APIRouter(prefix="/eventos", tags=["Eventos / Turmas"])
 
@@ -158,7 +158,7 @@ async def gerar_aulas(
 async def deletar_evento(
     evento_id: int,
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    _=Depends(require_admin),
 ):
     result = await db.execute(select(Evento).where(Evento.id == evento_id))
     evento = result.scalar_one_or_none()
