@@ -1,15 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { professoresApi } from "@/lib/api";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { professoresApi, contratosApi } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { RegenciaBar } from "@/components/regencia-bar";
 import { ProfessorDrawer } from "@/components/professor-drawer";
+import { toast } from "sonner";
 import {
-  Plus, Search, X, Pencil, ChevronRight, Clock, BookOpen, User,
+  Plus, Search, X, Pencil, ChevronRight, Clock, BookOpen, User, Briefcase,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const TIPOS_CONTRATO_PROF = ["PJ", "RPA", "Inclusão em Folha"];
+const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+const CONTRATO_FORM_VAZIO = { numero_contrato: "", valor_hora: "", total_horas_previstas: "", descricao: "", ativo: true };
 
 const DIAS_ABREV = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const DIAS_COR: Record<number, string> = {
@@ -78,6 +84,62 @@ export default function ProfessoresPage() {
     queryFn: () => professoresApi.detalhes(selected!.id),
     enabled: !!selected,
   });
+
+  const [contratoModal, setContratoModal] = useState<{ open: boolean; contrato: any | null }>({ open: false, contrato: null });
+  const [contratoForm, setContratoForm] = useState(CONTRATO_FORM_VAZIO);
+
+  const { data: contratos = [], isLoading: loadingContratos } = useQuery({
+    queryKey: ["contratos", selected?.id],
+    queryFn: () => contratosApi.listar(selected!.id),
+    enabled: !!selected && TIPOS_CONTRATO_PROF.includes(selected.tipo),
+    staleTime: 30_000,
+  });
+
+  const salvarContratoMutation = useMutation({
+    mutationFn: (form: typeof CONTRATO_FORM_VAZIO) => {
+      const payload = {
+        numero_contrato: form.numero_contrato,
+        valor_hora: +form.valor_hora,
+        total_horas_previstas: +form.total_horas_previstas,
+        descricao: form.descricao || undefined,
+        ativo: form.ativo,
+      };
+      return contratoModal.contrato
+        ? contratosApi.atualizar(selected!.id, contratoModal.contrato.id, payload)
+        : contratosApi.criar(selected!.id, payload);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["contratos", selected?.id] });
+      setContratoModal({ open: false, contrato: null });
+      setContratoForm(CONTRATO_FORM_VAZIO);
+      toast.success(contratoModal.contrato ? "Contrato atualizado!" : "Contrato criado!");
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || "Erro ao salvar contrato"),
+  });
+
+  function abrirNovoContrato() {
+    setContratoForm(CONTRATO_FORM_VAZIO);
+    setContratoModal({ open: true, contrato: null });
+  }
+
+  function abrirEditarContrato(c: any) {
+    setContratoForm({
+      numero_contrato: c.numero_contrato,
+      valor_hora: String(c.valor_hora),
+      total_horas_previstas: String(c.total_horas_previstas),
+      descricao: c.descricao || "",
+      ativo: c.ativo,
+    });
+    setContratoModal({ open: true, contrato: c });
+  }
+
+  function salvarContrato() {
+    if (!contratoForm.numero_contrato || !contratoForm.valor_hora || !contratoForm.total_horas_previstas) {
+      toast.error("Preencha número do contrato, valor da hora e total de horas");
+      return;
+    }
+    salvarContratoMutation.mutate(contratoForm);
+  }
 
   const regMap: Record<number, any> = {};
   regencias.forEach((r: any) => { regMap[r.professor_id] = r; });
@@ -338,7 +400,7 @@ export default function ProfessoresPage() {
                   </div>
 
                   {/* UCs por curso */}
-                  <div className="p-4">
+                  <div className="p-4 border-b">
                     <div className="flex items-center gap-2 mb-3">
                       <BookOpen className="h-4 w-4 text-primary" />
                       <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
@@ -377,8 +439,244 @@ export default function ProfessoresPage() {
                       </div>
                     )}
                   </div>
+
+                  {/* Contratos */}
+                  {TIPOS_CONTRATO_PROF.includes(selected.tipo) && (
+                    <div className="p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <Briefcase className="h-4 w-4 text-primary" />
+                          <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                            Contratos
+                          </span>
+                        </div>
+                        <button
+                          onClick={abrirNovoContrato}
+                          className="text-xs text-primary hover:underline flex items-center gap-1"
+                        >
+                          + Novo
+                        </button>
+                      </div>
+
+                      {loadingContratos ? (
+                        <p className="text-xs text-gray-400">Carregando...</p>
+                      ) : contratos.length === 0 ? (
+                        <p className="text-xs text-gray-400 italic">
+                          Nenhum contrato cadastrado.{" "}
+                          <button onClick={abrirNovoContrato} className="text-primary underline">
+                            Adicionar
+                          </button>
+                        </p>
+                      ) : (
+                        <div className="space-y-3">
+                          {contratos.map((c: any) => {
+                            const pct = Math.min(100, c.percentual_utilizado);
+                            const cor = pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-400" : "bg-green-500";
+                            return (
+                              <div
+                                key={c.id}
+                                className={cn(
+                                  "rounded-lg border p-3 text-xs",
+                                  c.ativo ? "border-gray-200" : "border-dashed border-gray-200 opacity-60"
+                                )}
+                              >
+                                <div className="flex items-center justify-between mb-1.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-mono font-semibold text-gray-800 truncate max-w-[140px]">
+                                      {c.numero_contrato}
+                                    </span>
+                                    {!c.ativo && (
+                                      <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">
+                                        inativo
+                                      </span>
+                                    )}
+                                  </div>
+                                  <button
+                                    onClick={() => abrirEditarContrato(c)}
+                                    className="text-gray-400 hover:text-primary"
+                                  >
+                                    <Pencil className="h-3 w-3" />
+                                  </button>
+                                </div>
+
+                                {/* Barra de progresso */}
+                                <div className="flex items-center gap-2 mb-2">
+                                  <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                    <div
+                                      className={cn("h-full rounded-full transition-all", cor)}
+                                      style={{ width: `${pct}%` }}
+                                    />
+                                  </div>
+                                  <span className={cn(
+                                    "text-[10px] font-semibold tabular-nums",
+                                    pct >= 90 ? "text-red-600" : pct >= 70 ? "text-amber-600" : "text-green-600"
+                                  )}>
+                                    {pct.toFixed(1)}%
+                                  </span>
+                                </div>
+
+                                {/* Stats */}
+                                <div className="grid grid-cols-3 gap-x-3 text-[10px] text-gray-500">
+                                  <div>
+                                    <span className="block text-gray-400">Valor/h</span>
+                                    <span className="font-medium text-gray-700">{fmt(c.valor_hora)}</span>
+                                  </div>
+                                  <div>
+                                    <span className="block text-gray-400">Horas prev.</span>
+                                    <span className="font-medium text-gray-700">
+                                      {c.total_horas_previstas}h
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="block text-gray-400">Saldo</span>
+                                    <span className={cn(
+                                      "font-medium",
+                                      c.saldo_horas < 0 ? "text-red-600" : "text-gray-700"
+                                    )}>
+                                      {c.saldo_horas}h
+                                    </span>
+                                  </div>
+                                  <div className="col-span-2 mt-1">
+                                    <span className="block text-gray-400">Pago / Encaminhado</span>
+                                    <span className="font-medium text-gray-700">
+                                      {fmt(c.valor_pago)} / {fmt(c.valor_encaminhado)}
+                                    </span>
+                                  </div>
+                                  <div className="mt-1">
+                                    <span className="block text-gray-400">Saldo R$</span>
+                                    <span className={cn(
+                                      "font-medium",
+                                      c.saldo_financeiro < 0 ? "text-red-600" : "text-green-700"
+                                    )}>
+                                      {fmt(c.saldo_financeiro)}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Modal de contrato ─── */}
+      {contratoModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="font-semibold text-gray-900">
+                {contratoModal.contrato ? "Editar Contrato" : "Novo Contrato"}
+              </h3>
+              <button
+                onClick={() => setContratoModal({ open: false, contrato: null })}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Número do Contrato <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  className="input w-full"
+                  placeholder="Ex: CTR-2024-001"
+                  value={contratoForm.numero_contrato}
+                  onChange={e => setContratoForm(f => ({ ...f, numero_contrato: e.target.value }))}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Valor por Hora (R$) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="input w-full"
+                    placeholder="0,00"
+                    value={contratoForm.valor_hora}
+                    onChange={e => setContratoForm(f => ({ ...f, valor_hora: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Total de Horas <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    className="input w-full"
+                    placeholder="0"
+                    value={contratoForm.total_horas_previstas}
+                    onChange={e => setContratoForm(f => ({ ...f, total_horas_previstas: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              {contratoForm.valor_hora && contratoForm.total_horas_previstas && (
+                <p className="text-xs text-gray-500 bg-blue-50 rounded-lg p-2">
+                  Valor total estimado:{" "}
+                  <strong className="text-blue-700">
+                    {fmt(+contratoForm.valor_hora * +contratoForm.total_horas_previstas)}
+                  </strong>
+                </p>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Descrição / Observação
+                </label>
+                <textarea
+                  className="input w-full resize-none"
+                  rows={2}
+                  placeholder="Opcional"
+                  value={contratoForm.descricao}
+                  onChange={e => setContratoForm(f => ({ ...f, descricao: e.target.value }))}
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="contrato-ativo"
+                  checked={contratoForm.ativo}
+                  onChange={e => setContratoForm(f => ({ ...f, ativo: e.target.checked }))}
+                  className="rounded"
+                />
+                <label htmlFor="contrato-ativo" className="text-sm text-gray-700">
+                  Contrato ativo
+                </label>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setContratoModal({ open: false, contrato: null })}
+                className="btn-secondary"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={salvarContrato}
+                disabled={salvarContratoMutation.isPending}
+                className="btn-primary"
+              >
+                {salvarContratoMutation.isPending ? "Salvando..." : "Salvar"}
+              </button>
             </div>
           </div>
         </div>

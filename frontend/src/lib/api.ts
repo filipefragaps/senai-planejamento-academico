@@ -326,6 +326,36 @@ export const ambientesApi = {
   },
 };
 
+// Contratos de Docentes
+export const contratosApi = {
+  listar: (professorId: number) =>
+    api.get(`/professores/${professorId}/contratos`).then((r) => r.data),
+  criar: (professorId: number, data: { numero_contrato: string; valor_hora: number; total_horas_previstas: number; descricao?: string; ativo?: boolean }) =>
+    api.post(`/professores/${professorId}/contratos`, data).then((r) => r.data),
+  atualizar: (professorId: number, contratoId: number, data: Partial<{ numero_contrato: string; valor_hora: number; total_horas_previstas: number; descricao: string; ativo: boolean }>) =>
+    api.put(`/professores/${professorId}/contratos/${contratoId}`, data).then((r) => r.data),
+  deletar: (professorId: number, contratoId: number) =>
+    api.delete(`/professores/${professorId}/contratos/${contratoId}`),
+};
+
+// Controle de Pagamentos
+export const pagamentosApi = {
+  aulas: (params: { professor_id?: number; data_inicio?: string; data_fim?: string; status?: string }) =>
+    api.get("/pagamentos/aulas", { params }).then((r) => r.data),
+  encaminhar: (data: { aula_ids: number[]; contrato_id: number }) =>
+    api.post("/pagamentos/encaminhar", data).then((r) => r.data),
+  encaminhados: (params?: { professor_id?: number }) =>
+    api.get("/pagamentos/encaminhados", { params }).then((r) => r.data),
+  confirmar: (pagamento_ids: number[]) =>
+    api.post("/pagamentos/confirmar", { pagamento_ids }).then((r) => r.data),
+  reverter: (pagamentoId: number, observacao?: string) =>
+    api.post(`/pagamentos/reverter/${pagamentoId}`, { observacao }).then((r) => r.data),
+  historico: (params?: { professor_id?: number; pagamento_id?: number; limit?: number }) =>
+    api.get("/pagamentos/historico", { params }).then((r) => r.data),
+  relatorioExcel: (params: { status?: string; professor_id?: number }) =>
+    api.get("/pagamentos/relatorio/excel", { params, responseType: "blob" }),
+};
+
 export function downloadBlob(data: Blob, filename: string) {
   const url = window.URL.createObjectURL(data);
   const a = document.createElement("a");

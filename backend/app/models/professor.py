@@ -25,3 +25,4 @@ class Professor(Base):
     disponibilidades: Mapped[list["DisponibilidadeDetalhada"]] = relationship("DisponibilidadeDetalhada", back_populates="professor")
     eventos: Mapped[list["Evento"]] = relationship("Evento", back_populates="professor")
     aulas: Mapped[list["Aula"]] = relationship("Aula", back_populates="professor")
+    contratos: Mapped[list["ContratoDocente"]] = relationship("ContratoDocente", back_populates="professor")

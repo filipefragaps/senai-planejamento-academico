@@ -1,15 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { relatoriosApi, professoresApi, eventosApi, downloadBlob } from "@/lib/api";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { relatoriosApi, professoresApi, eventosApi, pagamentosApi, contratosApi, downloadBlob } from "@/lib/api";
+import { getCurrentUser } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { toast } from "sonner";
-import { Download, FileSpreadsheet, Users, BookOpen, Database, ShoppingBag, History, Receipt, ListChecks } from "lucide-react";
+import { Download, FileSpreadsheet, Users, BookOpen, Database, ShoppingBag, History, Receipt, ListChecks, CreditCard, CheckCircle2, RotateCcw, X, AlertCircle } from "lucide-react";
+
+const TIPOS_CONTRATO_PAG = ["PJ", "RPA", "Inclusão em Folha"];
 
 const TIPOS_CONTRATO = ["Inclusão em Folha", "RPA", "PJ"] as const;
 
 export default function RelatoriosPage() {
+  const qc = useQueryClient();
+  const me = getCurrentUser();
+  const isAdmin = me?.perfil === "admin";
+
   const [loadingReg, setLoadingReg] = useState(false);
   const [loadingProf, setLoadingProf] = useState(false);
   const [loadingTurma, setLoadingTurma] = useState(false);
@@ -166,6 +173,135 @@ export default function RelatoriosPage() {
       setLoadingUCExcel(false);
     }
   }
+
+  // ── Controle de Pagamento ──────────────────────────────────────────────────
+  const [profPag, setProfPag] = useState("");
+  const [dateIniPag, setDateIniPag] = useState("");
+  const [dateFimPag, setDateFimPag] = useState("");
+  const [statusFiltro, setStatusFiltro] = useState("pendente");
+  const [aulasSel, setAulasSel] = useState<Set<number>>(new Set());
+  const [contratoIdSel, setContratoIdSel] = useState("");
+  const [encaminhadosSel, setEncaminhadosSel] = useState<Set<number>>(new Set());
+  const [modalReverter, setModalReverter] = useState<{ open: boolean; pagamentoId: number | null; obs: string }>({ open: false, pagamentoId: null, obs: "" });
+  const [loadingExcelPag, setLoadingExcelPag] = useState(false);
+
+  const professoresPag = (professores as any[]).filter(p => TIPOS_CONTRATO_PAG.includes(p.tipo));
+
+  const { data: aulasPag = [], isLoading: loadingAulasPag } = useQuery({
+    queryKey: ["pagamentos-aulas", profPag, dateIniPag, dateFimPag, statusFiltro],
+    queryFn: () => pagamentosApi.aulas({
+      ...(profPag && { professor_id: +profPag }),
+      ...(dateIniPag && { data_inicio: dateIniPag }),
+      ...(dateFimPag && { data_fim: dateFimPag }),
+      ...(statusFiltro !== "todos" && { status: statusFiltro }),
+    }),
+    staleTime: 30_000,
+  });
+
+  const { data: contratosPag = [] } = useQuery({
+    queryKey: ["contratos-pag", profPag],
+    queryFn: () => contratosApi.listar(+profPag),
+    enabled: !!profPag,
+    staleTime: 30_000,
+  });
+
+  const { data: encaminhados = [], isLoading: loadingEnc } = useQuery({
+    queryKey: ["pagamentos-encaminhados"],
+    queryFn: () => pagamentosApi.encaminhados(),
+    staleTime: 30_000,
+  });
+
+  const contratoSelecionado = (contratosPag as any[]).find(c => c.id === +contratoIdSel);
+
+  const encaminharMutation = useMutation({
+    mutationFn: () => pagamentosApi.encaminhar({ aula_ids: [...aulasSel], contrato_id: +contratoIdSel }),
+    onSuccess: (data: any) => {
+      qc.invalidateQueries({ queryKey: ["pagamentos-aulas"] });
+      qc.invalidateQueries({ queryKey: ["contratos-pag"] });
+      qc.invalidateQueries({ queryKey: ["pagamentos-encaminhados"] });
+      setAulasSel(new Set());
+      setContratoIdSel("");
+      toast.success(`${data.encaminhados} aula(s) encaminhada(s) para pagamento!`);
+      if (data.ja_processadas?.length > 0)
+        toast.warning(`${data.ja_processadas.length} aula(s) já tinham pagamento ativo e foram ignoradas.`);
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || "Erro ao encaminhar"),
+  });
+
+  const confirmarMutation = useMutation({
+    mutationFn: (ids: number[]) => pagamentosApi.confirmar(ids),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pagamentos-encaminhados"] });
+      qc.invalidateQueries({ queryKey: ["pagamentos-aulas"] });
+      setEncaminhadosSel(new Set());
+      toast.success("Pagamento(s) confirmado(s)!");
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || "Erro ao confirmar"),
+  });
+
+  const reverterMutation = useMutation({
+    mutationFn: ({ id, obs }: { id: number; obs: string }) => pagamentosApi.reverter(id, obs || undefined),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pagamentos-encaminhados"] });
+      qc.invalidateQueries({ queryKey: ["pagamentos-aulas"] });
+      setModalReverter({ open: false, pagamentoId: null, obs: "" });
+      toast.success("Pagamento revertido!");
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || "Erro ao reverter"),
+  });
+
+  function toggleAula(id: number) {
+    setAulasSel(prev => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  }
+
+  function toggleTodosAulas() {
+    const pendentes = (aulasPag as any[]).filter(a => a.status_pagamento === "pendente").map((a: any) => a.id);
+    if (pendentes.every(id => aulasSel.has(id))) {
+      setAulasSel(new Set());
+    } else {
+      setAulasSel(new Set(pendentes));
+    }
+  }
+
+  function toggleEncaminhado(id: number) {
+    setEncaminhadosSel(prev => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  }
+
+  function toggleTodosEncaminhados() {
+    const ids = (encaminhados as any[]).map((e: any) => e.id);
+    if (ids.every(id => encaminhadosSel.has(id))) {
+      setEncaminhadosSel(new Set());
+    } else {
+      setEncaminhadosSel(new Set(ids));
+    }
+  }
+
+  async function baixarExcelPagamentos() {
+    setLoadingExcelPag(true);
+    try {
+      const res = await pagamentosApi.relatorioExcel({
+        ...(profPag && { professor_id: +profPag }),
+        ...(dateIniPag && { data_inicio: dateIniPag }),
+        ...(dateFimPag && { data_fim: dateFimPag }),
+      });
+      downloadBlob(res.data, "controle_pagamentos.xlsx");
+      toast.success("Relatório exportado!");
+    } catch {
+      toast.error("Erro ao exportar relatório de pagamentos");
+    } finally {
+      setLoadingExcelPag(false);
+    }
+  }
+
+  const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
   async function baixarHistorico() {
     setLoadingHistorico(true);
@@ -622,6 +758,394 @@ export default function RelatoriosPage() {
 
         </div>
       </section>
+
+      {/* ── Controle de Pagamento ─────────────────────────────────────────── */}
+      <section>
+        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+          Controle de Pagamento
+        </h2>
+
+        {/* ── Encaminhar aulas ── */}
+        <div className="card p-6 mb-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <CreditCard className="h-5 w-5 text-blue-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-800">Encaminhar Aulas para Pagamento</h3>
+              <p className="text-xs text-gray-400">Selecione aulas PJ / RPA / Inclusão em Folha e vincule ao contrato</p>
+            </div>
+          </div>
+
+          {/* Filtros */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1 font-medium">Professor</label>
+              <select
+                className="input w-full"
+                value={profPag}
+                onChange={e => { setProfPag(e.target.value); setAulasSel(new Set()); setContratoIdSel(""); }}
+              >
+                <option value="">Todos</option>
+                {professoresPag.map((p: any) => (
+                  <option key={p.id} value={p.id}>{p.nome} ({p.tipo})</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1 font-medium">Status</label>
+              <select className="input w-full" value={statusFiltro} onChange={e => setStatusFiltro(e.target.value)}>
+                <option value="pendente">Pendente</option>
+                <option value="encaminhado">Encaminhado</option>
+                <option value="pago">Pago</option>
+                <option value="todos">Todos</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1 font-medium">Data início</label>
+              <input type="date" className="input w-full" value={dateIniPag} onChange={e => setDateIniPag(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1 font-medium">Data fim</label>
+              <input type="date" className="input w-full" value={dateFimPag} onChange={e => setDateFimPag(e.target.value)} />
+            </div>
+          </div>
+
+          {/* Tabela de aulas */}
+          {loadingAulasPag ? (
+            <p className="text-sm text-gray-400 py-4">Carregando aulas...</p>
+          ) : (aulasPag as any[]).length === 0 ? (
+            <p className="text-sm text-gray-400 py-4 italic">Nenhuma aula encontrada para os filtros selecionados.</p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-gray-200 mb-4">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="bg-gray-50 text-gray-500 uppercase text-[10px]">
+                    <th className="px-3 py-2 border-b w-8">
+                      <input
+                        type="checkbox"
+                        onChange={toggleTodosAulas}
+                        checked={(aulasPag as any[]).filter(a => a.status_pagamento === "pendente").length > 0
+                          && (aulasPag as any[]).filter(a => a.status_pagamento === "pendente").every(a => aulasSel.has(a.id))}
+                        className="rounded"
+                      />
+                    </th>
+                    <th className="px-3 py-2 border-b text-left">Data</th>
+                    <th className="px-3 py-2 border-b text-left">Professor</th>
+                    <th className="px-3 py-2 border-b text-left">Evento / Turma</th>
+                    <th className="px-3 py-2 border-b text-left">UC / Disciplina</th>
+                    <th className="px-3 py-2 border-b text-center">Horário</th>
+                    <th className="px-3 py-2 border-b text-right">Horas</th>
+                    <th className="px-3 py-2 border-b text-center">Status</th>
+                    <th className="px-3 py-2 border-b text-left">Contrato</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(aulasPag as any[]).map((a: any, idx: number) => {
+                    const isPendente = a.status_pagamento === "pendente";
+                    return (
+                      <tr
+                        key={a.id}
+                        className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}
+                        onClick={() => isPendente && toggleAula(a.id)}
+                      >
+                        <td className="px-3 py-2 border-b">
+                          {isPendente && (
+                            <input
+                              type="checkbox"
+                              checked={aulasSel.has(a.id)}
+                              onChange={() => toggleAula(a.id)}
+                              onClick={e => e.stopPropagation()}
+                              className="rounded"
+                            />
+                          )}
+                        </td>
+                        <td className="px-3 py-2 border-b whitespace-nowrap font-mono text-gray-600">
+                          {a.data?.replace(/(\d{4})-(\d{2})-(\d{2})/, "$3/$2/$1")}
+                        </td>
+                        <td className="px-3 py-2 border-b max-w-[120px] truncate">
+                          <span className="font-medium text-gray-800">{a.professor_nome}</span>
+                          <span className="ml-1 text-[10px] text-gray-400">({a.professor_tipo})</span>
+                        </td>
+                        <td className="px-3 py-2 border-b max-w-[130px] truncate text-gray-600">
+                          {a.evento_nome}
+                        </td>
+                        <td className="px-3 py-2 border-b max-w-[130px] truncate text-gray-600">
+                          {a.uc_nome}
+                        </td>
+                        <td className="px-3 py-2 border-b text-center text-gray-500 whitespace-nowrap">
+                          {a.horario_inicio}–{a.horario_fim}
+                        </td>
+                        <td className="px-3 py-2 border-b text-right font-semibold text-gray-700 tabular-nums">
+                          {a.horas}h
+                        </td>
+                        <td className="px-3 py-2 border-b text-center">
+                          <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                            a.status_pagamento === "pago"
+                              ? "bg-green-100 text-green-700"
+                              : a.status_pagamento === "encaminhado"
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-gray-100 text-gray-500"
+                          }`}>
+                            {a.status_pagamento === "pago" ? "Pago"
+                              : a.status_pagamento === "encaminhado" ? "Encaminhado"
+                              : "Pendente"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 border-b text-gray-400 text-[10px]">
+                          {a.contrato_numero || "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Ação: vincular contrato e encaminhar */}
+          {aulasSel.size > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p className="text-sm font-medium text-blue-800 mb-3">
+                {aulasSel.size} aula(s) selecionada(s) — vincule a um contrato e encaminhe
+              </p>
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex-1 min-w-48">
+                  <label className="block text-xs text-blue-600 mb-1 font-medium">
+                    Contrato {!profPag && <span className="text-amber-600">(filtre por professor primeiro)</span>}
+                  </label>
+                  <select
+                    className="input w-full"
+                    value={contratoIdSel}
+                    onChange={e => setContratoIdSel(e.target.value)}
+                    disabled={!profPag}
+                  >
+                    <option value="">Selecionar contrato</option>
+                    {(contratosPag as any[]).filter(c => c.ativo).map((c: any) => (
+                      <option key={c.id} value={c.id}>
+                        {c.numero_contrato} — {fmt(c.valor_hora)}/h — saldo: {c.saldo_horas}h
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  onClick={() => encaminharMutation.mutate()}
+                  disabled={!contratoIdSel || encaminharMutation.isPending}
+                  className="btn-primary flex items-center gap-2 whitespace-nowrap"
+                >
+                  <CreditCard className="h-4 w-4" />
+                  {encaminharMutation.isPending ? "Encaminhando..." : "Encaminhar para Pagamento"}
+                </button>
+              </div>
+
+              {/* Barra de progresso do contrato selecionado */}
+              {contratoSelecionado && (
+                <div className="mt-3">
+                  <div className="flex items-center justify-between text-xs text-blue-700 mb-1">
+                    <span>Utilização do contrato: {contratoSelecionado.horas_utilizadas}h / {contratoSelecionado.total_horas_previstas}h</span>
+                    <span className="font-semibold">{contratoSelecionado.percentual_utilizado}%</span>
+                  </div>
+                  <div className="h-2 bg-blue-100 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${contratoSelecionado.percentual_utilizado >= 90 ? "bg-red-500" : contratoSelecionado.percentual_utilizado >= 70 ? "bg-amber-400" : "bg-blue-500"}`}
+                      style={{ width: `${Math.min(100, contratoSelecionado.percentual_utilizado)}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-blue-600 mt-1">
+                    Saldo disponível: <strong>{contratoSelecionado.saldo_horas}h ({fmt(contratoSelecionado.saldo_financeiro)})</strong>
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── Confirmar / Reverter (admin) + Excel ── */}
+        <div className="card p-6">
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-green-100 rounded-lg">
+                <CheckCircle2 className="h-5 w-5 text-green-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-800">Confirmar Pagamentos</h3>
+                <p className="text-xs text-gray-400">Aulas encaminhadas aguardando confirmação</p>
+              </div>
+            </div>
+            <button
+              onClick={baixarExcelPagamentos}
+              disabled={loadingExcelPag}
+              className="btn-secondary flex items-center gap-2"
+            >
+              <Download className="h-4 w-4" />
+              {loadingExcelPag ? "Exportando..." : "Exportar Excel"}
+            </button>
+          </div>
+
+          {loadingEnc ? (
+            <p className="text-sm text-gray-400 py-2">Carregando...</p>
+          ) : (encaminhados as any[]).length === 0 ? (
+            <div className="flex items-center gap-2 text-gray-400 text-sm py-4">
+              <AlertCircle className="h-4 w-4" />
+              Nenhum pagamento aguardando confirmação.
+            </div>
+          ) : (
+            <>
+              {isAdmin && encaminhadosSel.size > 0 && (
+                <div className="flex items-center gap-3 mb-3 bg-green-50 border border-green-200 rounded-lg p-3">
+                  <span className="text-sm text-green-700 flex-1">
+                    {encaminhadosSel.size} pagamento(s) selecionado(s) — total:{" "}
+                    <strong>{fmt((encaminhados as any[]).filter(e => encaminhadosSel.has(e.id)).reduce((s, e: any) => s + e.valor, 0))}</strong>
+                  </span>
+                  <button
+                    onClick={() => confirmarMutation.mutate([...encaminhadosSel])}
+                    disabled={confirmarMutation.isPending}
+                    className="btn-primary flex items-center gap-1.5 text-sm"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    {confirmarMutation.isPending ? "Confirmando..." : "Confirmar Pagamento"}
+                  </button>
+                </div>
+              )}
+
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50 text-gray-500 uppercase text-[10px]">
+                      {isAdmin && (
+                        <th className="px-3 py-2 border-b w-8">
+                          <input
+                            type="checkbox"
+                            onChange={toggleTodosEncaminhados}
+                            checked={(encaminhados as any[]).length > 0 && (encaminhados as any[]).every((e: any) => encaminhadosSel.has(e.id))}
+                            className="rounded"
+                          />
+                        </th>
+                      )}
+                      <th className="px-3 py-2 border-b text-left">Data Aula</th>
+                      <th className="px-3 py-2 border-b text-left">Professor</th>
+                      <th className="px-3 py-2 border-b text-left">Evento</th>
+                      <th className="px-3 py-2 border-b text-left">Contrato</th>
+                      <th className="px-3 py-2 border-b text-right">Horas</th>
+                      <th className="px-3 py-2 border-b text-right">Valor</th>
+                      <th className="px-3 py-2 border-b text-left">Encaminhado por</th>
+                      {isAdmin && <th className="px-3 py-2 border-b text-center">Ações</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(encaminhados as any[]).map((enc: any, idx: number) => (
+                      <tr key={enc.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                        {isAdmin && (
+                          <td className="px-3 py-2 border-b">
+                            <input
+                              type="checkbox"
+                              checked={encaminhadosSel.has(enc.id)}
+                              onChange={() => toggleEncaminhado(enc.id)}
+                              className="rounded"
+                            />
+                          </td>
+                        )}
+                        <td className="px-3 py-2 border-b font-mono text-gray-600 whitespace-nowrap">
+                          {enc.aula_data?.replace(/(\d{4})-(\d{2})-(\d{2})/, "$3/$2/$1")}
+                        </td>
+                        <td className="px-3 py-2 border-b font-medium text-gray-800 max-w-[120px] truncate">
+                          {enc.professor_nome}
+                        </td>
+                        <td className="px-3 py-2 border-b text-gray-600 max-w-[120px] truncate">
+                          {enc.evento_nome}
+                        </td>
+                        <td className="px-3 py-2 border-b text-gray-500 font-mono">
+                          {enc.contrato_numero || "—"}
+                        </td>
+                        <td className="px-3 py-2 border-b text-right font-semibold tabular-nums">
+                          {enc.horas}h
+                        </td>
+                        <td className="px-3 py-2 border-b text-right font-semibold text-green-700 tabular-nums">
+                          {fmt(enc.valor)}
+                        </td>
+                        <td className="px-3 py-2 border-b text-gray-400">
+                          {enc.encaminhado_por}
+                        </td>
+                        {isAdmin && (
+                          <td className="px-3 py-2 border-b text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                onClick={() => confirmarMutation.mutate([enc.id])}
+                                disabled={confirmarMutation.isPending}
+                                className="p-1 rounded hover:bg-green-100 text-green-600"
+                                title="Confirmar pagamento"
+                              >
+                                <CheckCircle2 className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => setModalReverter({ open: true, pagamentoId: enc.id, obs: "" })}
+                                className="p-1 rounded hover:bg-red-100 text-red-500"
+                                title="Reverter"
+                              >
+                                <RotateCcw className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-gray-100 font-bold">
+                      <td colSpan={isAdmin ? 6 : 5} className="px-3 py-2 border-t text-gray-700">Total</td>
+                      <td className="px-3 py-2 border-t text-right text-green-700 tabular-nums">
+                        {fmt((encaminhados as any[]).reduce((s, e: any) => s + e.valor, 0))}
+                      </td>
+                      <td colSpan={isAdmin ? 2 : 1} />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+      </section>
+
+      {/* Modal reverter */}
+      {modalReverter.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-900">Reverter Pagamento</h3>
+              <button onClick={() => setModalReverter({ open: false, pagamentoId: null, obs: "" })}>
+                <X className="h-5 w-5 text-gray-400" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              Esta ação irá reverter o encaminhamento. O pagamento voltará ao status{" "}
+              <strong>Revertido</strong> e a aula ficará disponível para novo encaminhamento.
+            </p>
+            <textarea
+              className="input w-full resize-none"
+              rows={3}
+              placeholder="Motivo da reversão (opcional)"
+              value={modalReverter.obs}
+              onChange={e => setModalReverter(m => ({ ...m, obs: e.target.value }))}
+            />
+            <div className="flex justify-end gap-3 mt-4">
+              <button
+                onClick={() => setModalReverter({ open: false, pagamentoId: null, obs: "" })}
+                className="btn-secondary"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => reverterMutation.mutate({ id: modalReverter.pagamentoId!, obs: modalReverter.obs })}
+                disabled={reverterMutation.isPending}
+                className="btn-primary !bg-red-600 hover:!bg-red-700"
+              >
+                {reverterMutation.isPending ? "Revertendo..." : "Reverter"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
