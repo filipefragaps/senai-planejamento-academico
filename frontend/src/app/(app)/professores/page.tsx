@@ -311,6 +311,15 @@ export default function ProfessoresPage() {
                   </h3>
                 </div>
                 <div className="flex items-center gap-1 shrink-0 ml-2">
+                  {TIPOS_CONTRATO_PROF.includes(selected.tipo) && (
+                    <button
+                      onClick={abrirNovoContrato}
+                      className="p-1.5 rounded hover:bg-amber-100 text-amber-500 hover:text-amber-700"
+                      title="Adicionar contrato"
+                    >
+                      <Briefcase className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                   <button
                     onClick={() => setDrawer(detalhes || selected)}
                     className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-primary"
