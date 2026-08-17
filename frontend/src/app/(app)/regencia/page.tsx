@@ -507,11 +507,22 @@ export default function RegenciaPage() {
   }, [regencias, filtroQuadro, filtroModalidades]);
 
   const mediaRegencia = useMemo(() => {
-    const incluidos = (regencias as any[]).filter(p => !excluidos.has(p.professor_id));
+    let base = (regencias as any[]).map((p: any) => ({ ...p, status_regencia: p.status ?? p.status_regencia }));
+    if (filtroQuadro === "quadro")      base = base.filter(p => TIPOS_QUADRO.has(p.tipo));
+    if (filtroQuadro === "extraquadro") base = base.filter(p => !TIPOS_QUADRO.has(p.tipo));
+    if (filtroModalidades.length > 0) {
+      base = base.filter(p =>
+        (p.modalidades as string[] ?? []).some((m: string) =>
+          filtroModalidades.some(fm => m.toLowerCase().includes(fm.toLowerCase()))
+        )
+      );
+    }
+    const total = base.length;
+    const incluidos = base.filter(p => !excluidos.has(p.professor_id));
     if (incluidos.length === 0) return null;
     const soma = incluidos.reduce((s: number, p: any) => s + (p.percentual_regencia ?? 0), 0);
-    return { media: soma / incluidos.length, count: incluidos.length, total: regencias.length };
-  }, [regencias, excluidos]);
+    return { media: soma / incluidos.length, count: incluidos.length, total };
+  }, [regencias, excluidos, filtroQuadro, filtroModalidades]);
 
   async function exportarExcel() {
     try {
