@@ -243,7 +243,6 @@ export default function CronogramaPage() {
     });
     const rows = aulasNoDia.map((a: any) => {
       const cor = ucColor(a.unidade_curricular_id, ucColorMap);
-      const dot = STATUS_DOT[a.status] ?? "#9ca3af";
       return `<tr>
         <td style="width:16px;padding:8px 6px 8px 12px">
           <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${cor}"></span>
@@ -251,11 +250,9 @@ export default function CronogramaPage() {
         <td style="font-family:monospace;white-space:nowrap;padding:8px 12px">${(a.horario_inicio ?? "").slice(0, 5)} – ${(a.horario_fim ?? "").slice(0, 5)}</td>
         <td style="padding:8px 12px">${a.nome_evento ?? "—"}</td>
         <td style="padding:8px 12px;font-weight:500">${a.uc_nome ?? "—"}</td>
+        <td style="padding:8px 12px;color:#4338ca;font-size:11px">${a.etapa ?? "—"}</td>
         <td style="padding:8px 12px;color:${a.professor_nome ? "#111827" : "#9ca3af"}">${a.professor_nome ?? "Não definido"}</td>
         <td style="padding:8px 12px;color:#6b7280">${a.ambiente ?? a.sala ?? "—"}</td>
-        <td style="padding:8px 12px">
-          <span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;color:${dot};border:1px solid ${dot}55;background:${dot}18">${a.status}</span>
-        </td>
       </tr>`;
     }).join("");
     const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"/>
@@ -270,7 +267,7 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
 @media print{body{padding:0}}</style></head>
 <body><h1>${dataFormatada}</h1>
 <p class="sub">${aulasNoDia.length} aula(s) agendada(s)</p>
-<table><thead><tr><th></th><th>Horário</th><th>Evento / Turma</th><th>UC / Disciplina</th><th>Professor</th><th>Ambiente</th><th>Status</th></tr></thead>
+<table><thead><tr><th></th><th>Horário</th><th>Evento / Turma</th><th>UC / Disciplina</th><th>Etapa / Período</th><th>Professor</th><th>Ambiente</th></tr></thead>
 <tbody>${rows}</tbody></table></body></html>`;
     const win = window.open("", "_blank", "width=950,height=700");
     if (!win) { window.print(); return; }
