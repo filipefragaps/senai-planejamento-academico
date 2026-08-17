@@ -789,7 +789,7 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
                     <th className="px-4 py-3 text-left font-semibold">Horário</th>
                     <th className="px-4 py-3 text-left font-semibold">Evento / Turma</th>
                     <th className="px-4 py-3 text-left font-semibold">UC / Disciplina</th>
-                    <th className="px-4 py-3 text-left font-semibold">Pasta</th>
+                    <th className="px-4 py-3 text-left font-semibold">Etapa / Período</th>
                     <th className="px-4 py-3 text-left font-semibold">Professor</th>
                     <th className="px-4 py-3 text-left font-semibold">Ambiente</th>
                     <th className="px-4 py-3 text-left font-semibold">Status</th>
@@ -815,20 +815,9 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
                       <td className="px-4 py-3 text-gray-900 font-medium">{a.nome_evento || "—"}</td>
                       <td className="px-4 py-3 text-gray-700">{a.uc_nome || <span className="text-gray-400">—</span>}</td>
                       <td className="px-4 py-3">
-                        {a.pasta ? (
-                          <div>
-                            <span className="inline-block px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-xs font-medium border border-blue-100">
-                              {a.pasta}
-                            </span>
-                            {a.modalidade_oferta && (
-                              <p className="text-[10px] text-gray-400 mt-0.5 max-w-[140px] truncate" title={a.modalidade_oferta}>
-                                {a.modalidade_oferta}
-                              </p>
-                            )}
-                          </div>
-                        ) : a.modalidade_oferta ? (
-                          <span className="text-xs text-gray-500 max-w-[140px] truncate block" title={a.modalidade_oferta}>
-                            {a.modalidade_oferta}
+                        {a.etapa ? (
+                          <span className="inline-block px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 text-xs font-medium border border-indigo-100 whitespace-nowrap">
+                            {a.etapa}
                           </span>
                         ) : (
                           <span className="text-gray-300">—</span>

@@ -501,19 +501,10 @@ async def cronograma_geral(
             res2 = await db.execute(select(Curso).where(Curso.id.in_(curso_ids)))
             cursos = {c.id: c.nome for c in res2.scalars().all()}
 
-    # Carregar ofertas para obter pasta e modalidade
-    oferta_ids = {e.oferta_id for e in eventos.values() if e.oferta_id}
-    ofertas: dict[int, OfertaCurso] = {}
-    if oferta_ids:
-        res = await db.execute(select(OfertaCurso).where(OfertaCurso.id.in_(oferta_ids)))
-        for o in res.scalars().all():
-            ofertas[o.id] = o
-
     rows = []
     for a in aulas:
         ev = eventos.get(a.evento_id)
         nome_curso = cursos.get(ev.curso_id) if ev and ev.curso_id else None
-        oferta = ofertas.get(ev.oferta_id) if ev and ev.oferta_id else None
 
         # Garante que nome_evento sempre exibe: código – nome do curso
         nome_evt = (ev.nome_turma or "") if ev else ""
@@ -523,16 +514,13 @@ async def cronograma_geral(
         else:
             nome_evento = nome_evt or None
 
-        row = _serializar_aula(
+        rows.append(_serializar_aula(
             a,
             nome_prof=profs.get(a.professor_id),
             nome_uc=ucs.get(a.unidade_curricular_id),
             nome_evento=nome_evento,
             nome_curso=nome_curso,
-        )
-        row["pasta"] = oferta.pasta if oferta else None
-        row["modalidade_oferta"] = oferta.modalidade if oferta else (ev.tipo_modalidade if ev else None)
-        rows.append(row)
+        ))
 
     return rows
 
