@@ -8,7 +8,7 @@ import { RegenciaBar } from "@/components/regencia-bar";
 import { StatusBadge } from "@/components/status-badge";
 import { cn } from "@/lib/utils";
 import {
-  Search, X, TrendingUp, CheckCircle, AlertTriangle, Zap, Download, ArrowUpDown, Info, ChevronDown,
+  Search, X, TrendingUp, CheckCircle, AlertTriangle, Zap, Download, ArrowUpDown, Info, ChevronDown, EyeOff, Eye,
 } from "lucide-react";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -435,6 +435,24 @@ export default function RegenciaPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
   const [profSelecionado, setProfSelecionado] = useState<any | null>(null);
+  const [excluidos, setExcluidos] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("regencia-excluidos");
+      if (raw) setExcluidos(new Set(JSON.parse(raw) as number[]));
+    } catch {}
+  }, []);
+
+  function toggleExcluido(id: number) {
+    setExcluidos(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      try { localStorage.setItem("regencia-excluidos", JSON.stringify(Array.from(next))); } catch {}
+      return next;
+    });
+  }
 
   const regDataInicio = `${regInicio}-01`;
   const regDataFim = ultimoDiaMes(regFim);
@@ -488,6 +506,13 @@ export default function RegenciaPage() {
     return c;
   }, [regencias, filtroQuadro, filtroModalidades]);
 
+  const mediaRegencia = useMemo(() => {
+    const incluidos = (regencias as any[]).filter(p => !excluidos.has(p.professor_id));
+    if (incluidos.length === 0) return null;
+    const soma = incluidos.reduce((s: number, p: any) => s + (p.percentual_regencia ?? 0), 0);
+    return { media: soma / incluidos.length, count: incluidos.length, total: regencias.length };
+  }, [regencias, excluidos]);
+
   async function exportarExcel() {
     try {
       const res = await relatoriosApi.regencia();
@@ -516,6 +541,41 @@ export default function RegenciaPage() {
         <input type="month" value={regFim} onChange={e => setRegFim(e.target.value)}
           className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
       </div>
+
+      {/* Card de regência média */}
+      {mediaRegencia && (
+        <div className="card px-5 py-4 flex items-center gap-5">
+          <div className="h-12 w-12 rounded-xl bg-blue-100 flex items-center justify-center shrink-0">
+            <TrendingUp className="h-6 w-6 text-blue-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Regência Média</p>
+            <div className="flex items-baseline gap-3 mt-0.5">
+              <span className={cn(
+                "text-3xl font-bold",
+                mediaRegencia.media >= 70 ? "text-green-700" : mediaRegencia.media >= 50 ? "text-yellow-700" : "text-red-700"
+              )}>
+                {mediaRegencia.media.toFixed(1)}%
+              </span>
+              <span className="text-sm text-gray-400">{mediaRegencia.count} de {mediaRegencia.total} professor(es)</span>
+            </div>
+          </div>
+          <div className="shrink-0 text-right space-y-1">
+            <p className="text-xs text-gray-400">Meta: 70%</p>
+            <span className={cn(
+              "text-xs font-semibold px-2 py-0.5 rounded-full",
+              mediaRegencia.media >= 70 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+            )}>
+              {mediaRegencia.media >= 70 ? "Atingida" : "Abaixo da meta"}
+            </span>
+            {excluidos.size > 0 && (
+              <p className="text-[10px] text-amber-600 flex items-center gap-1 justify-end">
+                <EyeOff className="h-3 w-3" />{excluidos.size} excluído(s)
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Cards de resumo */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -666,11 +726,15 @@ export default function RegenciaPage() {
           {lista.map((p: any) => {
             const statusStyle = STATUS_CARD_STYLE[p.status_regencia] ?? STATUS_CARD_STYLE.Alerta;
             const Icon = statusStyle.icon;
+            const isExcluido = excluidos.has(p.professor_id);
             return (
               <button
                 key={p.professor_id}
                 onClick={() => setProfSelecionado(p)}
-                className="card p-4 text-left hover:shadow-md hover:border-blue-200 transition-all focus:outline-none focus:ring-2 focus:ring-blue-300"
+                className={cn(
+                  "card p-4 text-left hover:shadow-md hover:border-blue-200 transition-all focus:outline-none focus:ring-2 focus:ring-blue-300",
+                  isExcluido && "opacity-60"
+                )}
               >
                 {/* Cabeçalho */}
                 <div className="flex items-start justify-between gap-2 mb-3">
@@ -678,13 +742,27 @@ export default function RegenciaPage() {
                     <p className="font-semibold text-gray-900 text-sm leading-tight truncate">{p.nome}</p>
                     <p className="text-xs text-gray-400 mt-0.5">{p.tipo} · {p.horas_contratadas}h/sem</p>
                   </div>
-                  <span className={cn(
-                    "shrink-0 flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold border",
-                    statusStyle.bg, statusStyle.text, statusStyle.border
-                  )}>
-                    <Icon className="h-3 w-3" />
-                    {p.status_regencia}
-                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      onClick={e => { e.stopPropagation(); toggleExcluido(p.professor_id); }}
+                      title={isExcluido ? "Incluir na regência média" : "Excluir da regência média"}
+                      className={cn(
+                        "p-1 rounded-full transition-colors",
+                        isExcluido
+                          ? "bg-amber-100 text-amber-500 hover:bg-amber-200"
+                          : "text-gray-300 hover:text-amber-400 hover:bg-amber-50"
+                      )}
+                    >
+                      {isExcluido ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    </button>
+                    <span className={cn(
+                      "shrink-0 flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold border",
+                      statusStyle.bg, statusStyle.text, statusStyle.border
+                    )}>
+                      <Icon className="h-3 w-3" />
+                      {p.status_regencia}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Barra de regência com marcador de meta */}
