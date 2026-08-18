@@ -328,27 +328,42 @@ async def _lookup_uc(nome_uc: str, curso_id: int | None, db: AsyncSession) -> in
     if not nome_uc:
         return None
 
-    # Tentativa 1: ilike direto (funciona quando não há divergência de acentos maiúsculo/minúsculo)
-    q = select(UnidadeCurricular).where(
-        UnidadeCurricular.nome.ilike(f"%{nome_uc.strip()}%")
+    # Tentativa 1a: correspondência exata case-insensitive (sem substring)
+    # Evita "METROLOGIA" casar com "METROLOGIA INDUSTRIAL E DESENHO TÉCNICO"
+    q_exato = select(UnidadeCurricular).where(
+        UnidadeCurricular.nome.ilike(nome_uc.strip())
     )
     if curso_id:
-        q = q.where(UnidadeCurricular.curso_id == curso_id)
-    result = await db.execute(q)
+        q_exato = q_exato.where(UnidadeCurricular.curso_id == curso_id)
+    result = await db.execute(q_exato)
     uc = result.scalars().first()
     if uc:
         return uc.id
 
-    # Tentativa 2: comparação normalizada em Python
-    # Resolve acentos maiúsculo/minúsculo (ex: FABRICAÇÃO vs Fabricação)
-    # e variações de singular/plural (ex: REPRESENTAÇÃO vs Representações)
+    # Tentativa 1b: substring — apenas dentro do mesmo curso para evitar contaminação entre cursos
+    if curso_id:
+        q_sub = select(UnidadeCurricular).where(
+            UnidadeCurricular.nome.ilike(f"%{nome_uc.strip()}%"),
+            UnidadeCurricular.curso_id == curso_id,
+        )
+        result = await db.execute(q_sub)
+        uc = result.scalars().first()
+        if uc:
+            return uc.id
+
+    # Tentativa 2: comparação normalizada em Python — somente dentro do curso identificado.
+    # Sem curso_id retorna None para não arriscar vincular UC de outro curso.
+    if not curso_id:
+        return None
+
     busca_norm = _norm_nome(nome_uc)
     palavras = [p for p in busca_norm.split() if len(p) >= 4]
+    if not palavras:
+        return None
 
-    q2 = select(UnidadeCurricular)
-    if curso_id:
-        q2 = q2.where(UnidadeCurricular.curso_id == curso_id)
-    result2 = await db.execute(q2)
+    result2 = await db.execute(
+        select(UnidadeCurricular).where(UnidadeCurricular.curso_id == curso_id)
+    )
     candidatos = result2.scalars().all()
 
     melhor: UnidadeCurricular | None = None
@@ -358,13 +373,20 @@ async def _lookup_uc(nome_uc: str, curso_id: int | None, db: AsyncSession) -> in
         u_norm = _norm_nome(u.nome)
         if u_norm == busca_norm:
             return u.id  # correspondência exata normalizada
-        if palavras:
-            score = sum(1 for p in palavras if p in u_norm) / len(palavras)
-            if score > melhor_score:
-                melhor_score = score
-                melhor = u
 
-    # Aceita se ≥70% das palavras significativas (≥4 letras) coincidem
+        # Score bidirecional: mede quanto da busca está no candidato E quanto do candidato
+        # está na busca — evita "METROLOGIA" (1 palavra) casar com
+        # "METROLOGIA INDUSTRIAL E DESENHO TÉCNICO" (4 palavras) com score 100%.
+        palavras_uc = [p for p in u_norm.split() if len(p) >= 4]
+        if not palavras_uc:
+            continue
+        match_busca = sum(1 for p in palavras if p in u_norm) / len(palavras)
+        match_uc    = sum(1 for p in palavras if p in u_norm) / len(palavras_uc)
+        score = min(match_busca, match_uc)  # ambos os lados precisam ser altos
+        if score > melhor_score:
+            melhor_score = score
+            melhor = u
+
     if melhor and melhor_score >= 0.70:
         return melhor.id
 
