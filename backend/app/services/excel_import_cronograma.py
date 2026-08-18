@@ -316,14 +316,25 @@ async def _lookup_curso(nome_ou_codigo: str, db: AsyncSession) -> int | None:
     if c2:
         return c2.id
 
-    # Planilhas frequentemente têm "NOME DO CURSO - CODIGO_EVENTO" (ex: "ENGENHARIA MECÂNICA - 17355").
-    # Tenta apenas a parte antes do " - " para casar com o nome cadastrado no banco.
+    # Planilhas têm padrão "NOME DO CURSO - PASTA" (ex: "ENGENHARIA MECÂNICA - 17355")
+    # onde o número após " - " é o código/pasta do curso cadastrado no banco.
     if " - " in nome:
-        nome_base = nome.split(" - ")[0].strip()
-        r3 = await db.execute(select(Curso).where(Curso.nome.ilike(f"%{nome_base}%")))
-        c3 = r3.scalars().first()
-        if c3:
-            return c3.id
+        partes = nome.split(" - ", 1)
+        nome_base = partes[0].strip()
+        codigo_pasta = partes[1].strip()
+
+        # Tenta o código/pasta diretamente (identificador mais confiável)
+        if codigo_pasta:
+            r3 = await db.execute(select(Curso).where(Curso.codigo.ilike(codigo_pasta)))
+            c3 = r3.scalars().first()
+            if c3:
+                return c3.id
+
+        # Fallback: busca pelo nome sem o sufixo
+        r4 = await db.execute(select(Curso).where(Curso.nome.ilike(f"%{nome_base}%")))
+        c4 = r4.scalars().first()
+        if c4:
+            return c4.id
 
     return None
 
