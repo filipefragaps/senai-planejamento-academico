@@ -128,7 +128,8 @@ async def importar_cronograma_seduc(
 
             if existente:
                 existente.professor_id = professor_id
-                existente.unidade_curricular_id = uc_id
+                # Preserva vínculo existente se o novo lookup falhou
+                existente.unidade_curricular_id = uc_id or existente.unidade_curricular_id
                 existente.uc_nome_original = uc_nome or existente.uc_nome_original
                 existente.horario_fim = h_fim
                 existente.etapa = etapa or existente.etapa

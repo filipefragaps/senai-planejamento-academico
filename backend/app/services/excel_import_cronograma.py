@@ -302,19 +302,30 @@ async def _lookup_ou_criar_evento(
 async def _lookup_curso(nome_ou_codigo: str, db: AsyncSession) -> int | None:
     if not nome_ou_codigo:
         return None
-    result = await db.execute(
-        select(Curso).where(
-            Curso.codigo.ilike(f"%{nome_ou_codigo.strip()}%")
-        )
-    )
-    c = result.scalars().first()
+    nome = nome_ou_codigo.strip()
+
+    # Tentativa por código
+    r = await db.execute(select(Curso).where(Curso.codigo.ilike(f"%{nome}%")))
+    c = r.scalars().first()
     if c:
         return c.id
-    result2 = await db.execute(
-        select(Curso).where(Curso.nome.ilike(f"%{nome_ou_codigo.strip()}%"))
-    )
-    c2 = result2.scalars().first()
-    return c2.id if c2 else None
+
+    # Tentativa por nome completo
+    r2 = await db.execute(select(Curso).where(Curso.nome.ilike(f"%{nome}%")))
+    c2 = r2.scalars().first()
+    if c2:
+        return c2.id
+
+    # Planilhas frequentemente têm "NOME DO CURSO - CODIGO_EVENTO" (ex: "ENGENHARIA MECÂNICA - 17355").
+    # Tenta apenas a parte antes do " - " para casar com o nome cadastrado no banco.
+    if " - " in nome:
+        nome_base = nome.split(" - ")[0].strip()
+        r3 = await db.execute(select(Curso).where(Curso.nome.ilike(f"%{nome_base}%")))
+        c3 = r3.scalars().first()
+        if c3:
+            return c3.id
+
+    return None
 
 
 def _norm_nome(s: str) -> str:
@@ -532,7 +543,8 @@ async def importar_historico(conteudo: bytes, db: AsyncSession) -> dict:
 
             if existente:
                 existente.professor_id = professor_id
-                existente.unidade_curricular_id = uc_id
+                # Preserva vínculo existente se o novo lookup falhou
+                existente.unidade_curricular_id = uc_id or existente.unidade_curricular_id
                 existente.uc_nome_original = uc_nome or existente.uc_nome_original
                 existente.horario_fim = h_fim or existente.horario_fim
                 existente.etapa = etapa or existente.etapa
