@@ -316,12 +316,12 @@ async def _lookup_curso(nome_ou_codigo: str, db: AsyncSession) -> int | None:
     if c2:
         return c2.id
 
-    # Planilhas têm padrão "NOME DO CURSO - PASTA" (ex: "ENGENHARIA MECÂNICA - 17355")
-    # onde o número após " - " é o código/pasta do curso cadastrado no banco.
+    # Planilhas têm padrões como "NOME - PASTA" ou "NOME - SEDUC - PASTA".
+    # O código/pasta é sempre o último segmento; o nome é o primeiro.
     if " - " in nome:
-        partes = nome.split(" - ", 1)
-        nome_base = partes[0].strip()
-        codigo_pasta = partes[1].strip()
+        segmentos = [s.strip() for s in nome.split(" - ")]
+        codigo_pasta = segmentos[-1]   # último segmento: "21539" ou "17355"
+        nome_base    = segmentos[0]    # primeiro segmento: nome do curso
 
         # Tenta o código/pasta diretamente (identificador mais confiável)
         if codigo_pasta:
@@ -330,7 +330,7 @@ async def _lookup_curso(nome_ou_codigo: str, db: AsyncSession) -> int | None:
             if c3:
                 return c3.id
 
-        # Fallback: busca pelo nome sem o sufixo
+        # Fallback: busca pelo nome sem os sufixos
         r4 = await db.execute(select(Curso).where(Curso.nome.ilike(f"%{nome_base}%")))
         c4 = r4.scalars().first()
         if c4:
