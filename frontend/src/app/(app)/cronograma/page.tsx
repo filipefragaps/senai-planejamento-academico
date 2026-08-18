@@ -241,7 +241,8 @@ export default function CronogramaPage() {
     const dataFormatada = new Date(diaSelecionado + "T12:00:00").toLocaleDateString("pt-BR", {
       weekday: "long", day: "numeric", month: "long", year: "numeric",
     });
-    const rows = aulasNoDia.map((a: any) => {
+    const aulasPrint = aulasNoDia.filter((a: any) => a.status !== "Remarcada");
+    const rows = aulasPrint.map((a: any) => {
       const cor = ucColor(a.unidade_curricular_id, ucColorMap);
       return `<tr>
         <td style="width:16px;padding:8px 6px 8px 12px">
@@ -266,7 +267,7 @@ tbody tr:nth-child(even) td{background:#f9fafb}
 td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
 @media print{body{padding:0}}</style></head>
 <body><h1>${dataFormatada}</h1>
-<p class="sub">${aulasNoDia.length} aula(s) agendada(s)</p>
+<p class="sub">${aulasPrint.length} aula(s) agendada(s)</p>
 <table><thead><tr><th></th><th>Horário</th><th>Evento / Turma</th><th>UC / Disciplina</th><th>Etapa / Período</th><th>Professor</th><th>Ambiente</th></tr></thead>
 <tbody>${rows}</tbody></table></body></html>`;
     const win = window.open("", "_blank", "width=950,height=700");
