@@ -211,7 +211,8 @@ async def adicionar_atuacao(
 async def atualizar_atuacao(
     professor_id: int,
     atuacao_id: int,
-    modalidade: str,
+    modalidade: str | None = None,
+    curso_id: int | None = None,
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
@@ -224,9 +225,31 @@ async def atualizar_atuacao(
     a = result.scalar_one_or_none()
     if not a:
         raise HTTPException(status_code=404, detail="Atuação não encontrada")
-    a.modalidade = modalidade
+
+    if modalidade is not None:
+        a.modalidade = modalidade
+
+    if curso_id is not None:
+        # Verifica se já existe uma atuação com o mesmo curso para a mesma disciplina
+        result2 = await db.execute(
+            select(Atuacao).where(
+                Atuacao.professor_id == professor_id,
+                Atuacao.disciplina == a.disciplina,
+                Atuacao.curso_id == curso_id,
+                Atuacao.id != a.id,
+            )
+        )
+        existente = result2.scalar_one_or_none()
+        if existente:
+            # Já existe com o curso destino — remove o registro sem curso
+            await db.delete(a)
+            await db.commit()
+            return {"id": existente.id, "modalidade": existente.modalidade, "curso_id": existente.curso_id}
+        else:
+            a.curso_id = curso_id
+
     await db.commit()
-    return {"id": a.id, "modalidade": a.modalidade}
+    return {"id": a.id, "modalidade": a.modalidade, "curso_id": a.curso_id}
 
 
 @router.post("/{professor_id}/disponibilidades", status_code=201)

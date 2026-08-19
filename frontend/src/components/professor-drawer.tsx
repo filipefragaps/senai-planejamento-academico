@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { professoresApi, cursosApi } from "@/lib/api";
 import { toast } from "sonner";
 import {
-  X, Plus, Trash2, Save, BookOpen, Clock, User, Loader2, Check, Grid3X3,
+  X, Plus, Trash2, Save, BookOpen, Clock, User, Loader2, Check, Grid3X3, Link,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -91,6 +91,8 @@ export function ProfessorDrawer({ professor, onClose, onSaved, onDeleted }: Prop
   const [novaModalidade, setNovaModalidade] = useState("31 - HABILITAÇÃO TÉCNICA - EDUC. PROF. TÉCNICA");
   const [pendingUCs, setPendingUCs] = useState<any[]>([]); // create mode: {disciplina, curso_id, curso_nome, modalidade}
   const [editandoModalidade, setEditandoModalidade] = useState<number | null>(null); // atuacao id sendo editado
+  const [vinculandoCurso, setVinculandoCurso] = useState(false); // form de vínculo de curso aberto
+  const [vinculandoCursoId, setVinculandoCursoId] = useState<number | "">("");
 
   // ── queries ──────────────────────────────────────────────────────
   const { data: detalhes, isLoading: loadingDetalhes } = useQuery({
@@ -203,6 +205,18 @@ export function ProfessorDrawer({ professor, onClose, onSaved, onDeleted }: Prop
       toast.success("Modalidade atualizada!");
     },
     onError: () => toast.error("Erro ao atualizar modalidade"),
+  });
+
+  const vincCurso = useMutation({
+    mutationFn: ({ atIds, cursoId }: { atIds: number[]; cursoId: number }) =>
+      Promise.all(atIds.map((id) => professoresApi.vincularCurso(professor!.id, id, cursoId))),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["professor-detalhes", professor?.id] });
+      setVinculandoCurso(false);
+      setVinculandoCursoId("");
+      toast.success("Curso vinculado com sucesso!");
+    },
+    onError: () => toast.error("Erro ao vincular curso"),
   });
 
   // ── helpers ───────────────────────────────────────────────────────
@@ -906,10 +920,58 @@ export function ProfessorDrawer({ professor, onClose, onSaved, onDeleted }: Prop
                   <div className="space-y-4">
                     {atuacoesPorCurso.map((grupo: any) => (
                       <div key={grupo.curso_id ?? "sem-curso"}>
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-xs font-bold text-primary leading-tight">{grupo.curso_nome}</span>
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                          <span className={`text-xs font-bold leading-tight ${grupo.curso_id === null ? "text-orange-500" : "text-primary"}`}>
+                            {grupo.curso_nome}
+                          </span>
                           {grupo.curso_codigo && (
                             <span className="text-xs font-mono text-gray-400">({grupo.curso_codigo})</span>
+                          )}
+                          {/* Botão vincular curso — só aparece para o grupo sem curso */}
+                          {grupo.curso_id === null && !vinculandoCurso && (
+                            <button
+                              type="button"
+                              onClick={() => setVinculandoCurso(true)}
+                              className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-orange-50 border border-orange-200 text-orange-600 hover:bg-orange-100 transition-colors"
+                            >
+                              <Link className="h-3 w-3" /> Vincular curso
+                            </button>
+                          )}
+                          {/* Form inline de vínculo */}
+                          {grupo.curso_id === null && vinculandoCurso && (
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <select
+                                className="text-xs border rounded px-1.5 py-0.5 bg-white focus:outline-none focus:ring-1 focus:ring-primary"
+                                value={vinculandoCursoId}
+                                onChange={(e) => setVinculandoCursoId(e.target.value ? +e.target.value : "")}
+                                autoFocus
+                              >
+                                <option value="">— Selecione o curso —</option>
+                                {(cursos as any[]).map((c: any) => (
+                                  <option key={c.id} value={c.id}>{c.nome} {c.codigo ? `(${c.codigo})` : ""}</option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                disabled={!vinculandoCursoId || vincCurso.isPending}
+                                onClick={() =>
+                                  vincCurso.mutate({
+                                    atIds: grupo.atuacoes.map((a: any) => a.id),
+                                    cursoId: +vinculandoCursoId,
+                                  })
+                                }
+                                className="text-xs px-2 py-0.5 rounded bg-primary text-white disabled:opacity-50 hover:bg-primary/90 transition-colors"
+                              >
+                                {vincCurso.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Confirmar"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => { setVinculandoCurso(false); setVinculandoCursoId(""); }}
+                                className="text-xs px-2 py-0.5 rounded border text-gray-500 hover:bg-gray-50 transition-colors"
+                              >
+                                Cancelar
+                              </button>
+                            </div>
                           )}
                         </div>
                         <div className="space-y-1.5 pl-3 border-l-2 border-blue-100">
