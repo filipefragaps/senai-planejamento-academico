@@ -13,6 +13,7 @@ class ProfessorBase(BaseModel):
     especialidades: str | None = None
     titulacao: str | None = None
     ativo: bool = True
+    foto: str | None = None
 
 
 class ProfessorCreate(ProfessorBase):
@@ -29,6 +30,7 @@ class ProfessorUpdate(BaseModel):
     especialidades: str | None = None
     titulacao: str | None = None
     ativo: bool | None = None
+    foto: str | None = None
 
 
 class AtuacaoOut(BaseModel):

@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { professoresApi, cursosApi } from "@/lib/api";
 import { toast } from "sonner";
 import {
-  X, Plus, Trash2, Save, BookOpen, Clock, User, Loader2, Check, Grid3X3, Link,
+  X, Plus, Trash2, Save, BookOpen, Clock, User, Loader2, Check, Grid3X3, Link, Camera,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -52,6 +52,30 @@ const BLANK_BASIC = {
 
 const BLANK_DISP = { dia_semana: 0, horario_inicio: "18:30", horario_fim: "22:00", tipo: "Disponível" };
 
+function getInitials(nome: string) {
+  return nome.trim().split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+}
+
+async function comprimirImagem(file: File): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 240;
+        const ratio = Math.min(MAX / img.width, MAX / img.height, 1);
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.82));
+      };
+      img.src = e.target!.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export function ProfessorDrawer({ professor, onClose, onSaved, onDeleted }: Props) {
   const isEdit = !!professor;
   const qc = useQueryClient();
@@ -93,6 +117,7 @@ export function ProfessorDrawer({ professor, onClose, onSaved, onDeleted }: Prop
   const [editandoModalidade, setEditandoModalidade] = useState<number | null>(null); // atuacao id sendo editado
   const [vinculandoCurso, setVinculandoCurso] = useState(false); // form de vínculo de curso aberto
   const [vinculandoCursoId, setVinculandoCursoId] = useState<number | "">("");
+  const [fotoLocal, setFotoLocal] = useState<string | null>(isEdit ? (professor.foto || null) : null);
 
   // ── queries ──────────────────────────────────────────────────────
   const { data: detalhes, isLoading: loadingDetalhes } = useQuery({
@@ -219,6 +244,24 @@ export function ProfessorDrawer({ professor, onClose, onSaved, onDeleted }: Prop
     onError: () => toast.error("Erro ao vincular curso"),
   });
 
+  const updFoto = useMutation({
+    mutationFn: (foto: string | null) => professoresApi.atualizarFoto(professor!.id, foto),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["professores"] });
+      toast.success("Foto atualizada!");
+    },
+    onError: () => toast.error("Erro ao salvar foto"),
+  });
+
+  async function handleFotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const compressed = await comprimirImagem(file);
+    setFotoLocal(compressed);
+    if (isEdit) updFoto.mutate(compressed);
+    e.target.value = "";
+  }
+
   // ── helpers ───────────────────────────────────────────────────────
   function toggleUC(nome: string) {
     setCheckedUCs((prev) =>
@@ -264,6 +307,7 @@ export function ProfessorDrawer({ professor, onClose, onSaved, onDeleted }: Prop
         ...basic,
         // valor_hora vazio ("") deve virar null — Pydantic rejeita string vazia para float
         valor_hora: basic.valor_hora !== "" ? Number(basic.valor_hora) : null,
+        foto: fotoLocal,
       };
       const prof = await criarProf.mutateAsync(payload);
       // adiciona grade semanal (gradeAtiva)
@@ -368,9 +412,44 @@ export function ProfessorDrawer({ professor, onClose, onSaved, onDeleted }: Prop
         {/* ── Header ── */}
         <div className="flex items-center justify-between px-6 py-4 border-b bg-white">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <User className="h-5 w-5 text-primary" />
-            </div>
+            {/* Avatar clicável */}
+            <label
+              htmlFor="foto-upload-input"
+              className="relative group cursor-pointer shrink-0"
+              title="Clique para alterar a foto"
+            >
+              {fotoLocal ? (
+                <img
+                  src={fotoLocal}
+                  alt="Foto do professor"
+                  className="w-12 h-12 rounded-full object-cover border-2 border-primary/20"
+                />
+              ) : (
+                <div className="w-12 h-12 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center">
+                  {basic.nome ? (
+                    <span className="text-sm font-bold text-primary select-none">{getInitials(basic.nome)}</span>
+                  ) : (
+                    <User className="h-5 w-5 text-primary" />
+                  )}
+                </div>
+              )}
+              {/* Overlay câmera no hover */}
+              <div className="absolute inset-0 rounded-full bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                <Camera className="h-4 w-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+              {updFoto.isPending && (
+                <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center">
+                  <Loader2 className="h-4 w-4 text-white animate-spin" />
+                </div>
+              )}
+            </label>
+            <input
+              id="foto-upload-input"
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleFotoChange}
+            />
             <div>
               <h2 className="font-semibold text-gray-900">
                 {isEdit ? "Editar Professor" : "Novo Professor"}

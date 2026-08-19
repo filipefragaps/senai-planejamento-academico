@@ -12,6 +12,10 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+function getInitials(nome: string) {
+  return nome.trim().split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+}
+
 const TIPOS_CONTRATO_PROF = ["PJ", "RPA", "Inclusão em Folha"];
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -205,37 +209,48 @@ export default function ProfessoresPage() {
                     isSelected ? "border-primary border-l-4 bg-blue-50/50" : "hover:shadow-sm"
                   )}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-gray-900 text-sm">{p.nome}</span>
-                        <span className={cn(
-                          "badge text-xs",
-                          p.tipo === "Mensalista" ? "bg-blue-100 text-blue-700" :
-                          p.tipo === "Horista"    ? "bg-purple-100 text-purple-700" :
-                          "bg-amber-100 text-amber-700"
-                        )}>
-                          {p.tipo}
-                          {["PJ","RPA"].includes(p.tipo) && (
-                            <span className="ml-1 text-[9px] font-normal opacity-70">extraquadro</span>
+                  <div className="flex items-center gap-3">
+                    {/* Avatar */}
+                    {p.foto ? (
+                      <img src={p.foto} alt={p.nome} className="w-9 h-9 rounded-full object-cover shrink-0 border border-gray-200" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0 border border-primary/10">
+                        <span className="text-xs font-bold text-primary select-none">{getInitials(p.nome)}</span>
+                      </div>
+                    )}
+                    {/* Info + ações */}
+                    <div className="flex items-center justify-between flex-1 min-w-0">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-gray-900 text-sm">{p.nome}</span>
+                          <span className={cn(
+                            "badge text-xs",
+                            p.tipo === "Mensalista" ? "bg-blue-100 text-blue-700" :
+                            p.tipo === "Horista"    ? "bg-purple-100 text-purple-700" :
+                            "bg-amber-100 text-amber-700"
+                          )}>
+                            {p.tipo}
+                            {["PJ","RPA"].includes(p.tipo) && (
+                              <span className="ml-1 text-[9px] font-normal opacity-70">extraquadro</span>
+                            )}
+                          </span>
+                          {p.especialidades && (
+                            <span className="text-xs text-gray-400 truncate">{p.especialidades}</span>
                           )}
-                        </span>
-                        {p.especialidades && (
-                          <span className="text-xs text-gray-400 truncate">{p.especialidades}</span>
+                        </div>
+                        {reg && (
+                          <div className="mt-2 max-w-xs">
+                            <RegenciaBar percentual={reg.percentual_regencia} meta={reg.meta_regencia} />
+                          </div>
                         )}
                       </div>
-                      {reg && (
-                        <div className="mt-2 max-w-xs">
-                          <RegenciaBar percentual={reg.percentual_regencia} meta={reg.meta_regencia} />
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3 shrink-0 ml-3">
-                      <span className="text-xs text-gray-400">{p.horas_contratadas}h/sem</span>
-                      <ChevronRight className={cn(
-                        "h-4 w-4 text-gray-300 transition-transform",
-                        isSelected && "rotate-90 text-primary"
-                      )} />
+                      <div className="flex items-center gap-3 shrink-0 ml-3">
+                        <span className="text-xs text-gray-400">{p.horas_contratadas}h/sem</span>
+                        <ChevronRight className={cn(
+                          "h-4 w-4 text-gray-300 transition-transform",
+                          isSelected && "rotate-90 text-primary"
+                        )} />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -304,8 +319,15 @@ export default function ProfessoresPage() {
             {/* Cabeçalho */}
             <div className="p-5 border-b">
               <div className="flex items-start justify-between mb-1">
-                <div className="flex items-center gap-2 min-w-0">
-                  <User className="h-4 w-4 text-primary shrink-0" />
+                <div className="flex items-center gap-3 min-w-0">
+                  {/* Avatar no painel de detalhe */}
+                  {selected.foto ? (
+                    <img src={selected.foto} alt={selected.nome} className="w-10 h-10 rounded-full object-cover shrink-0 border border-gray-200" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 border border-primary/10">
+                      <span className="text-sm font-bold text-primary select-none">{getInitials(selected.nome)}</span>
+                    </div>
+                  )}
                   <h3 className="font-semibold text-gray-900 text-sm leading-tight truncate">
                     {selected.nome}
                   </h3>

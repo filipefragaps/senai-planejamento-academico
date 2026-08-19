@@ -1,4 +1,5 @@
 from datetime import date
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete as sa_delete
@@ -163,6 +164,25 @@ async def atualizar_professor(
     await db.commit()
     await db.refresh(professor)
     return professor
+
+
+class FotoBody(BaseModel):
+    foto: str | None  # data URI base64 ou null para remover
+
+@router.patch("/{professor_id}/foto")
+async def atualizar_foto(
+    professor_id: int,
+    body: FotoBody,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    result = await db.execute(select(Professor).where(Professor.id == professor_id))
+    professor = result.scalar_one_or_none()
+    if not professor:
+        raise HTTPException(status_code=404, detail="Professor não encontrado")
+    professor.foto = body.foto
+    await db.commit()
+    return {"id": professor_id, "foto": professor.foto}
 
 
 @router.get("/{professor_id}/regencia")

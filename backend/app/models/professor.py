@@ -18,6 +18,7 @@ class Professor(Base):
     especialidades: Mapped[str | None] = mapped_column(Text)  # JSON list or comma-separated
     titulacao: Mapped[str | None] = mapped_column(String(100))
     ativo: Mapped[bool] = mapped_column(Boolean, default=True)
+    foto: Mapped[str | None] = mapped_column(Text)
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     atualizado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

@@ -97,6 +97,8 @@ export const professoresApi = {
     api
       .patch(`/professores/${id}/atuacoes/${atuacaoId}`, null, { params: { curso_id: cursoId } })
       .then((r) => r.data),
+  atualizarFoto: (id: number, foto: string | null) =>
+    api.patch(`/professores/${id}/foto`, { foto }).then((r) => r.data),
   deletar: (id: number) => api.delete(`/professores/${id}`),
 };
 
