@@ -119,6 +119,7 @@ async def calcular_regencia_professor(
     return {
         "professor_id": professor.id,
         "nome": professor.nome,
+        "foto": professor.foto,
         "tipo": professor.tipo,
         "quadro": professor.tipo in _TIPOS_QUADRO,
         "modalidades": modalidades,

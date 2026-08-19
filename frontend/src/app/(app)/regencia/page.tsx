@@ -13,6 +13,10 @@ import {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
+function getInitials(nome: string) {
+  return nome.trim().split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+}
+
 function yyyyMM(ano: number, mes: number) {
   return `${ano}-${String(mes).padStart(2, "0")}`;
 }
@@ -749,9 +753,18 @@ export default function RegenciaPage() {
               >
                 {/* Cabeçalho */}
                 <div className="flex items-start justify-between gap-2 mb-3">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-gray-900 text-sm leading-tight truncate">{p.nome}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{p.tipo} · {p.horas_contratadas}h/sem</p>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    {p.foto ? (
+                      <img src={p.foto} alt={p.nome} className="w-9 h-9 rounded-full object-cover shrink-0 border border-gray-200" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0 border border-primary/10">
+                        <span className="text-xs font-bold text-primary select-none">{getInitials(p.nome)}</span>
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="font-semibold text-gray-900 text-sm leading-tight truncate">{p.nome}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{p.tipo} · {p.horas_contratadas}h/sem</p>
+                    </div>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
