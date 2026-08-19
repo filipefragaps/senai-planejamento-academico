@@ -113,3 +113,33 @@ export function downloadModeloHistorico() {
 
   download(wb, "modelo_historico_aulas.xlsx");
 }
+
+export function downloadModeloBancoDados() {
+  const wb = XLSX.utils.book_new();
+
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.aoa_to_sheet([
+      [
+        "Data", "Evento", "Turno", "HORA_INICIO", "HORA_TERMINO",
+        "Curso", "Unidade Curricular", "Aula", "Subturma", "Professor",
+        "Ambiente", "Carga Horária", "Etapa", "Modalidade", "Área", "Status",
+      ],
+      [
+        "15/03/2025", "926342", "Noite", "19:00", "22:00",
+        "TÉCNICO EM ELETROTÉCNICA - SEDUC - 21539", "Instalação de Sistemas Elétricos Industriais",
+        1, "", "ALAN JOHNES FELIX DE SOUSA",
+        "Lab Elétrica 1", 3, "BÁSICO", "35 TÉCNICO DE NÍVEL MÉDIO - SEDUC", "Elétrica", "Agendada",
+      ],
+      [
+        "17/03/2025", "952235", "Manhã", "07:30", "12:00",
+        "ENGENHARIA MECÂNICA - 17355", "Elementos de Máquinas I",
+        2, "", "PROFESSOR EXEMPLO",
+        "Sala 201", 4.5, "2° PERÍODO", "41 - GRADUAÇÃO TECNOLÓGICA", "Mecânica", "Realizada",
+      ],
+    ]),
+    "Cronograma"
+  );
+
+  download(wb, "modelo_banco_de_dados.xlsx");
+}

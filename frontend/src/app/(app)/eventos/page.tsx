@@ -16,7 +16,7 @@ import {
   ChevronLeft, ChevronRight, Trash2, BarChart3,
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
-import { downloadModeloHistorico } from "@/lib/templates";
+import { downloadModeloBancoDados } from "@/lib/templates";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -975,7 +975,6 @@ function UCRowWithCandidatos({
 
 export default function EventosPage() {
   const qc = useQueryClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const seducInputRef = useRef<HTMLInputElement>(null);
   const [seducRollbackConfirm, setSeducRollbackConfirm] = useState(false);
 
@@ -1116,54 +1115,24 @@ export default function EventosPage() {
     onError: (err: any) => toast.error(err?.response?.data?.detail || "Erro ao criar UC"),
   });
 
-  const importarHistorico = useMutation({
-    mutationFn: (file: File) => planejamentoApi.importarHistorico(file),
-    onSuccess: (res: any) => {
-      const total = (res.inseridas ?? 0) + (res.atualizadas ?? 0);
-      if (total > 0) {
-        toast.success(
-          `Importação concluída: ${res.inseridas} novas + ${res.atualizadas} atualizadas` +
-          (res.ignoradas > 0 ? ` (${res.ignoradas} ignoradas)` : "")
-        );
-      } else {
-        const semData = res.ignoradas_sem_data > 0 ? `${res.ignoradas_sem_data} sem data` : "";
-        const semHora = res.ignoradas_sem_horario > 0 ? `${res.ignoradas_sem_horario} sem horário` : "";
-        const motivos = [semData, semHora].filter(Boolean).join(", ");
-        toast.warning(
-          `Nenhuma aula importada. ${res.ignoradas} linha(s) ignoradas${motivos ? `: ${motivos}` : ""}.`,
-          { duration: 10000 }
-        );
-        if (res.colunas_encontradas?.length) {
-          toast.info(`Colunas detectadas: ${res.colunas_encontradas.slice(0, 8).join(", ")}`, { duration: 12000 });
-        }
-      }
-      if (res.erros?.length) {
-        res.erros.slice(0, 3).forEach((e: string) => toast.error(e, { duration: 10000 }));
-      }
-      qc.invalidateQueries({ queryKey: ["cronograma"] });
-      qc.invalidateQueries({ queryKey: ["cronograma-global"] });
-    },
-    onError: (err: any) => toast.error(err?.response?.data?.detail || "Erro ao importar"),
-  });
-
   const importarSeduc = useMutation({
     mutationFn: (file: File) => importacaoApi.importarSeduc(file),
     onSuccess: (res: any) => {
-      toast.success(res.mensagem || `SEDUC: ${res.criadas} criadas, ${res.atualizadas} atualizadas.`);
+      toast.success(res.mensagem || `Banco de Dados: ${res.criadas} criadas, ${res.atualizadas} atualizadas.`);
       if (res.erros?.length) {
         res.erros.slice(0, 3).forEach((e: string) => toast.error(e, { duration: 8000 }));
       }
       qc.invalidateQueries({ queryKey: ["cronograma"] });
       qc.invalidateQueries({ queryKey: ["cronograma-global"] });
     },
-    onError: (err: any) => toast.error(err?.response?.data?.detail || "Erro ao importar planilha SEDUC"),
+    onError: (err: any) => toast.error(err?.response?.data?.detail || "Erro ao importar Banco de Dados"),
   });
 
   const reverterSeduc = useMutation({
     mutationFn: () => importacaoApi.reverterSeduc(),
     onSuccess: (res: any) => {
       setSeducRollbackConfirm(false);
-      toast.success(res.mensagem || `${res.deletadas} aulas SEDUC removidas.`);
+      toast.success(res.mensagem || `${res.deletadas} aulas do Banco de Dados removidas.`);
       qc.invalidateQueries({ queryKey: ["cronograma"] });
       qc.invalidateQueries({ queryKey: ["cronograma-global"] });
     },
@@ -1226,12 +1195,6 @@ export default function EventosPage() {
   });
 
   // ── Handlers ───────────────────────────────────────────────────────────────
-
-  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) importarHistorico.mutate(file);
-    e.target.value = "";
-  }
 
   function handleSeducUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -1353,36 +1316,27 @@ export default function EventosPage() {
               }}
             />
             <button
-              onClick={downloadModeloHistorico}
+              onClick={downloadModeloBancoDados}
               className="btn-secondary flex items-center gap-1.5 text-sm"
+              title="Baixar modelo de planilha para importação"
             >
               <Download className="h-4 w-4" />
-              Baixar Modelo
-            </button>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={importarHistorico.isPending}
-              className="btn-secondary flex items-center gap-1.5 text-sm"
-            >
-              {importarHistorico.isPending
-                ? <Loader2 className="h-4 w-4 animate-spin" />
-                : <Upload className="h-4 w-4" />}
-              Importar Histórico
+              Baixar Modelo BD
             </button>
             <button
               onClick={() => seducInputRef.current?.click()}
               disabled={importarSeduc.isPending}
-              className="btn-secondary flex items-center gap-1.5 text-sm border-orange-200 text-orange-700 hover:bg-orange-50"
-              title="Importar planilha SEDUC (cursos integrados com Ensino Médio)"
+              className="btn-secondary flex items-center gap-1.5 text-sm"
+              title="Importar planilha Banco de Dados"
             >
               {importarSeduc.isPending
                 ? <Loader2 className="h-4 w-4 animate-spin" />
                 : <Upload className="h-4 w-4" />}
-              Importar SEDUC
+              Importar Banco de Dados
             </button>
             {seducRollbackConfirm ? (
               <div className="flex items-center gap-1">
-                <span className="text-xs text-red-600 font-medium">Confirmar rollback SEDUC?</span>
+                <span className="text-xs text-red-600 font-medium">Confirmar rollback BD?</span>
                 <button
                   onClick={handleRollbackSeduc}
                   disabled={reverterSeduc.isPending}
@@ -1400,10 +1354,10 @@ export default function EventosPage() {
                 onClick={handleRollbackSeduc}
                 disabled={reverterSeduc.isPending}
                 className="btn-secondary flex items-center gap-1.5 text-sm border-red-200 text-red-600 hover:bg-red-50"
-                title="Remove todas as aulas importadas via planilha SEDUC"
+                title="Remove todas as aulas importadas via Banco de Dados"
               >
                 <Trash2 className="h-4 w-4" />
-                Desfazer SEDUC
+                Desfazer BD
               </button>
             )}
             <button
@@ -1421,7 +1375,6 @@ export default function EventosPage() {
           </div>
         </PageHeader>
 
-        <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleFileUpload} className="hidden" />
         <input ref={seducInputRef} type="file" accept=".xlsx,.xls" onChange={handleSeducUpload} className="hidden" />
 
         <div className="flex flex-1 min-h-0 gap-4 mt-4">
