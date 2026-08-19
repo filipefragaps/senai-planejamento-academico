@@ -69,13 +69,6 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
     }
   }, [aula?.id]);
 
-  // Datas disponíveis para remarcação
-  const { data: datasDisponiveis } = useQuery({
-    queryKey: ["datas-disponiveis", aula?.id],
-    queryFn: () => planejamentoApi.datasDisponiveis(aula!.id),
-    enabled: !!aula && secaoRemanejo && tipoRemanejo === "remarcacao",
-  });
-
   const remanejo = useMutation({
     mutationFn: () => {
       if (!aula) throw new Error("Sem aula");
@@ -477,29 +470,12 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
                 {tipoRemanejo === "remarcacao" && (
                   <div>
                     <p className="text-[10px] text-gray-400 mb-1 uppercase tracking-wide font-semibold">Nova data</p>
-                    {datasDisponiveis?.datas?.length > 0 ? (
-                      <select
-                        className="input w-full text-sm"
-                        value={novaData}
-                        onChange={(e) => setNovaData(e.target.value)}
-                      >
-                        <option value="">— Selecione uma data —</option>
-                        {(datasDisponiveis.datas as any[]).map((d: any) => (
-                          <option key={d.data} value={d.data} disabled={d.conflito}>
-                            {d.data.split("-").reverse().join("/")}
-                            {d.conflito ? " (conflito)" : ""}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        type="date"
-                        className="input w-full text-sm"
-                        value={novaData}
-                        onChange={(e) => setNovaData(e.target.value)}
-                        min={aula.data ?? undefined}
-                      />
-                    )}
+                    <input
+                      type="date"
+                      className="input w-full text-sm"
+                      value={novaData}
+                      onChange={(e) => setNovaData(e.target.value)}
+                    />
                     <p className="text-[10px] text-gray-400 mt-1">
                       Esta aula será marcada como Remarcada e criada na nova data. As aulas seguintes do evento serão ajustadas.
                     </p>
