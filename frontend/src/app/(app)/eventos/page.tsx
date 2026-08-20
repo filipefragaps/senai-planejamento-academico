@@ -1293,7 +1293,8 @@ export default function EventosPage() {
     // Modo Ensino Superior: cada UC precisa de exatamente 1 dia fixo por semana.
     // UCs com dia já escolhido pelo usuário são respeitadas.
     // UCs sem dia recebem auto-atribuição: primeiro dias ainda livres, depois repete.
-    const diasEvento: number[] = (eventoSelecionado?.dias_semana ?? []).filter((d: number) => d !== 5);
+    // Em modoSuperior, sábado é um dia normal (não é fallback), por isso não é filtrado.
+    const diasEvento: number[] = eventoSelecionado?.dias_semana ?? [];
     const diasManual = new Set(ucsOrdenadas.flatMap((u) => (u.dias_semana ?? [])));
     const diasLivres = diasEvento.filter((d) => !diasManual.has(d));
     const poolAuto = diasLivres.length > 0 ? diasLivres : diasEvento;
@@ -1312,7 +1313,8 @@ export default function EventosPage() {
         carga_horaria: u.carga_horaria,
         ordem: i + 1,
         professor_preferido_id: u.professor_preferido_id,
-        data_inicio: i === 0 && moduloDataInicio ? moduloDataInicio : undefined,
+        // Em modoSuperior cada UC cobre o semestre inteiro — sem data_inicio restritiva
+        data_inicio: undefined,
         nao_agendar: u.nao_agendar ?? false,
         dias_semana: diasUc,
       };
@@ -1887,11 +1889,18 @@ export default function EventosPage() {
                                             ? `${ucsOrdenadas.length} UC(s)${moduloSelecionado ? ` do módulo ${moduloSelecionado}` : ""} — reordene e defina professores antes de gerar.`
                                             : "Adicione as unidades curriculares para gerar o planejamento."}
                                         </p>
-                                        {ucsSemDia.length > 0 && (
-                                          <p className="text-[10px] text-blue-700 mt-0.5">
-                                            {ucsSemDia.length} UC(s) sem dia manual — dias serão distribuídos automaticamente pelo sistema.
-                                          </p>
-                                        )}
+                                        {ucsSemDia.length > 0 && (() => {
+                                          const diasDisponiveis = (eventoSelecionado?.dias_semana ?? []).length;
+                                          const ucsAtivas = ucsOrdenadas.filter((u) => !u.nao_agendar).length;
+                                          const excedente = ucsAtivas > diasDisponiveis;
+                                          return (
+                                            <p className={`text-[10px] mt-0.5 ${excedente ? "text-amber-700" : "text-blue-700"}`}>
+                                              {excedente
+                                                ? `⚠ ${ucsAtivas} UCs para ${diasDisponiveis} dias disponíveis — algumas UCs compartilharão o mesmo dia. Adicione sábado ao evento ou reduza UCs.`
+                                                : `${ucsSemDia.length} UC(s) sem dia manual — dias serão distribuídos automaticamente.`}
+                                            </p>
+                                          );
+                                        })()}
                                       </div>
                                       <button
                                         onClick={() => setGerarAberto(true)}
