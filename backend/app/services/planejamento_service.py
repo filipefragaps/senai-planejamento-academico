@@ -253,6 +253,8 @@ async def gerar_planejamento(
     data_cursor = 0                  # próxima data letiva disponível
     # Datas já alocadas por professor neste preview (detecta choque intra-planejamento)
     professor_datas_planejadas: dict[int, set[date]] = {}
+    # Datas já ocupadas por qualquer UC neste evento (um evento tem horário único — 1 UC/data)
+    datas_ocupadas: set[date] = set()
 
     for item in sorted(ucs_ordenadas, key=lambda x: x.get("ordem", 0)):
         uc_id = item["uc_id"]
@@ -316,8 +318,10 @@ async def gerar_planejamento(
                     pass
             datas_uc: list[date] = []
             while len(datas_uc) < aulas_necessarias and cursor_uc < len(datas_pool_uc):
-                datas_uc.append(datas_pool_uc[cursor_uc])
+                d = datas_pool_uc[cursor_uc]
                 cursor_uc += 1
+                if d not in datas_ocupadas:
+                    datas_uc.append(d)
         else:
             # Pool compartilhado do evento (comportamento padrão)
             if data_inicio_uc:
@@ -329,8 +333,13 @@ async def gerar_planejamento(
                     pass
             datas_uc: list[date] = []
             while len(datas_uc) < aulas_necessarias and data_cursor < len(datas_letivas):
-                datas_uc.append(datas_letivas[data_cursor])
+                d = datas_letivas[data_cursor]
                 data_cursor += 1
+                if d not in datas_ocupadas:
+                    datas_uc.append(d)
+
+        # Marca datas como ocupadas para as UCs seguintes deste evento
+        datas_ocupadas.update(datas_uc)
 
         if not datas_uc:
             conflitos.append({"uc_id": uc_id, "uc_nome": uc.nome, "motivo": "Sem datas letivas disponíveis"})
