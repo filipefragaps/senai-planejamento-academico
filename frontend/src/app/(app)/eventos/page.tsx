@@ -1293,11 +1293,24 @@ export default function EventosPage() {
     // Modo Ensino Superior: cada UC precisa de exatamente 1 dia fixo por semana.
     // UCs com dia já escolhido pelo usuário são respeitadas.
     // UCs sem dia recebem auto-atribuição: primeiro dias ainda livres, depois repete.
-    // Em modoSuperior, sábado é um dia normal (não é fallback), por isso não é filtrado.
     const diasEvento: number[] = eventoSelecionado?.dias_semana ?? [];
     const diasManual = new Set(ucsOrdenadas.flatMap((u) => (u.dias_semana ?? [])));
     const diasLivres = diasEvento.filter((d) => !diasManual.has(d));
-    const poolAuto = diasLivres.length > 0 ? diasLivres : diasEvento;
+
+    // Conta UCs que precisam de dia automático (ativas, sem dia manual)
+    const nAuto = ucsOrdenadas.filter((u) => !u.nao_agendar && !(u.dias_semana?.length)).length;
+
+    // Pool base: dias livres do evento (ou todos se todos estiverem ocupados manualmente)
+    const poolAuto: number[] = diasLivres.length > 0 ? [...diasLivres] : [...diasEvento];
+
+    // Se há mais UCs do que dias únicos disponíveis, estende com Sex (4) e Sáb (5)
+    // para que cada UC receba um dia exclusivo e não cause conflito em datas_ocupadas.
+    if (nAuto > poolAuto.length) {
+      for (const d of [4, 5] as const) {
+        if (!poolAuto.includes(d) && !diasManual.has(d)) poolAuto.push(d);
+        if (poolAuto.length >= nAuto) break;
+      }
+    }
 
     let autoIdx = 0;
     return ucsOrdenadas.map((u, i) => {
