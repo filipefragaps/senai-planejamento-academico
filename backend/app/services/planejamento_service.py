@@ -465,7 +465,43 @@ async def gerar_planejamento(
             score=score_escolhido,
         ))
 
-    # 5. Calcular regência projetada
+    # 5. Passo 2 (modoSuperior): UCs incompletas completam CH em datas livres do semestre.
+    # A regra do dia fixo é ponto de partida, não exclusiva: ao esgotar os slots do dia
+    # atribuído, a UC aproveita qualquer data letiva livre restante no semestre.
+    if modo_superior:
+        incompletos = [
+            (a, a.aulas_necessarias - len(a.datas_aulas))
+            for a in alocacoes
+            if len(a.datas_aulas) < a.aulas_necessarias
+        ]
+        if incompletos:
+            # Pool geral: todos os dias letivos do semestre (seg–sáb)
+            pool_geral = await get_datas_letivas(
+                data_inicio_pool, data_fim_efetiva, list(range(6)), db
+            )
+            # Datas ainda não ocupadas por nenhuma UC
+            livres_geral = [d for d in pool_geral if d not in datas_ocupadas]
+
+            for alocacao, faltando in incompletos:
+                for d in livres_geral:
+                    if faltando <= 0:
+                        break
+                    if d in datas_ocupadas:
+                        continue
+                    prof_id = alocacao.professor_id
+                    if prof_id and d in professor_datas_planejadas.get(prof_id, set()):
+                        continue
+                    alocacao.datas_aulas.append(d)
+                    datas_ocupadas.add(d)
+                    if prof_id:
+                        professor_datas_planejadas.setdefault(prof_id, set()).add(d)
+                        horas_projetadas[prof_id] = (
+                            horas_projetadas.get(prof_id, 0) + horas_por_aula
+                        )
+                    faltando -= 1
+                alocacao.datas_aulas.sort()
+
+    # 6. Calcular regência projetada
     regencia_projetada = []
     alertas_regencia = []
     for prof in todos_profs:
