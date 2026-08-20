@@ -1276,17 +1276,48 @@ export default function EventosPage() {
     });
   }, [eventos, search, statusFiltro]);
 
-  const ucsParaPlanejar: UCParaPlanejar[] = ucsOrdenadas.map((u, i) => ({
-    uc_id: u.id,
-    uc_nome: u.nome,
-    carga_horaria: u.carga_horaria,
-    ordem: i + 1,
-    professor_preferido_id: u.professor_preferido_id,
-    // Apenas a 1ª UC recebe data_inicio — as demais encadeiam automaticamente
-    data_inicio: i === 0 && moduloDataInicio ? moduloDataInicio : undefined,
-    nao_agendar: u.nao_agendar ?? false,
-    dias_semana: u.dias_semana && u.dias_semana.length > 0 ? u.dias_semana : undefined,
-  }));
+  const ucsParaPlanejar: UCParaPlanejar[] = useMemo(() => {
+    if (!modoSuperior) {
+      return ucsOrdenadas.map((u, i) => ({
+        uc_id: u.id,
+        uc_nome: u.nome,
+        carga_horaria: u.carga_horaria,
+        ordem: i + 1,
+        professor_preferido_id: u.professor_preferido_id,
+        data_inicio: i === 0 && moduloDataInicio ? moduloDataInicio : undefined,
+        nao_agendar: u.nao_agendar ?? false,
+        dias_semana: u.dias_semana && u.dias_semana.length > 0 ? u.dias_semana : undefined,
+      }));
+    }
+
+    // Modo Ensino Superior: cada UC precisa de exatamente 1 dia fixo por semana.
+    // UCs com dia já escolhido pelo usuário são respeitadas.
+    // UCs sem dia recebem auto-atribuição: primeiro dias ainda livres, depois repete.
+    const diasEvento: number[] = (eventoSelecionado?.dias_semana ?? []).filter((d: number) => d !== 5);
+    const diasManual = new Set(ucsOrdenadas.flatMap((u) => (u.dias_semana ?? [])));
+    const diasLivres = diasEvento.filter((d) => !diasManual.has(d));
+    const poolAuto = diasLivres.length > 0 ? diasLivres : diasEvento;
+
+    let autoIdx = 0;
+    return ucsOrdenadas.map((u, i) => {
+      let diasUc: number[] | undefined =
+        u.dias_semana && u.dias_semana.length > 0 ? u.dias_semana : undefined;
+      if (!u.nao_agendar && !diasUc && poolAuto.length > 0) {
+        diasUc = [poolAuto[autoIdx % poolAuto.length]];
+        autoIdx++;
+      }
+      return {
+        uc_id: u.id,
+        uc_nome: u.nome,
+        carga_horaria: u.carga_horaria,
+        ordem: i + 1,
+        professor_preferido_id: u.professor_preferido_id,
+        data_inicio: i === 0 && moduloDataInicio ? moduloDataInicio : undefined,
+        nao_agendar: u.nao_agendar ?? false,
+        dias_semana: diasUc,
+      };
+    });
+  }, [ucsOrdenadas, modoSuperior, eventoSelecionado?.dias_semana, moduloDataInicio]);
 
   const abas = [
     { id: "cronograma", label: "Cronograma" },
@@ -1847,7 +1878,7 @@ export default function EventosPage() {
                                   const ucsSemDia = modoSuperior
                                     ? ucsOrdenadas.filter((u) => !u.nao_agendar && (!u.dias_semana || u.dias_semana.length === 0))
                                     : [];
-                                  const gerarBloqueado = ucsOrdenadas.length === 0 || ucsSemDia.length > 0;
+                                  const gerarBloqueado = ucsOrdenadas.length === 0;
                                   return (
                                     <div className="flex justify-between items-center gap-3">
                                       <div className="min-w-0">
@@ -1857,15 +1888,14 @@ export default function EventosPage() {
                                             : "Adicione as unidades curriculares para gerar o planejamento."}
                                         </p>
                                         {ucsSemDia.length > 0 && (
-                                          <p className="text-[10px] text-amber-700 mt-0.5">
-                                            ⚠ {ucsSemDia.length} UC(s) sem dia selecionado: {ucsSemDia.map((u) => u.nome).join(", ")}
+                                          <p className="text-[10px] text-blue-700 mt-0.5">
+                                            {ucsSemDia.length} UC(s) sem dia manual — dias serão distribuídos automaticamente pelo sistema.
                                           </p>
                                         )}
                                       </div>
                                       <button
                                         onClick={() => setGerarAberto(true)}
                                         disabled={gerarBloqueado}
-                                        title={ucsSemDia.length > 0 ? "Selecione o dia da semana para todas as UCs" : undefined}
                                         className="shrink-0 btn-primary flex items-center gap-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                                       >
                                         <RefreshCw className="h-4 w-4" />
