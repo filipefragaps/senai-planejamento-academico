@@ -210,9 +210,22 @@ async def gerar_planejamento(
             except (ValueError, TypeError):
                 pass
 
-    datas_letivas = await get_datas_letivas(
-        data_inicio_pool, evento.data_fim, dias_semana, db
-    )
+    # Sábado (5) como fallback: preenche com dias úteis (seg–sex) primeiro;
+    # datas de sábado são anexadas ao final e só consumidas se os dias úteis esgotarem.
+    dias_sem_sabado = [d for d in dias_semana if d != 5]
+    if dias_sem_sabado:
+        datas_letivas_semana = await get_datas_letivas(
+            data_inicio_pool, evento.data_fim, dias_sem_sabado, db
+        )
+        datas_letivas_sabado = (
+            await get_datas_letivas(data_inicio_pool, evento.data_fim, [5], db)
+            if 5 in dias_semana else []
+        )
+        datas_letivas = datas_letivas_semana + datas_letivas_sabado
+    else:
+        datas_letivas = await get_datas_letivas(
+            data_inicio_pool, evento.data_fim, dias_semana, db
+        )
 
     if not datas_letivas:
         raise ValueError(
@@ -238,6 +251,8 @@ async def gerar_planejamento(
     conflitos: list[dict] = []
     datas_usadas: list[date] = []   # rastreia datas já consumidas
     data_cursor = 0                  # próxima data letiva disponível
+    # Datas já alocadas por professor neste preview (detecta choque intra-planejamento)
+    professor_datas_planejadas: dict[int, set[date]] = {}
 
     for item in sorted(ucs_ordenadas, key=lambda x: x.get("ordem", 0)):
         uc_id = item["uc_id"]
@@ -354,16 +369,30 @@ async def gerar_planejamento(
                         f"Prof. {prof_direto.nome} selecionado manualmente — "
                         "habilitação ou disponibilidade não cadastrada para esta UC."
                     )
+            # Aviso se o professor escolhido já está alocado em outra UC nas mesmas datas
+            if cand and datas_uc:
+                datas_choque = professor_datas_planejadas.get(cand["professor"].id, set()).intersection(datas_uc)
+                if datas_choque:
+                    alerta = (
+                        f"CONFLITO: Prof. {cand['professor'].nome} já possui outra UC alocada neste "
+                        f"planejamento em {len(datas_choque)} data(s) coincidente(s). Revise manualmente."
+                    )
 
         if cand is None and candidatos:
-            # Seleção por score: filtra conflito e aplica aleatoriedade controlada
+            # Seleção por score: filtra conflito de banco E conflito intra-planejamento
             sem_conflito = []
             for c in candidatos:
                 tem_conflito = False
                 if datas_uc:
+                    # Conflito com aulas já salvas no banco
                     tem_conflito = await verificar_conflito_professor(
                         c["professor"].id, datas_uc[0], evento.horario_inicio, evento.horario_fim, db
                     )
+                    # Conflito com outra UC já alocada neste preview (mesmo evento, mesma data/horário)
+                    if not tem_conflito:
+                        datas_prof = professor_datas_planejadas.get(c["professor"].id, set())
+                        if datas_prof.intersection(datas_uc):
+                            tem_conflito = True
                 if not tem_conflito:
                     sem_conflito.append(c)
 
@@ -395,6 +424,11 @@ async def gerar_planejamento(
             horas_projetadas[professor_escolhido.id] = (
                 horas_projetadas.get(professor_escolhido.id, 0) + aulas_necessarias * horas_por_aula
             )
+            # Registra datas para detecção de choque intra-planejamento
+            if datas_uc:
+                if professor_escolhido.id not in professor_datas_planejadas:
+                    professor_datas_planejadas[professor_escolhido.id] = set()
+                professor_datas_planejadas[professor_escolhido.id].update(datas_uc)
 
         alocacoes.append(AlocacaoUC(
             uc_id=uc_id,
