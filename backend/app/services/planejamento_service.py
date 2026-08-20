@@ -168,6 +168,7 @@ async def gerar_planejamento(
     evento_id: int,
     ucs_ordenadas: list[dict],   # [{uc_id, ordem, professor_preferido_id?}]
     db: AsyncSession,
+    modo_superior: bool = False,
 ) -> PlanejamentoResult:
     """
     Gera proposta de cronograma sem salvar no banco.
@@ -178,6 +179,16 @@ async def gerar_planejamento(
     evento = result.scalar_one_or_none()
     if not evento:
         raise ValueError(f"Evento {evento_id} não encontrado")
+
+    # Em modo superior: clip ao semestre corrente (1º → junho, 2º → dezembro)
+    data_fim_efetiva = evento.data_fim
+    if modo_superior:
+        ano = evento.data_inicio.year
+        if evento.data_inicio.month >= 7:
+            data_fim_semestre = date(ano, 12, 31)
+        else:
+            data_fim_semestre = date(ano, 6, 30)
+        data_fim_efetiva = min(evento.data_fim, data_fim_semestre)
 
     horas_por_aula = _horas_aula(evento)
     turno = _turno(evento)
@@ -215,22 +226,22 @@ async def gerar_planejamento(
     dias_sem_sabado = [d for d in dias_semana if d != 5]
     if dias_sem_sabado:
         datas_letivas_semana = await get_datas_letivas(
-            data_inicio_pool, evento.data_fim, dias_sem_sabado, db
+            data_inicio_pool, data_fim_efetiva, dias_sem_sabado, db
         )
         datas_letivas_sabado = (
-            await get_datas_letivas(data_inicio_pool, evento.data_fim, [5], db)
+            await get_datas_letivas(data_inicio_pool, data_fim_efetiva, [5], db)
             if 5 in dias_semana else []
         )
         datas_letivas = datas_letivas_semana + datas_letivas_sabado
     else:
         datas_letivas = await get_datas_letivas(
-            data_inicio_pool, evento.data_fim, dias_semana, db
+            data_inicio_pool, data_fim_efetiva, dias_semana, db
         )
 
     if not datas_letivas:
         raise ValueError(
             f"Nenhuma data letiva encontrada para o período do evento "
-            f"({evento.data_inicio} → {evento.data_fim}, dias: {dias_semana}). "
+            f"({evento.data_inicio} → {data_fim_efetiva}, dias: {dias_semana}). "
             "Verifique se o período está correto e se as datas não estão bloqueadas no calendário acadêmico."
         )
 
@@ -306,7 +317,7 @@ async def gerar_planejamento(
                 except (ValueError, TypeError):
                     pass
             datas_pool_uc = await get_datas_letivas(
-                data_inicio_pool_uc, evento.data_fim, dias_semana_uc, db
+                data_inicio_pool_uc, data_fim_efetiva, dias_semana_uc, db
             )
             cursor_uc = 0
             if data_inicio_uc:

@@ -2103,6 +2103,7 @@ export default function EventosPage() {
           eventoId={eventoSelecionado.id}
           nomeEvento={eventoSelecionado.nome_turma}
           ucs={ucsParaPlanejar}
+          modoSuperior={modoSuperior}
           onClose={() => setGerarAberto(false)}
           onConfirmado={() => {
             qc.invalidateQueries({ queryKey: ["cronograma", eventoSelecionado.id] });
