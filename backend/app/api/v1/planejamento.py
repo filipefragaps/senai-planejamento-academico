@@ -3,13 +3,14 @@ Router de Planejamento Automático de Cronogramas.
 v2
 """
 import re
+import math
 import unicodedata
 from datetime import date, time, datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_, or_, func
 
 from app.database import get_db
 from app.core.deps import get_current_user, require_pode_deletar_planejamento
@@ -676,6 +677,166 @@ async def candidatos_uc(
         }
         for c in candidatos
     ]
+
+
+# ── UCs Pendentes ─────────────────────────────────────────────────────────────
+
+@router.get("/pendentes/{evento_id}")
+async def get_ucs_pendentes(
+    evento_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """
+    Retorna todas as UCs do curso do evento com contagem de aulas agendadas
+    vs necessárias. Útil para saber quais UCs ainda têm aulas faltando.
+    """
+    res_ev = await db.execute(select(Evento).where(Evento.id == evento_id))
+    evento = res_ev.scalar_one_or_none()
+    if not evento:
+        raise HTTPException(status_code=404, detail="Evento não encontrado")
+
+    hi, hf = evento.horario_inicio, evento.horario_fim
+    if hi and hf:
+        segundos = (hf.hour * 3600 + hf.minute * 60) - (hi.hour * 3600 + hi.minute * 60)
+        horas_por_aula = max(segundos / 3600, 0.5)
+    else:
+        horas_por_aula = 1.0
+
+    curso_id = evento.curso_id
+    if not curso_id and evento.oferta_id:
+        res_of = await db.execute(select(OfertaCurso.curso_id).where(OfertaCurso.id == evento.oferta_id))
+        curso_id = res_of.scalar_one_or_none()
+
+    if not curso_id:
+        return []
+
+    res_ucs = await db.execute(
+        select(UnidadeCurricular)
+        .where(UnidadeCurricular.curso_id == curso_id)
+        .order_by(UnidadeCurricular.modulo_etapa, UnidadeCurricular.sequencia)
+    )
+    ucs = res_ucs.scalars().all()
+
+    res_count = await db.execute(
+        select(Aula.unidade_curricular_id, func.count(Aula.id).label("contagem"))
+        .where(and_(Aula.evento_id == evento_id, Aula.status != "Cancelada"))
+        .group_by(Aula.unidade_curricular_id)
+    )
+    contagens = {row[0]: row[1] for row in res_count.fetchall()}
+
+    resultado = []
+    for uc in ucs:
+        if not uc.carga_horaria:
+            continue
+        necessarias = math.ceil(uc.carga_horaria / horas_por_aula)
+        agendadas = contagens.get(uc.id, 0)
+        resultado.append({
+            "uc_id": uc.id,
+            "uc_nome": uc.nome,
+            "uc_codigo": uc.codigo_uc,
+            "etapa": uc.modulo_etapa,
+            "carga_horaria": uc.carga_horaria,
+            "aulas_necessarias": necessarias,
+            "aulas_agendadas": agendadas,
+            "aulas_faltando": max(necessarias - agendadas, 0),
+        })
+
+    return resultado
+
+
+# ── Aula Manual ───────────────────────────────────────────────────────────────
+
+class AulaManualRequest(BaseModel):
+    uc_id: int
+    data: str           # YYYY-MM-DD
+    professor_id: Optional[int] = None
+
+
+@router.post("/aula-manual/{evento_id}", status_code=201)
+async def adicionar_aula_manual(
+    evento_id: int,
+    body: AulaManualRequest,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """
+    Adiciona uma aula manualmente em qualquer data (inclusive feriados).
+    Usa horário do evento; marca alterada_manualmente=True.
+    """
+    res_ev = await db.execute(select(Evento).where(Evento.id == evento_id))
+    evento = res_ev.scalar_one_or_none()
+    if not evento:
+        raise HTTPException(status_code=404, detail="Evento não encontrado")
+
+    res_uc = await db.execute(select(UnidadeCurricular).where(UnidadeCurricular.id == body.uc_id))
+    uc = res_uc.scalar_one_or_none()
+    if not uc:
+        raise HTTPException(status_code=404, detail="UC não encontrada")
+
+    try:
+        data_aula = date.fromisoformat(body.data)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Data inválida — use YYYY-MM-DD")
+
+    hi = evento.horario_inicio
+    turno_str = "Manhã"
+    if hi:
+        h = hi.hour
+        turno_str = "Tarde" if 12 <= h < 18 else ("Noite" if h >= 18 else "Manhã")
+
+    tipo_contrato = None
+    prof_nome = None
+    if body.professor_id:
+        res_prof = await db.execute(select(Professor).where(Professor.id == body.professor_id))
+        prof = res_prof.scalar_one_or_none()
+        if prof:
+            tipo_contrato = prof.tipo
+            prof_nome = prof.nome
+
+    res_max = await db.execute(
+        select(func.max(Aula.numero_aula)).where(Aula.evento_id == evento_id)
+    )
+    max_num = res_max.scalar_one_or_none() or 0
+
+    nova_aula = Aula(
+        evento_id=evento_id,
+        unidade_curricular_id=body.uc_id,
+        professor_id=body.professor_id,
+        data=data_aula,
+        horario_inicio=evento.horario_inicio,
+        horario_fim=evento.horario_fim,
+        turno=turno_str,
+        status="Agendada",
+        tipo="Reposição",
+        etapa=uc.modulo_etapa,
+        sala=evento.sala,
+        numero_aula=max_num + 1,
+        tipo_contrato=tipo_contrato,
+        alterada_manualmente=True,
+    )
+    db.add(nova_aula)
+    await db.commit()
+    await db.refresh(nova_aula)
+
+    return _serializar_aula(nova_aula, nome_prof=prof_nome, nome_uc=uc.nome)
+
+
+# ── Remover Aula ──────────────────────────────────────────────────────────────
+
+@router.delete("/aula/{aula_id}", status_code=204)
+async def remover_aula(
+    aula_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """Remove permanentemente uma aula do banco."""
+    res = await db.execute(select(Aula).where(Aula.id == aula_id))
+    aula = res.scalar_one_or_none()
+    if not aula:
+        raise HTTPException(status_code=404, detail="Aula não encontrada")
+    await db.delete(aula)
+    await db.commit()
 
 
 @router.post("/gerar/{evento_id}")

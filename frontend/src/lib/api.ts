@@ -186,6 +186,12 @@ export const planejamentoApi = {
     api.get(`/planejamento/datas-disponiveis/${aulaId}`).then((r) => r.data),
   remanejo: (aulaId: number, body: { tipo: string; professor_id?: number; nova_data?: string }) =>
     api.post(`/planejamento/remanejo/${aulaId}`, body).then((r) => r.data),
+  pendentes: (eventoId: number) =>
+    api.get(`/planejamento/pendentes/${eventoId}`).then((r) => r.data),
+  adicionarAulaManual: (eventoId: number, body: { uc_id: number; data: string; professor_id?: number | null }) =>
+    api.post(`/planejamento/aula-manual/${eventoId}`, body).then((r) => r.data),
+  removerAula: (aulaId: number) =>
+    api.delete(`/planejamento/aula/${aulaId}`),
   apagarPlanejamento: (eventoId: number, ucId?: number) =>
     api.delete(`/planejamento/apagar/${eventoId}`, { params: ucId != null ? { uc_id: ucId } : undefined }).then((r) => r.data),
   otimizarGlobal: (incluirRpaPj = false) =>

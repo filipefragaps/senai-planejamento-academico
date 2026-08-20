@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useRef, useMemo, useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { planejamentoApi, professoresApi, eventosApi, relatoriosApi, downloadBlob } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { AulaEditDrawer } from "@/components/aula-edit-drawer";
+import { AulaManualModal } from "@/components/aula-manual-modal";
 import { cn } from "@/lib/utils";
 import {
-  ChevronLeft, ChevronRight, Loader2, X, Printer, CalendarDays, LayoutGrid, Filter, FileDown, Search, ChevronDown,
+  ChevronLeft, ChevronRight, Loader2, X, Printer, CalendarDays, LayoutGrid, Filter, FileDown, Search, ChevronDown, Plus, Trash2,
 } from "lucide-react";
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -89,6 +90,8 @@ export default function CronogramaPage() {
   const [semana, setSemana] = useState(hoje);
   const [diaSelecionado, setDiaSelecionado] = useState<string | null>(null);
   const [aulaEditando, setAulaEditando] = useState<any | null>(null);
+  const [modalAddAula, setModalAddAula] = useState<string | null>(null);
+  const [confirmandoDeleteId, setConfirmandoDeleteId] = useState<number | null>(null);
   const [turnoFiltro, setTurnoFiltro] = useState<"todos" | "manha" | "tarde" | "noite">("todos");
   const [professorFiltro, setProfessorFiltro] = useState("");
   const [eventoFiltro, setEventoFiltro] = useState("");
@@ -235,6 +238,14 @@ export default function CronogramaPage() {
         .sort((a: any, b: any) => (a.horario_inicio ?? "").localeCompare(b.horario_inicio ?? ""))
         .filter((a: any) => turnoFiltro === "todos" || turnoDeHorario(a.horario_inicio) === turnoFiltro)
     : [];
+
+  const deleteMutation = useMutation({
+    mutationFn: (aulaId: number) => planejamentoApi.removerAula(aulaId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cronograma-global"] });
+      setConfirmandoDeleteId(null);
+    },
+  });
 
   function imprimirDia() {
     if (!diaSelecionado) return;
@@ -761,6 +772,14 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
                   </button>
                 ))}
               </div>
+              {eventoFiltro && (
+                <button
+                  onClick={() => setModalAddAula(diaSelecionado)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition-colors"
+                >
+                  <Plus className="h-4 w-4" /> Adicionar aula
+                </button>
+              )}
               <button
                 onClick={imprimirDia}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition-colors"
@@ -777,7 +796,17 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
           </div>
 
           {aulasNoDia.length === 0 ? (
-            <div className="py-10 text-center text-gray-400">Nenhuma aula agendada para este dia.</div>
+            <div className="py-10 text-center text-gray-400 space-y-3">
+              <p>Nenhuma aula agendada para este dia.</p>
+              {eventoFiltro && (
+                <button
+                  onClick={() => setModalAddAula(diaSelecionado)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 text-sm font-medium transition-colors"
+                >
+                  <Plus className="h-4 w-4" /> Adicionar aula neste dia
+                </button>
+              )}
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -791,6 +820,7 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
                     <th className="px-4 py-3 text-left font-semibold">Professor</th>
                     <th className="px-4 py-3 text-left font-semibold">Ambiente</th>
                     <th className="px-4 py-3 text-left font-semibold">Status</th>
+                    {eventoFiltro && <th className="px-3 py-3 w-20" />}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -833,6 +863,35 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
                           {a.status}
                         </span>
                       </td>
+                      {eventoFiltro && (
+                        <td className="px-3 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                          {confirmandoDeleteId === a.id ? (
+                            <div className="flex items-center gap-1 justify-end">
+                              <button
+                                onClick={() => deleteMutation.mutate(a.id)}
+                                disabled={deleteMutation.isPending}
+                                className="px-2 py-1 rounded text-xs bg-red-600 text-white font-semibold hover:bg-red-700 disabled:opacity-60"
+                              >
+                                {deleteMutation.isPending ? "..." : "Excluir"}
+                              </button>
+                              <button
+                                onClick={() => setConfirmandoDeleteId(null)}
+                                className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-600 hover:bg-gray-200"
+                              >
+                                Não
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setConfirmandoDeleteId(a.id)}
+                              className="p-1.5 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                              title="Remover aula"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -849,6 +908,19 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
           onSaved={() => {
             qc.invalidateQueries({ queryKey: ["cronograma-global"] });
             setAulaEditando(null);
+          }}
+        />
+      )}
+
+      {modalAddAula && eventoFiltro && (
+        <AulaManualModal
+          eventoId={+eventoFiltro}
+          data={modalAddAula}
+          onClose={() => setModalAddAula(null)}
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: ["cronograma-global"] });
+            qc.invalidateQueries({ queryKey: ["pendentes", +eventoFiltro] });
+            setModalAddAula(null);
           }}
         />
       )}
