@@ -339,6 +339,9 @@ async def gerar_planejamento(
                 try:
                     dt_ini = date.fromisoformat(data_inicio_uc) if isinstance(data_inicio_uc, str) else data_inicio_uc
                     while data_cursor < len(datas_letivas) and datas_letivas[data_cursor] < dt_ini:
+                        # Marca as datas puladas como ocupadas para que o Passo 2
+                        # não retroaja para antes da data_inicio_uc informada.
+                        datas_ocupadas.add(datas_letivas[data_cursor])
                         data_cursor += 1
                 except (ValueError, TypeError):
                     pass
@@ -476,10 +479,12 @@ async def gerar_planejamento(
         and a.aulas_necessarias > 0  # exclui UCs nao_agendar (aulas_necessarias=0)
     ]
     if incompletos:
-        # Pool geral: todos os dias letivos do semestre, seg–sáb (0–5),
-        # incluindo sábados que possam não ter sido atribuídos a nenhuma UC.
+        # Passo 2: sábado (5) só é incluído em modoSuperior, onde o limite de
+        # semestre pode deixar UCs sem datas suficientes nos dias habituais.
+        # Para eventos regulares usa apenas os dias configurados no evento.
+        dias_catchup = list(range(6)) if modo_superior else dias_semana
         pool_geral = await get_datas_letivas(
-            data_inicio_pool, data_fim_efetiva, list(range(6)), db
+            data_inicio_pool, data_fim_efetiva, dias_catchup, db
         )
         # Apenas datas ainda livres (não consumidas por nenhuma UC no passo 1)
         livres_geral = [d for d in pool_geral if d not in datas_ocupadas]
