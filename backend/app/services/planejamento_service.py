@@ -180,9 +180,15 @@ async def gerar_planejamento(
     if not evento:
         raise ValueError(f"Evento {evento_id} não encontrado")
 
-    # Em modo superior: clip ao semestre corrente (1º → junho, 2º → dezembro)
+    # Clipa ao semestre corrente apenas para modalidades de Ensino Superior reais.
+    # Cursos técnicos/FIC com modoSuperior ativo (para distribuição 1UC/semana)
+    # devem continuar além de dezembro sem restrição semestral.
+    _CODIGOS_SUPERIOR = {"41", "81", "91"}
+    _cod_modal = (evento.tipo_modalidade or "").split()[0].strip()
+    eh_ensino_superior = _cod_modal in _CODIGOS_SUPERIOR
+
     data_fim_efetiva = evento.data_fim
-    if modo_superior:
+    if modo_superior and eh_ensino_superior:
         ano = evento.data_inicio.year
         if evento.data_inicio.month >= 7:
             data_fim_semestre = date(ano, 12, 31)
