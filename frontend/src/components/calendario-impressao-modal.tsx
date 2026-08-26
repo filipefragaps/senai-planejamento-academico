@@ -137,11 +137,11 @@ export function CalendarioImpressaoModal({ eventoId, eventoNome, onClose }: Prop
       .dia-cel.fds { background: #f9fafb; }
       .dia-num     { font-size: 10px; font-weight: 700; color: #374151; margin-bottom: 2px; }
       /* Aula dentro da célula */
-      .aula-item { border-radius: 2px; padding: 2px 4px; margin-bottom: 2px; font-size: 9px; line-height: 1.35; }
+      .aula-item { border-radius: 2px; padding: 2px 4px; margin-bottom: 2px; font-size: 9px; line-height: 1.4; }
       .aula-hora  { font-size: 8px; opacity: .75; font-weight: 600; }
-      .aula-uc    { font-weight: 700; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-      .aula-prof  { color: #374151; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .aula-amb   { font-size: 8px; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .aula-uc    { font-weight: 700; word-break: break-word; }
+      .aula-prof  { color: #374151; word-break: break-word; }
+      .aula-amb   { font-size: 8px; color: #555; font-style: italic; word-break: break-word; }
       @media print {
         body { padding: 10px; }
         .mes-bloco { page-break-inside: avoid; }
@@ -187,16 +187,14 @@ export function CalendarioImpressaoModal({ eventoId, eventoNome, onClose }: Prop
           const bg  = CORES_IMPRESSAO[idx];
           const tx  = CORES_TEXTO[idx];
           const hora = `${(a.horario_inicio ?? "").slice(0,5)}–${(a.horario_fim ?? "").slice(0,5)}`;
-          const ucAbrev = (a.uc_nome ?? "—").length > 40
-            ? (a.uc_nome ?? "").slice(0, 38) + "…"
-            : (a.uc_nome ?? "—");
-          const prof = (a.professor_nome ?? "").split(" ").slice(0, 2).join(" ") || "—";
-          const amb  = a.ambiente || a.sala || "";
+          const ucNome = a.uc_nome ?? "—";
+          const prof   = a.professor_nome || "—";
+          const amb    = a.ambiente || a.sala || "";
           return `<div class="aula-item" style="background:${bg};color:${tx}">
             <div class="aula-hora">${hora}${a.etapa ? " · " + a.etapa : ""}</div>
-            <div class="aula-uc">${ucAbrev}</div>
+            <div class="aula-uc">${ucNome}</div>
             <div class="aula-prof">${prof}</div>
-            ${amb ? `<div class="aula-amb">${amb}</div>` : ""}
+            ${amb ? `<div class="aula-amb">🏫 ${amb}</div>` : ""}
           </div>`;
         }).join("");
 
