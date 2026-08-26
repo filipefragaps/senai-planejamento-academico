@@ -74,6 +74,7 @@ interface Props {
   nomeEvento: string;
   ucs: UCParaPlanejar[];
   modoSuperior?: boolean;
+  cliparSemestre?: boolean;
   onClose: () => void;
   onConfirmado?: () => void;
 }
@@ -174,7 +175,7 @@ function AlocacaoCard({ a }: { a: AlocacaoResult }) {
 
 type Etapa = "idle" | "gerando" | "resultado";
 
-export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = false, onClose, onConfirmado }: Props) {
+export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = false, cliparSemestre = false, onClose, onConfirmado }: Props) {
   const [etapa, setEtapa] = useState<Etapa>("idle");
   const [resultado, setResultado] = useState<ResultadoGerado | null>(null);
   const [substituirFuturas, setSubstituirFuturas] = useState(true);
@@ -190,7 +191,7 @@ export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = fa
         nao_agendar: u.nao_agendar ?? false,
         dias_semana: u.dias_semana && u.dias_semana.length > 0 ? u.dias_semana : undefined,
       }));
-      return planejamentoApi.gerar(eventoId, ucsOrdenadas, modoSuperior);
+      return planejamentoApi.gerar(eventoId, ucsOrdenadas, modoSuperior, cliparSemestre);
     },
     onMutate: () => setEtapa("gerando"),
     onSuccess: (data) => {

@@ -87,6 +87,7 @@ class UCOrdenada(BaseModel):
 class GerarRequest(BaseModel):
     ucs: list[UCOrdenada]
     modo_superior: bool = False
+    clipar_semestre: bool = False
 
 
 class ConfirmarRequest(BaseModel):
@@ -855,6 +856,7 @@ async def gerar(
             ucs_ordenadas=[u.model_dump() for u in body.ucs],
             db=db,
             modo_superior=body.modo_superior,
+            clipar_semestre=body.clipar_semestre,
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

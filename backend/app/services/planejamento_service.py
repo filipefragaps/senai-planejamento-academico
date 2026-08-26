@@ -169,6 +169,7 @@ async def gerar_planejamento(
     ucs_ordenadas: list[dict],   # [{uc_id, ordem, professor_preferido_id?}]
     db: AsyncSession,
     modo_superior: bool = False,
+    clipar_semestre: bool = False,
 ) -> PlanejamentoResult:
     """
     Gera proposta de cronograma sem salvar no banco.
@@ -180,15 +181,8 @@ async def gerar_planejamento(
     if not evento:
         raise ValueError(f"Evento {evento_id} não encontrado")
 
-    # Clipa ao semestre corrente apenas para modalidades de Ensino Superior reais.
-    # Cursos técnicos/FIC com modoSuperior ativo (para distribuição 1UC/semana)
-    # devem continuar além de dezembro sem restrição semestral.
-    _CODIGOS_SUPERIOR = {"41", "81", "91"}
-    _cod_modal = (evento.tipo_modalidade or "").split()[0].strip()
-    eh_ensino_superior = _cod_modal in _CODIGOS_SUPERIOR
-
     data_fim_efetiva = evento.data_fim
-    if modo_superior and eh_ensino_superior:
+    if modo_superior and clipar_semestre:
         ano = evento.data_inicio.year
         if evento.data_inicio.month >= 7:
             data_fim_semestre = date(ano, 12, 31)
@@ -485,10 +479,10 @@ async def gerar_planejamento(
         and a.aulas_necessarias > 0  # exclui UCs nao_agendar (aulas_necessarias=0)
     ]
     if incompletos:
-        # Passo 2: sábado (5) só é incluído em modoSuperior, onde o limite de
-        # semestre pode deixar UCs sem datas suficientes nos dias habituais.
-        # Para eventos regulares usa apenas os dias configurados no evento.
-        dias_catchup = list(range(6)) if modo_superior else dias_semana
+        # Passo 2: sábado (5) só é incluído quando há clipping de semestre ativo,
+        # pois nesse caso os dias habituais podem esgotar antes de preencher a CH.
+        # Sem clipping, o evento tem datas suficientes; usa apenas os dias configurados.
+        dias_catchup = list(range(6)) if (modo_superior and clipar_semestre) else dias_semana
         pool_geral = await get_datas_letivas(
             data_inicio_pool, data_fim_efetiva, dias_catchup, db
         )

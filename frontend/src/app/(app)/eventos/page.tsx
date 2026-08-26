@@ -988,6 +988,7 @@ export default function EventosPage() {
   const [otimizacaoAberta, setOtimizacaoAberta] = useState(false);
   const [ucsOrdenadas, setUcsOrdenadas] = useState<UCItem[]>([]);
   const [modoSuperior, setModoSuperior] = useState(false);
+  const [cliparSemestre, setCliparSemestre] = useState(false);
   const [moduloSelecionado, setModuloSelecionado] = useState<string | null>(null);
   const [moduloDataInicio, setModuloDataInicio] = useState<string>("");
   const [ucFormAberto, setUcFormAberto] = useState(false);
@@ -1874,7 +1875,10 @@ export default function EventosPage() {
                                     <input
                                       type="checkbox"
                                       checked={modoSuperior}
-                                      onChange={(e) => setModoSuperior(e.target.checked)}
+                                      onChange={(e) => {
+                                        setModoSuperior(e.target.checked);
+                                        if (!e.target.checked) setCliparSemestre(false);
+                                      }}
                                       className="mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                                     />
                                     <div>
@@ -1886,6 +1890,22 @@ export default function EventosPage() {
                                       </p>
                                     </div>
                                   </label>
+
+                                  {/* Sub-opção: limitar ao semestre corrente */}
+                                  {modoSuperior && (
+                                    <label className="flex items-center gap-2 mt-2 pt-2 border-t border-indigo-200 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={cliparSemestre}
+                                        onChange={(e) => setCliparSemestre(e.target.checked)}
+                                        className="rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
+                                      />
+                                      <span className="text-[11px] text-indigo-700">
+                                        Limitar ao semestre corrente
+                                        <span className="ml-1 text-indigo-400">(marque para Graduação/Licenciatura)</span>
+                                      </span>
+                                    </label>
+                                  )}
                                 </div>
 
                                 {/* Cabeçalho com botão Gerar */}
@@ -2117,6 +2137,7 @@ export default function EventosPage() {
           nomeEvento={eventoSelecionado.nome_turma}
           ucs={ucsParaPlanejar}
           modoSuperior={modoSuperior}
+          cliparSemestre={cliparSemestre}
           onClose={() => setGerarAberto(false)}
           onConfirmado={() => {
             qc.invalidateQueries({ queryKey: ["cronograma", eventoSelecionado.id] });

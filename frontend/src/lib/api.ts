@@ -176,8 +176,8 @@ export const planejamentoApi = {
     api.get(`/planejamento/ucs/${eventoId}`, { params: modulo ? { modulo } : undefined }).then((r) => r.data),
   candidatos: (eventoId: number, ucId: number) =>
     api.get(`/planejamento/candidatos/${eventoId}/${ucId}`).then((r) => r.data),
-  gerar: (eventoId: number, ucs: { uc_id: number; ordem: number; professor_preferido_id?: number; data_inicio?: string }[], modoSuperior = false) =>
-    api.post(`/planejamento/gerar/${eventoId}`, { ucs, modo_superior: modoSuperior }).then((r) => r.data),
+  gerar: (eventoId: number, ucs: { uc_id: number; ordem: number; professor_preferido_id?: number; data_inicio?: string }[], modoSuperior = false, cliparSemestre = false) =>
+    api.post(`/planejamento/gerar/${eventoId}`, { ucs, modo_superior: modoSuperior, clipar_semestre: cliparSemestre }).then((r) => r.data),
   confirmar: (eventoId: number, alocacoes: unknown[], substituirFuturas = true) =>
     api.post(`/planejamento/confirmar/${eventoId}`, { alocacoes, substituir_futuras: substituirFuturas }).then((r) => r.data),
   regenciaProjetada: (params?: { evento_id?: number; data_inicio?: string; data_fim?: string }) =>
