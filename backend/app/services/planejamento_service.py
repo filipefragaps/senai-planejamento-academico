@@ -209,6 +209,27 @@ async def gerar_planejamento(
             "Recrie o evento pela oferta (que define os dias automaticamente) ou edite o evento para informar os dias."
         )
 
+    # Quando não há clip de semestre, garante que o pool cobre toda a CH do curso.
+    # O data_fim do evento é apenas referência — o planejamento continua até completar
+    # todas as aulas necessárias, mesmo que isso ultrapasse a data_fim cadastrada.
+    if not (modo_superior and clipar_semestre) and horas_por_aula > 0:
+        ids_uc_sched = [it["uc_id"] for it in ucs_ordenadas if not it.get("nao_agendar", False)]
+        if ids_uc_sched:
+            res_chs = await db.execute(
+                select(UnidadeCurricular.carga_horaria)
+                .where(UnidadeCurricular.id.in_(ids_uc_sched))
+            )
+            total_aulas_prev = sum(
+                math.ceil((row[0] or 0) / horas_por_aula) for row in res_chs.fetchall()
+            )
+            dias_uteis_semana = max(1, len([d for d in dias_semana if d < 6]))
+            periodo_dias = (data_fim_efetiva - evento.data_inicio).days + 1
+            dias_uteis_estim = int(periodo_dias * dias_uteis_semana / 7)
+            if total_aulas_prev > dias_uteis_estim:
+                faltam_uteis = total_aulas_prev - dias_uteis_estim
+                extra_cal = int(faltam_uteis * 7 / dias_uteis_semana) + 60  # +60 dias de folga
+                data_fim_efetiva = data_fim_efetiva + timedelta(days=extra_cal)
+
     # Se alguma UC tem data_inicio anterior ao evento, estende o pool para cobrir
     data_inicio_pool = evento.data_inicio
     for item in ucs_ordenadas:
