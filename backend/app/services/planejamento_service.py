@@ -210,8 +210,8 @@ async def gerar_planejamento(
         )
 
     # Quando não há clip de semestre, garante que o pool cobre toda a CH do curso.
-    # O data_fim do evento é apenas referência — o planejamento continua até completar
-    # todas as aulas necessárias, mesmo que isso ultrapasse a data_fim cadastrada.
+    # Usa contagem REAL de datas letivas (respeitando feriados/recessos do calendário)
+    # para decidir se precisa estender além do data_fim do evento.
     if not (modo_superior and clipar_semestre) and horas_por_aula > 0:
         ids_uc_sched = [it["uc_id"] for it in ucs_ordenadas if not it.get("nao_agendar", False)]
         if ids_uc_sched:
@@ -222,12 +222,15 @@ async def gerar_planejamento(
             total_aulas_prev = sum(
                 math.ceil((row[0] or 0) / horas_por_aula) for row in res_chs.fetchall()
             )
-            dias_uteis_semana = max(1, len([d for d in dias_semana if d < 6]))
-            periodo_dias = (data_fim_efetiva - evento.data_inicio).days + 1
-            dias_uteis_estim = int(periodo_dias * dias_uteis_semana / 7)
-            if total_aulas_prev > dias_uteis_estim:
-                faltam_uteis = total_aulas_prev - dias_uteis_estim
-                extra_cal = int(faltam_uteis * 7 / dias_uteis_semana) + 60  # +60 dias de folga
+            # Conta datas letivas REAIS no período atual (sem sábado — sábado é fallback)
+            dias_base = [d for d in dias_semana if d != 5] or dias_semana
+            datas_letivas_atuais = await get_datas_letivas(
+                evento.data_inicio, data_fim_efetiva, dias_base, db
+            )
+            if total_aulas_prev > len(datas_letivas_atuais):
+                dias_uteis_semana = max(1, len(dias_base))
+                faltam = total_aulas_prev - len(datas_letivas_atuais)
+                extra_cal = int(faltam * 7 / dias_uteis_semana) + 90  # +90 dias buffer
                 data_fim_efetiva = data_fim_efetiva + timedelta(days=extra_cal)
 
     # Se alguma UC tem data_inicio anterior ao evento, estende o pool para cobrir
