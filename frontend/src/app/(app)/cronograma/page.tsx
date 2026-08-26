@@ -6,6 +6,7 @@ import { planejamentoApi, professoresApi, eventosApi, relatoriosApi, downloadBlo
 import { PageHeader } from "@/components/page-header";
 import { AulaEditDrawer } from "@/components/aula-edit-drawer";
 import { AulaManualModal } from "@/components/aula-manual-modal";
+import { CalendarioImpressaoModal } from "@/components/calendario-impressao-modal";
 import { cn } from "@/lib/utils";
 import {
   ChevronLeft, ChevronRight, Loader2, X, Printer, CalendarDays, LayoutGrid, Filter, FileDown, Search, ChevronDown, Plus, Trash2,
@@ -92,6 +93,7 @@ export default function CronogramaPage() {
   const [aulaEditando, setAulaEditando] = useState<any | null>(null);
   const [modalAddAula, setModalAddAula] = useState<string | null>(null);
   const [confirmandoDeleteId, setConfirmandoDeleteId] = useState<number | null>(null);
+  const [modalCalendarioAberto, setModalCalendarioAberto] = useState(false);
   const [turnoFiltro, setTurnoFiltro] = useState<"todos" | "manha" | "tarde" | "noite">("todos");
   const [professorFiltro, setProfessorFiltro] = useState("");
   const [eventoFiltro, setEventoFiltro] = useState("");
@@ -451,6 +453,18 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
               <option key={p.id} value={p.id}>{p.nome}</option>
             ))}
           </select>
+
+          {/* Imprimir Calendário (só quando evento selecionado) */}
+          {eventoFiltro && (
+            <button
+              onClick={() => setModalCalendarioAberto(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300 transition-colors"
+              title="Imprimir calendário de aulas deste evento"
+            >
+              <Printer className="h-4 w-4" />
+              Calendário
+            </button>
+          )}
 
           {/* Exportar Excel */}
           <button
@@ -922,6 +936,14 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
             qc.invalidateQueries({ queryKey: ["pendentes", +eventoFiltro] });
             setModalAddAula(null);
           }}
+        />
+      )}
+
+      {modalCalendarioAberto && eventoFiltro && (
+        <CalendarioImpressaoModal
+          eventoId={+eventoFiltro}
+          eventoNome={eventoSelecionadoNome}
+          onClose={() => setModalCalendarioAberto(false)}
         />
       )}
     </div>
