@@ -100,7 +100,7 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
   // UCs do evento para troca de componente
   const { data: ucsEvento = [] } = useQuery({
     queryKey: ["ucs-evento-troca", aula?.evento_id],
-    queryFn: () => planejamentoApi.ucs(aula!.evento_id),
+    queryFn: () => planejamentoApi.ucs(aula!.evento_id, undefined, true),
     enabled: !!aula && secaoTrocaUC,
   });
 

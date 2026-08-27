@@ -172,8 +172,8 @@ export const planejamentoApi = {
   }) => api.get("/planejamento/cronograma", { params }).then((r) => r.data),
   modulos: (eventoId: number) =>
     api.get(`/planejamento/modulos/${eventoId}`).then((r) => r.data),
-  ucs: (eventoId: number, modulo?: string) =>
-    api.get(`/planejamento/ucs/${eventoId}`, { params: modulo ? { modulo } : undefined }).then((r) => r.data),
+  ucs: (eventoId: number, modulo?: string, todos?: boolean) =>
+    api.get(`/planejamento/ucs/${eventoId}`, { params: { ...(modulo ? { modulo } : {}), ...(todos ? { todos: true } : {}) } }).then((r) => r.data),
   candidatos: (eventoId: number, ucId: number) =>
     api.get(`/planejamento/candidatos/${eventoId}/${ucId}`).then((r) => r.data),
   gerar: (eventoId: number, ucs: { uc_id: number; ordem: number; professor_preferido_id?: number; data_inicio?: string }[], modoSuperior = false, cliparSemestre = false) =>

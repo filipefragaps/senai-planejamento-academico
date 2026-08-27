@@ -569,18 +569,21 @@ async def listar_modulos_evento(
 async def listar_ucs_evento(
     evento_id: int,
     modulo: Optional[str] = None,
+    todos: bool = False,
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    """Retorna UCs do curso vinculado ao evento, opcionalmente filtradas por módulo/etapa."""
+    """Retorna UCs do curso vinculado ao evento, opcionalmente filtradas por módulo/etapa.
+    Com todos=True retorna todas as UCs do curso sem filtro de módulo (usado em Trocar UC)."""
     result = await db.execute(select(Evento).where(Evento.id == evento_id))
     evento = result.scalar_one_or_none()
     if not evento:
         raise HTTPException(status_code=404, detail="Evento não encontrado")
 
     curso_id = evento.curso_id
-    # Fallback 1: busca curso_id pela oferta vinculada
     pasta = None
+
+    # Fallback 1: busca curso_id e pasta pela oferta diretamente vinculada
     if not curso_id and evento.oferta_id:
         res_of = await db.execute(
             select(OfertaCurso.curso_id, OfertaCurso.pasta).where(OfertaCurso.id == evento.oferta_id)
@@ -590,12 +593,41 @@ async def listar_ucs_evento(
             curso_id = row_of[0]
             pasta = row_of[1]
 
-    # Fallback 2: busca curso pelo código da pasta (ex: "18123")
+    # Fallback 2: busca oferta pelo codigo_evento == str(evento_id) quando oferta_id é null
+    if not curso_id and not pasta:
+        res_of2 = await db.execute(
+            select(OfertaCurso.curso_id, OfertaCurso.pasta)
+            .where(OfertaCurso.codigo_evento == str(evento_id))
+        )
+        row_of2 = res_of2.one_or_none()
+        if row_of2:
+            curso_id = row_of2[0]
+            pasta = row_of2[1]
+
+    # Fallback 3: busca curso pelo código da pasta (ex: "18123")
     if not curso_id and pasta:
         res_curso = await db.execute(
             select(Curso.id).where(Curso.codigo == pasta)
         )
         curso_id = res_curso.scalar_one_or_none()
+
+    # Fallback 4: extrai código da pasta do nome_turma ("TÉCNICO EM ELETROMECÂNICA - 18123")
+    # As planilhas têm sempre o nome do curso e a pasta na mesma coluna, separados por " - "
+    if not curso_id and " - " in (evento.nome_turma or ""):
+        pasta_from_nome = evento.nome_turma.rsplit(" - ", 1)[-1].strip()
+        if pasta_from_nome:
+            res_pasta = await db.execute(
+                select(Curso.id).where(Curso.codigo == pasta_from_nome)
+            )
+            curso_id = res_pasta.scalar_one_or_none()
+
+    # Fallback 5: busca por nome base do curso (primeiro segmento antes do " - ")
+    if not curso_id and evento.nome_turma:
+        nome_base = evento.nome_turma.split(" - ")[0].strip()
+        res_nome = await db.execute(
+            select(Curso.id).where(Curso.nome.ilike(f"%{nome_base}%")).limit(1)
+        )
+        curso_id = res_nome.scalar_one_or_none()
 
     if not curso_id:
         return []
@@ -605,10 +637,10 @@ async def listar_ucs_evento(
         .where(UnidadeCurricular.curso_id == curso_id)
         .order_by(UnidadeCurricular.modulo_etapa, UnidadeCurricular.sequencia)
     )
-    # Filtra pelo módulo solicitado (seleção manual pelo usuário)
+    # Filtra pelo módulo solicitado (seleção manual pelo usuário); ignorado com todos=True
     if modulo:
         query = query.where(UnidadeCurricular.modulo_etapa == modulo)
-    elif evento.modulo_etapa_inicial:
+    elif not todos and evento.modulo_etapa_inicial:
         # Fallback: filtro histórico por módulo inicial configurado no evento
         res_all = await db.execute(
             select(UnidadeCurricular.modulo_etapa)
