@@ -629,6 +629,20 @@ async def listar_ucs_evento(
         )
         curso_id = res_nome.scalar_one_or_none()
 
+    # Fallback 6: infere curso_id pelas UCs já vinculadas a aulas deste evento
+    # (garante resultado mesmo quando nenhum link explícito existe no Evento)
+    if not curso_id:
+        res_uc_aula = await db.execute(
+            select(UnidadeCurricular.curso_id)
+            .join(Aula, Aula.unidade_curricular_id == UnidadeCurricular.id)
+            .where(
+                Aula.evento_id == evento_id,
+                UnidadeCurricular.curso_id.is_not(None),
+            )
+            .limit(1)
+        )
+        curso_id = res_uc_aula.scalar_one_or_none()
+
     if not curso_id:
         return []
 
