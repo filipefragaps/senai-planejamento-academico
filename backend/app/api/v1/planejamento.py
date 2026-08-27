@@ -579,12 +579,23 @@ async def listar_ucs_evento(
         raise HTTPException(status_code=404, detail="Evento não encontrado")
 
     curso_id = evento.curso_id
-    # Fallback: busca curso_id pela oferta vinculada
+    # Fallback 1: busca curso_id pela oferta vinculada
+    pasta = None
     if not curso_id and evento.oferta_id:
         res_of = await db.execute(
-            select(OfertaCurso.curso_id).where(OfertaCurso.id == evento.oferta_id)
+            select(OfertaCurso.curso_id, OfertaCurso.pasta).where(OfertaCurso.id == evento.oferta_id)
         )
-        curso_id = res_of.scalar_one_or_none()
+        row_of = res_of.one_or_none()
+        if row_of:
+            curso_id = row_of[0]
+            pasta = row_of[1]
+
+    # Fallback 2: busca curso pelo código da pasta (ex: "18123")
+    if not curso_id and pasta:
+        res_curso = await db.execute(
+            select(Curso.id).where(Curso.codigo == pasta)
+        )
+        curso_id = res_curso.scalar_one_or_none()
 
     if not curso_id:
         return []

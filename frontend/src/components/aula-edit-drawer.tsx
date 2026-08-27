@@ -49,6 +49,7 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
   const [secaoTrocaUC, setSecaoTrocaUC] = useState(false);
   const [ucTroca, setUcTroca] = useState<string>("");
   const [profTroca, setProfTroca] = useState<string>("");
+  const [trocaReplanejáFuturas, setTrocaReplanejáFuturas] = useState(false);
 
   // Remanejo
   const [secaoRemanejo, setSecaoRemanejo] = useState(false);
@@ -113,8 +114,10 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
       if (profTroca) alteracoes.professor_id = Number(profTroca);
       return aulasApi.alterar(aula.id, {
         alteracoes,
-        replaneja_futuras: false,
-        motivo: "Troca pontual de componente curricular",
+        replaneja_futuras: trocaReplanejáFuturas,
+        motivo: trocaReplanejáFuturas
+          ? "Troca de componente curricular — propagada para aulas futuras"
+          : "Troca pontual de componente curricular",
       });
     },
     onSuccess: () => {
@@ -381,6 +384,21 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
                     ))}
                   </select>
                 </div>
+
+                <label className="flex items-start gap-2 cursor-pointer bg-amber-50 border border-amber-200 rounded p-2">
+                  <input
+                    type="checkbox"
+                    checked={trocaReplanejáFuturas}
+                    onChange={(e) => setTrocaReplanejáFuturas(e.target.checked)}
+                    className="mt-0.5 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                  />
+                  <div>
+                    <p className="text-xs font-medium text-amber-800">Recalcular aulas futuras</p>
+                    <p className="text-[10px] text-amber-600">
+                      Propaga a troca para todas as aulas futuras com o mesmo nome de UC incorreto.
+                    </p>
+                  </div>
+                </label>
 
                 <button
                   type="button"

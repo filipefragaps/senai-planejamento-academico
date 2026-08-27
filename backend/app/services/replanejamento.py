@@ -85,6 +85,10 @@ async def alterar_aula_e_replaneja(
     nome_prof_antes = await _nome_professor(aula.professor_id)
     snapshot_antes = _snapshot_aula(aula, nome_prof_antes)
 
+    # Salva estado da UC antes de aplicar alterações (necessário para propagação)
+    old_uc_id = aula.unidade_curricular_id
+    old_uc_nome_original = aula.uc_nome_original
+
     # Aplica alterações
     for campo, valor in alteracoes.items():
         if campo != "motivo" and hasattr(aula, campo):
@@ -101,16 +105,28 @@ async def alterar_aula_e_replaneja(
     conflitos = []
 
     if replaneja_futuras and evento:
-        # Filtros base: aulas futuras (após a data editada) da mesma UC (se definida),
-        # excluindo apenas Cancelada e Remarcada (Realizada é incluída — aulas passadas
-        # marcadas pelo startup devem ser atualizadas pelo coordenador)
+        # Filtros base: aulas futuras (após a data editada),
+        # excluindo apenas Cancelada e Remarcada
         filtros_base = [
             Aula.evento_id == evento.id,
             Aula.data > aula.data,
             ~Aula.status.in_(["Cancelada", "Remarcada"]),
         ]
-        if aula.unidade_curricular_id is not None:
-            filtros_base.append(Aula.unidade_curricular_id == aula.unidade_curricular_id)
+
+        nova_uc_id = alteracoes.get("unidade_curricular_id")
+
+        if nova_uc_id is not None:
+            # Propagação de troca de UC: filtra pelo estado ANTERIOR da UC
+            if old_uc_id is not None:
+                filtros_base.append(Aula.unidade_curricular_id == old_uc_id)
+            elif old_uc_nome_original:
+                # Aula com UC cinza (null): filtra pelo nome original errado
+                filtros_base.append(Aula.unidade_curricular_id == None)  # noqa: E711
+                filtros_base.append(Aula.uc_nome_original == old_uc_nome_original)
+        else:
+            # Sem troca de UC: filtra pela UC atual (pós-alteração)
+            if aula.unidade_curricular_id is not None:
+                filtros_base.append(Aula.unidade_curricular_id == aula.unidade_curricular_id)
 
         novo_professor_id = alteracoes.get("professor_id")
         nova_sala = alteracoes.get("sala")
@@ -118,6 +134,8 @@ async def alterar_aula_e_replaneja(
         # UPDATE direto no banco — evita inconsistências de rastreamento de objetos
         # na sessão async do SQLAlchemy ao modificar muitos objetos em loop
         valores: dict = {}
+        if nova_uc_id is not None:
+            valores["unidade_curricular_id"] = nova_uc_id
         if novo_professor_id is not None:
             valores["professor_id"] = novo_professor_id
         if nova_sala:
