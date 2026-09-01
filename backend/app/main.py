@@ -124,14 +124,7 @@ async def _aplicar_migracoes(engine) -> None:
             "WHERE status = 'Ativo' "
             "AND oferta_id IN (SELECT id FROM ofertas_cursos WHERE status = 'CONCLUÍDA')"
         ),
-        # Reverte todos os eventos Concluídos que não têm oferta CONCLUÍDA
-        # (cobre eventos sem oferta_id e com oferta em outro status)
-        (
-            "UPDATE eventos SET status = 'Ativo' "
-            "WHERE status = 'Concluído' "
-            "AND (oferta_id IS NULL "
-            "     OR oferta_id NOT IN (SELECT id FROM ofertas_cursos WHERE status = 'CONCLUÍDA'))"
-        ),
+        # Nota: não revertemos automaticamente eventos Concluídos — o status manual do usuário é respeitado.
     ]:
         try:
             async with engine.begin() as conn:
