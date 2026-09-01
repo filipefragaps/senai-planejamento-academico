@@ -339,12 +339,14 @@ export const ambientesApi = {
 };
 
 // Contratos de Docentes
+export type ContratoEventoRef = { id: number; nome_turma: string; nome_curso?: string | null };
+
 export const contratosApi = {
   listar: (professorId: number) =>
     api.get(`/professores/${professorId}/contratos`).then((r) => r.data),
-  criar: (professorId: number, data: { numero_contrato: string; valor_hora: number; total_horas_previstas: number; descricao?: string; ativo?: boolean }) =>
+  criar: (professorId: number, data: { numero_contrato: string; valor_hora: number; total_horas_previstas: number; descricao?: string; eventos?: ContratoEventoRef[]; ativo?: boolean }) =>
     api.post(`/professores/${professorId}/contratos`, data).then((r) => r.data),
-  atualizar: (professorId: number, contratoId: number, data: Partial<{ numero_contrato: string; valor_hora: number; total_horas_previstas: number; descricao: string; ativo: boolean }>) =>
+  atualizar: (professorId: number, contratoId: number, data: Partial<{ numero_contrato: string; valor_hora: number; total_horas_previstas: number; descricao: string; eventos: ContratoEventoRef[]; ativo: boolean }>) =>
     api.put(`/professores/${professorId}/contratos/${contratoId}`, data).then((r) => r.data),
   deletar: (professorId: number, contratoId: number) =>
     api.delete(`/professores/${professorId}/contratos/${contratoId}`),

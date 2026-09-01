@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { professoresApi, contratosApi } from "@/lib/api";
+import { professoresApi, contratosApi, eventosApi, type ContratoEventoRef } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { RegenciaBar } from "@/components/regencia-bar";
 import { ProfessorDrawer } from "@/components/professor-drawer";
@@ -19,7 +19,11 @@ function getInitials(nome: string) {
 const TIPOS_CONTRATO_PROF = ["PJ", "RPA", "Inclusão em Folha"];
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-const CONTRATO_FORM_VAZIO = { numero_contrato: "", valor_hora: "", total_horas_previstas: "", descricao: "", ativo: true };
+const CONTRATO_FORM_VAZIO = {
+  numero_contrato: "", valor_hora: "", total_horas_previstas: "",
+  descricao: "", ativo: true,
+  eventos: [] as ContratoEventoRef[],
+};
 
 const DIAS_ABREV = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const DIAS_COR: Record<number, string> = {
@@ -105,12 +109,21 @@ export default function ProfessoresPage() {
 
   const [contratoModal, setContratoModal] = useState<{ open: boolean; contrato: any | null }>({ open: false, contrato: null });
   const [contratoForm, setContratoForm] = useState(CONTRATO_FORM_VAZIO);
+  const [buscaEvento, setBuscaEvento] = useState("");
+  const [dropdownEventoAberto, setDropdownEventoAberto] = useState(false);
 
   const { data: contratos = [], isLoading: loadingContratos } = useQuery({
     queryKey: ["contratos", selected?.id],
     queryFn: () => contratosApi.listar(selected!.id),
     enabled: !!selected && TIPOS_CONTRATO_PROF.includes(selected.tipo),
     staleTime: 30_000,
+  });
+
+  const { data: todosEventos = [] } = useQuery({
+    queryKey: ["eventos-para-contrato"],
+    queryFn: () => eventosApi.listar(),
+    enabled: contratoModal.open,
+    staleTime: 120_000,
   });
 
   const salvarContratoMutation = useMutation({
@@ -120,6 +133,7 @@ export default function ProfessoresPage() {
         valor_hora: +form.valor_hora,
         total_horas_previstas: +form.total_horas_previstas,
         descricao: form.descricao || undefined,
+        eventos: form.eventos,
         ativo: form.ativo,
       };
       return contratoModal.contrato
@@ -137,6 +151,7 @@ export default function ProfessoresPage() {
 
   function abrirNovoContrato() {
     setContratoForm(CONTRATO_FORM_VAZIO);
+    setBuscaEvento("");
     setContratoModal({ open: true, contrato: null });
   }
 
@@ -147,7 +162,9 @@ export default function ProfessoresPage() {
       total_horas_previstas: String(c.total_horas_previstas),
       descricao: c.descricao || "",
       ativo: c.ativo,
+      eventos: c.eventos || [],
     });
+    setBuscaEvento("");
     setContratoModal({ open: true, contrato: c });
   }
 
@@ -643,6 +660,29 @@ export default function ProfessoresPage() {
                                     </span>
                                   </div>
                                 </div>
+
+                                {/* Eventos vinculados */}
+                                {c.eventos && c.eventos.length > 0 && (
+                                  <div className="mt-2 pt-2 border-t border-gray-100">
+                                    <p className="text-[10px] text-gray-400 mb-1">Eventos</p>
+                                    <div className="flex flex-col gap-1">
+                                      {c.eventos.map((ev: any) => (
+                                        <div key={ev.id} className="flex items-center gap-1.5 text-[10px]">
+                                          <span className="font-mono font-semibold text-indigo-600">#{ev.id}</span>
+                                          <span className="text-gray-600 truncate">{ev.nome_turma}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Descrição */}
+                                {c.descricao && (
+                                  <div className="mt-2 pt-2 border-t border-gray-100">
+                                    <p className="text-[10px] text-gray-400 mb-0.5">Observações</p>
+                                    <p className="text-[10px] text-gray-600 leading-relaxed whitespace-pre-line">{c.descricao}</p>
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
@@ -658,120 +698,208 @@ export default function ProfessoresPage() {
       )}
 
       {/* ─── Modal de contrato ─── */}
-      {contratoModal.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="font-semibold text-gray-900">
-                {contratoModal.contrato ? "Editar Contrato" : "Novo Contrato"}
-              </h3>
-              <button
-                onClick={() => setContratoModal({ open: false, contrato: null })}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+      {contratoModal.open && (() => {
+        const q = buscaEvento.toLowerCase().trim();
+        const jaVinculados = new Set(contratoForm.eventos.map(e => e.id));
+        const sugestoes = q
+          ? (todosEventos as any[])
+              .filter(e => !jaVinculados.has(e.id))
+              .filter(e =>
+                String(e.id).includes(q) ||
+                e.nome_turma.toLowerCase().includes(q) ||
+                (e.nome_curso || "").toLowerCase().includes(q)
+              )
+              .slice(0, 8)
+          : [];
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Número do Contrato <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  className="input w-full"
-                  placeholder="Ex: CTR-2024-001"
-                  value={contratoForm.numero_contrato}
-                  onChange={e => setContratoForm(f => ({ ...f, numero_contrato: e.target.value }))}
-                />
+        function adicionarEvento(ev: any) {
+          const nomeCurso = ev.nome_curso || ev.nome_turma.split(" - ")[0];
+          setContratoForm(f => ({
+            ...f,
+            eventos: [...f.eventos, { id: ev.id, nome_turma: ev.nome_turma, nome_curso: nomeCurso }],
+          }));
+          setBuscaEvento("");
+          setDropdownEventoAberto(false);
+        }
+
+        function removerEvento(id: number) {
+          setContratoForm(f => ({ ...f, eventos: f.eventos.filter(e => e.id !== id) }));
+        }
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setDropdownEventoAberto(false)}>
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="font-semibold text-gray-900">
+                  {contratoModal.contrato ? "Editar Contrato" : "Novo Contrato"}
+                </h3>
+                <button onClick={() => setContratoModal({ open: false, contrato: null })} className="text-gray-400 hover:text-gray-600">
+                  <X className="h-5 w-5" />
+                </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-4">
+                {/* Número do contrato */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Valor por Hora (R$) <span className="text-red-500">*</span>
+                    Número do Contrato <span className="text-red-500">*</span>
                   </label>
                   <input
-                    type="number"
-                    step="0.01"
-                    min="0"
+                    type="text"
                     className="input w-full"
-                    placeholder="0,00"
-                    value={contratoForm.valor_hora}
-                    onChange={e => setContratoForm(f => ({ ...f, valor_hora: e.target.value }))}
+                    placeholder="Ex: CTR-2024-001"
+                    value={contratoForm.numero_contrato}
+                    onChange={e => setContratoForm(f => ({ ...f, numero_contrato: e.target.value }))}
                   />
                 </div>
+
+                {/* Valor + Horas */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Valor por Hora (R$) <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="number" step="0.01" min="0" className="input w-full" placeholder="0,00"
+                      value={contratoForm.valor_hora}
+                      onChange={e => setContratoForm(f => ({ ...f, valor_hora: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Total de Horas <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="number" step="0.5" min="0" className="input w-full" placeholder="0"
+                      value={contratoForm.total_horas_previstas}
+                      onChange={e => setContratoForm(f => ({ ...f, total_horas_previstas: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                {contratoForm.valor_hora && contratoForm.total_horas_previstas && (
+                  <p className="text-xs text-gray-500 bg-blue-50 rounded-lg p-2">
+                    Valor total estimado:{" "}
+                    <strong className="text-blue-700">
+                      {fmt(+contratoForm.valor_hora * +contratoForm.total_horas_previstas)}
+                    </strong>
+                  </p>
+                )}
+
+                {/* Eventos vinculados */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Eventos / Turmas vinculados
+                  </label>
+
+                  {/* Chips dos eventos já adicionados */}
+                  {contratoForm.eventos.length > 0 && (
+                    <div className="flex flex-col gap-1.5 mb-2">
+                      {contratoForm.eventos.map(ev => (
+                        <div key={ev.id} className="flex items-start gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5 text-xs">
+                          <div className="flex-1 min-w-0">
+                            <span className="font-mono font-semibold text-indigo-700 mr-1.5">#{ev.id}</span>
+                            <span className="text-gray-700 truncate">{ev.nome_turma}</span>
+                            {ev.nome_curso && ev.nome_curso !== ev.nome_turma && (
+                              <span className="block text-indigo-500 mt-0.5 truncate">{ev.nome_curso}</span>
+                            )}
+                          </div>
+                          <button onClick={() => removerEvento(ev.id)} className="text-indigo-400 hover:text-red-500 shrink-0 mt-0.5">
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Busca de evento */}
+                  <div className="relative">
+                    <div className="flex gap-1.5">
+                      <div className="relative flex-1">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                        <input
+                          type="text"
+                          className="input w-full pl-8 text-sm"
+                          placeholder="Buscar por ID, nome da turma ou curso..."
+                          value={buscaEvento}
+                          onChange={e => { setBuscaEvento(e.target.value); setDropdownEventoAberto(true); }}
+                          onFocus={() => setDropdownEventoAberto(true)}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Dropdown de sugestões */}
+                    {dropdownEventoAberto && sugestoes.length > 0 && (
+                      <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+                        {sugestoes.map((ev: any) => {
+                          const curso = ev.nome_curso || ev.nome_turma.split(" - ")[0];
+                          return (
+                            <button
+                              key={ev.id}
+                              type="button"
+                              onClick={() => adicionarEvento(ev)}
+                              className="w-full text-left px-3 py-2 hover:bg-indigo-50 border-b border-gray-100 last:border-0"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-xs font-semibold text-indigo-600 shrink-0">#{ev.id}</span>
+                                <div className="min-w-0">
+                                  <p className="text-xs font-medium text-gray-800 truncate">{ev.nome_turma}</p>
+                                  {curso && curso !== ev.nome_turma && (
+                                    <p className="text-[10px] text-gray-500 truncate">{curso}</p>
+                                  )}
+                                </div>
+                                <span className={cn("ml-auto shrink-0 text-[10px] px-1.5 py-0.5 rounded",
+                                  ev.status === "Ativo" ? "bg-green-100 text-green-700" :
+                                  ev.status === "Planejado" ? "bg-blue-100 text-blue-700" :
+                                  "bg-gray-100 text-gray-500"
+                                )}>{ev.status}</span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                        {q && sugestoes.length === 0 && (
+                          <p className="text-xs text-gray-400 px-3 py-2 italic">Nenhum evento encontrado. O número será registrado manualmente.</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Descrição */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Total de Horas <span className="text-red-500">*</span>
+                    Descrição / Observação
                   </label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    className="input w-full"
-                    placeholder="0"
-                    value={contratoForm.total_horas_previstas}
-                    onChange={e => setContratoForm(f => ({ ...f, total_horas_previstas: e.target.value }))}
+                  <textarea
+                    className="input w-full resize-none"
+                    rows={3}
+                    placeholder="Observações sobre este contrato..."
+                    value={contratoForm.descricao}
+                    onChange={e => setContratoForm(f => ({ ...f, descricao: e.target.value }))}
                   />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox" id="contrato-ativo"
+                    checked={contratoForm.ativo}
+                    onChange={e => setContratoForm(f => ({ ...f, ativo: e.target.checked }))}
+                    className="rounded"
+                  />
+                  <label htmlFor="contrato-ativo" className="text-sm text-gray-700">Contrato ativo</label>
                 </div>
               </div>
 
-              {contratoForm.valor_hora && contratoForm.total_horas_previstas && (
-                <p className="text-xs text-gray-500 bg-blue-50 rounded-lg p-2">
-                  Valor total estimado:{" "}
-                  <strong className="text-blue-700">
-                    {fmt(+contratoForm.valor_hora * +contratoForm.total_horas_previstas)}
-                  </strong>
-                </p>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Descrição / Observação
-                </label>
-                <textarea
-                  className="input w-full resize-none"
-                  rows={2}
-                  placeholder="Opcional"
-                  value={contratoForm.descricao}
-                  onChange={e => setContratoForm(f => ({ ...f, descricao: e.target.value }))}
-                />
+              <div className="flex justify-end gap-3 mt-6">
+                <button onClick={() => setContratoModal({ open: false, contrato: null })} className="btn-secondary">Cancelar</button>
+                <button onClick={salvarContrato} disabled={salvarContratoMutation.isPending} className="btn-primary">
+                  {salvarContratoMutation.isPending ? "Salvando..." : "Salvar"}
+                </button>
               </div>
-
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="contrato-ativo"
-                  checked={contratoForm.ativo}
-                  onChange={e => setContratoForm(f => ({ ...f, ativo: e.target.checked }))}
-                  className="rounded"
-                />
-                <label htmlFor="contrato-ativo" className="text-sm text-gray-700">
-                  Contrato ativo
-                </label>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={() => setContratoModal({ open: false, contrato: null })}
-                className="btn-secondary"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={salvarContrato}
-                disabled={salvarContratoMutation.isPending}
-                className="btn-primary"
-              >
-                {salvarContratoMutation.isPending ? "Salvando..." : "Salvar"}
-              </button>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ─── Drawer de criação / edição ─── */}
       {drawer !== null && (

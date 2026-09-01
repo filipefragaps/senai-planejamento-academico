@@ -18,11 +18,18 @@ router = APIRouter(prefix="/professores", tags=["Contratos de Docentes"])
 TIPOS_CONTRATO = {"PJ", "RPA", "Inclusão em Folha"}
 
 
+class EventoRef(BaseModel):
+    id: int
+    nome_turma: str
+    nome_curso: str | None = None
+
+
 class ContratoCreate(BaseModel):
     numero_contrato: str
     valor_hora: float
     total_horas_previstas: float
     descricao: str | None = None
+    eventos: list[EventoRef] = []
     ativo: bool = True
 
 
@@ -31,6 +38,7 @@ class ContratoUpdate(BaseModel):
     valor_hora: float | None = None
     total_horas_previstas: float | None = None
     descricao: str | None = None
+    eventos: list[EventoRef] | None = None
     ativo: bool | None = None
 
 
@@ -59,6 +67,7 @@ def _contrato_out(c: ContratoDocente, h_pagas: float, h_enc: float) -> dict:
         "valor_hora": vh,
         "total_horas_previstas": hp,
         "descricao": c.descricao,
+        "eventos": c.eventos or [],
         "ativo": c.ativo,
         "criado_em": c.criado_em.isoformat() if c.criado_em else None,
         # computados
@@ -132,6 +141,7 @@ async def criar_contrato(
         valor_hora=data.valor_hora,
         total_horas_previstas=data.total_horas_previstas,
         descricao=data.descricao,
+        eventos=[e.model_dump() for e in data.eventos] if data.eventos else [],
         ativo=data.ativo,
     )
     db.add(c)
@@ -149,7 +159,10 @@ async def atualizar_contrato(
     _=Depends(get_current_user),
 ):
     c = await _get_contrato(db, professor_id, contrato_id)
-    for field, val in data.model_dump(exclude_unset=True).items():
+    updates = data.model_dump(exclude_unset=True)
+    if "eventos" in updates and updates["eventos"] is not None:
+        updates["eventos"] = [e if isinstance(e, dict) else e.model_dump() for e in updates["eventos"]]
+    for field, val in updates.items():
         setattr(c, field, val)
     await db.commit()
     await db.refresh(c)
