@@ -1275,7 +1275,9 @@ export default function EventosPage() {
     return c;
   }, [eventos]);
 
-  const STATUS_ORDER: Record<string, number> = { Planejado: 0, Ativo: 1, "Concluído": 2, Cancelado: 3 };
+  // Ativos e Planejados vêm primeiro; Concluídos e Cancelados ficam no fim.
+  // Dentro de cada grupo a ordem original da API é preservada (sem reordenar por nome).
+  const STATUS_GROUP: Record<string, number> = { Planejado: 0, Ativo: 0, "Concluído": 1, Cancelado: 1 };
 
   const filtrados = useMemo(() => {
     const q = search.toLowerCase();
@@ -1288,9 +1290,9 @@ export default function EventosPage() {
         return matchSearch && matchStatus;
       })
       .sort((a, b) => {
-        const oa = STATUS_ORDER[a.status] ?? 99;
-        const ob = STATUS_ORDER[b.status] ?? 99;
-        return oa !== ob ? oa - ob : a.nome_turma.localeCompare(b.nome_turma, "pt-BR");
+        const ga = STATUS_GROUP[a.status] ?? 0;
+        const gb = STATUS_GROUP[b.status] ?? 0;
+        return ga - gb; // só separa ativos/planejados (grupo 0) de concluídos/cancelados (grupo 1)
       });
   }, [eventos, search, statusFiltro]);
 
