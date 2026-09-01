@@ -210,8 +210,6 @@ export function NovaOfertaModal({ open, onClose }: NovaOfertaModalProps) {
   const criar = useMutation({
     mutationFn: () => {
       if (!form.codigo_evento.trim()) throw new Error("Código do evento é obrigatório");
-      if (!form.nome_curso.trim()) throw new Error("Nome do curso é obrigatório");
-
       return ofertasApi.criar({
         codigo_evento: form.codigo_evento.trim(),
         pasta: form.pasta || null,
@@ -340,17 +338,6 @@ export function NovaOfertaModal({ open, onClose }: NovaOfertaModalProps) {
                       </button>
                     </div>
                   )}
-                </Field>
-              </div>
-
-              <div className="mt-4">
-                <Field label="Nome do curso" required>
-                  <input
-                    className="input w-full"
-                    placeholder="Nome do curso"
-                    value={form.nome_curso}
-                    onChange={(e) => set("nome_curso", e.target.value)}
-                  />
                 </Field>
               </div>
 
