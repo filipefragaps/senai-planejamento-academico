@@ -58,9 +58,23 @@ function groupByDia(disp: any[]) {
     .map(([dia, items]) => ({ dia: +dia, items }));
 }
 
+const TIPOS_QUADRO_PROF = new Set(["Mensalista", "Horista", "Inclusão em Folha"]);
+
+const FILTROS_TIPO = [
+  { key: "todos",              label: "Todos",             grupo: "base" },
+  { key: "quadro",             label: "Quadro",            grupo: "quadro" },
+  { key: "Mensalista",         label: "Mensalista",        grupo: "quadro" },
+  { key: "Horista",            label: "Horista",           grupo: "quadro" },
+  { key: "Inclusão em Folha",  label: "Inclusão em Folha", grupo: "quadro" },
+  { key: "extraquadro",        label: "Extraquadro",       grupo: "extra" },
+  { key: "PJ",                 label: "PJ",                grupo: "extra" },
+  { key: "RPA",                label: "RPA",               grupo: "extra" },
+] as const;
+
 export default function ProfessoresPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
+  const [filtroTipo, setFiltroTipo] = useState<string>("todos");
   const [selected, setSelected] = useState<any | null>(null);
   const [drawer, setDrawer] = useState<null | "new" | any>(null);
   const [pagina, setPagina] = useState(1);
@@ -149,10 +163,16 @@ export default function ProfessoresPage() {
   regencias.forEach((r: any) => { regMap[r.professor_id] = r; });
 
   const filtered = professores
-    .filter((p: any) =>
-      p.nome.toLowerCase().includes(search.toLowerCase()) ||
-      (p.especialidades || "").toLowerCase().includes(search.toLowerCase())
-    )
+    .filter((p: any) => {
+      const matchSearch =
+        p.nome.toLowerCase().includes(search.toLowerCase()) ||
+        (p.especialidades || "").toLowerCase().includes(search.toLowerCase());
+      if (!matchSearch) return false;
+      if (filtroTipo === "todos") return true;
+      if (filtroTipo === "quadro") return TIPOS_QUADRO_PROF.has(p.tipo);
+      if (filtroTipo === "extraquadro") return !TIPOS_QUADRO_PROF.has(p.tipo);
+      return p.tipo === filtroTipo;
+    })
     .sort((a: any, b: any) => a.nome.localeCompare(b.nome, "pt-BR"));
   const totalPaginas = Math.max(1, Math.ceil(filtered.length / POR_PAGINA));
   const paginaAtual = Math.min(pagina, totalPaginas);
@@ -183,7 +203,7 @@ export default function ProfessoresPage() {
           </button>
         </PageHeader>
 
-        <div className="relative mb-4">
+        <div className="relative mb-3">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
             className="input pl-9 max-w-sm w-full"
@@ -191,6 +211,46 @@ export default function ProfessoresPage() {
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPagina(1); }}
           />
+        </div>
+
+        {/* Filtro por tipo de vínculo */}
+        <div className="flex items-center gap-1 flex-wrap mb-4">
+          {FILTROS_TIPO.map(({ key, label, grupo }) => {
+            const ativo = filtroTipo === key;
+            return (
+              <button
+                key={key}
+                onClick={() => { setFiltroTipo(key); setPagina(1); }}
+                className={cn(
+                  "px-2.5 py-1 rounded-md text-xs font-medium transition-all border",
+                  ativo
+                    ? grupo === "extra"
+                      ? "bg-amber-500 text-white border-amber-500"
+                      : "bg-blue-600 text-white border-blue-600"
+                    : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50",
+                  key === "extraquadro" || key === "quadro" ? "font-semibold" : "",
+                  (key === "extraquadro" || key === "PJ" || key === "RPA") && filtroTipo !== key
+                    ? "border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100"
+                    : "",
+                  (key === "quadro" || key === "Mensalista" || key === "Horista" || key === "Inclusão em Folha") && filtroTipo !== key
+                    ? "border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"
+                    : "",
+                  key === "todos" && !ativo ? "border-gray-200 text-gray-600 bg-white hover:bg-gray-50" : "",
+                )}
+              >
+                {label}
+                {!ativo && key !== "todos" && (
+                  <span className="ml-1 text-[10px] font-normal opacity-60">
+                    {professores.filter((p: any) => {
+                      if (key === "quadro") return TIPOS_QUADRO_PROF.has(p.tipo);
+                      if (key === "extraquadro") return !TIPOS_QUADRO_PROF.has(p.tipo);
+                      return p.tipo === key;
+                    }).length}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {isLoading ? (
