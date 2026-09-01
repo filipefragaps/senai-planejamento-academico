@@ -1275,15 +1275,23 @@ export default function EventosPage() {
     return c;
   }, [eventos]);
 
+  const STATUS_ORDER: Record<string, number> = { Planejado: 0, Ativo: 1, "Concluído": 2, Cancelado: 3 };
+
   const filtrados = useMemo(() => {
     const q = search.toLowerCase();
-    return (eventos as Evento[]).filter((e) => {
-      const matchSearch = !q || [
-        e.nome_turma, e.disciplina, e.nome_curso ?? "",
-      ].some((s) => s.toLowerCase().includes(q));
-      const matchStatus = !statusFiltro || e.status === statusFiltro;
-      return matchSearch && matchStatus;
-    });
+    return (eventos as Evento[])
+      .filter((e) => {
+        const matchSearch = !q || [
+          e.nome_turma, e.disciplina, e.nome_curso ?? "",
+        ].some((s) => s.toLowerCase().includes(q));
+        const matchStatus = !statusFiltro || e.status === statusFiltro;
+        return matchSearch && matchStatus;
+      })
+      .sort((a, b) => {
+        const oa = STATUS_ORDER[a.status] ?? 99;
+        const ob = STATUS_ORDER[b.status] ?? 99;
+        return oa !== ob ? oa - ob : a.nome_turma.localeCompare(b.nome_turma, "pt-BR");
+      });
   }, [eventos, search, statusFiltro]);
 
   const ucsParaPlanejar: UCParaPlanejar[] = useMemo(() => {
