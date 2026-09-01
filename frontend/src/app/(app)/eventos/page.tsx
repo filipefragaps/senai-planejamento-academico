@@ -1266,6 +1266,15 @@ export default function EventosPage() {
     apagarPlanejamentoMut.mutate({ ucId });
   }
 
+  const statusCounts = useMemo(() => {
+    const c = { Ativo: 0, Planejado: 0, "Concluído": 0, Cancelado: 0, total: 0 };
+    for (const e of (eventos as Evento[])) {
+      c.total++;
+      if (e.status in c) c[e.status as keyof typeof c]++;
+    }
+    return c;
+  }, [eventos]);
+
   const filtrados = useMemo(() => {
     const q = search.toLowerCase();
     return (eventos as Evento[]).filter((e) => {
@@ -1423,6 +1432,48 @@ export default function EventosPage() {
         </PageHeader>
 
         <input ref={seducInputRef} type="file" accept=".xlsx,.xls" onChange={handleSeducUpload} className="hidden" />
+
+        {/* ── Mini-dashboard de status ────────────────────────────────────── */}
+        {!isLoading && statusCounts.total > 0 && (
+          <div className="grid grid-cols-4 gap-3 mt-4">
+            {([
+              { key: "Ativo",     label: "Ativas",     icon: "▶", bg: "bg-green-50",  border: "border-green-200", num: "text-green-700",  sub: "text-green-500"  },
+              { key: "Planejado", label: "Planejadas",  icon: "📋", bg: "bg-blue-50",   border: "border-blue-200",  num: "text-blue-700",   sub: "text-blue-400"   },
+              { key: "Concluído", label: "Concluídas",  icon: "✓",  bg: "bg-gray-50",   border: "border-gray-200",  num: "text-gray-700",   sub: "text-gray-400"   },
+              { key: "Cancelado", label: "Canceladas",  icon: "✕",  bg: "bg-red-50",    border: "border-red-200",   num: "text-red-700",    sub: "text-red-400"    },
+            ] as const).map(({ key, label, icon, bg, border, num, sub }) => {
+              const count = statusCounts[key];
+              const pct = statusCounts.total > 0 ? Math.round((count / statusCounts.total) * 100) : 0;
+              const ativo = statusFiltro === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setStatusFiltro(ativo ? "" : key)}
+                  className={cn(
+                    "rounded-xl border p-3 text-left transition-all",
+                    bg, border,
+                    ativo ? "ring-2 ring-offset-1 ring-current shadow-sm" : "hover:shadow-sm hover:border-opacity-80",
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className={cn("text-2xl font-bold leading-none", num)}>{count}</p>
+                      <p className={cn("text-xs font-medium mt-1", sub)}>{label}</p>
+                    </div>
+                    <span className={cn("text-lg opacity-60", num)}>{icon}</span>
+                  </div>
+                  <div className="mt-2.5 h-1 rounded-full bg-black/5 overflow-hidden">
+                    <div
+                      className={cn("h-full rounded-full transition-all", num.replace("text-", "bg-"))}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <p className={cn("text-[10px] mt-1 tabular-nums", sub)}>{pct}% do total</p>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         <div className="flex flex-1 min-h-0 gap-4 mt-4">
           {/* ── Left: Event List ─────────────────────────────────────────── */}
