@@ -42,3 +42,22 @@ async def get_db() -> AsyncSession:
 async def create_tables():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Adiciona colunas que podem não existir em DBs antigos (ALTER TABLE é idempotente no PG via DO block)
+        if not _is_sqlite:
+            await conn.execute(__import__("sqlalchemy").text("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='contratos_docente' AND column_name='eventos'
+                    ) THEN
+                        ALTER TABLE contratos_docente ADD COLUMN eventos JSONB;
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='contratos_docente' AND column_name='descricao'
+                    ) THEN
+                        ALTER TABLE contratos_docente ADD COLUMN descricao TEXT;
+                    END IF;
+                END $$;
+            """))
