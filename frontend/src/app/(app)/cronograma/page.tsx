@@ -926,10 +926,14 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
         />
       )}
 
-      {modalAddAula && eventoFiltro && (
+      {modalAddAula && eventoFiltro && (() => {
+        const evObj = (todosEventos as any[]).find((e: any) => String(e.id) === eventoFiltro);
+        return (
         <AulaManualModal
           eventoId={+eventoFiltro}
           data={modalAddAula}
+          horarioInicio={evObj?.horario_inicio ?? null}
+          horarioFim={evObj?.horario_fim ?? null}
           onClose={() => setModalAddAula(null)}
           onSaved={() => {
             qc.invalidateQueries({ queryKey: ["cronograma-global"] });
@@ -937,7 +941,8 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
             setModalAddAula(null);
           }}
         />
-      )}
+        );
+      })()}
 
       {modalCalendarioAberto && eventoFiltro && (
         <CalendarioImpressaoModal

@@ -2206,6 +2206,8 @@ export default function EventosPage() {
         <AulaManualModal
           eventoId={eventoSelecionado.id}
           data={aulaManualData}
+          horarioInicio={eventoSelecionado.horario_inicio ?? null}
+          horarioFim={eventoSelecionado.horario_fim ?? null}
           onClose={() => setAulaManualData(null)}
           onSaved={() => {
             setAulaManualData(null);

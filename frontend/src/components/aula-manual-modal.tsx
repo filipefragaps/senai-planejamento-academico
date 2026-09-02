@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { planejamentoApi, professoresApi } from "@/lib/api";
 import { X, Loader2, Plus, AlertCircle, CalendarPlus, CalendarRange, CheckCircle2 } from "lucide-react";
@@ -9,16 +9,19 @@ import { cn } from "@/lib/utils";
 interface Props {
   eventoId: number;
   data: string; // YYYY-MM-DD
+  horarioInicio?: string | null; // "HH:MM" do evento
+  horarioFim?: string | null;    // "HH:MM" do evento
   onClose: () => void;
   onSaved: () => void;
 }
 
-export function AulaManualModal({ eventoId, data, onClose, onSaved }: Props) {
+export function AulaManualModal({ eventoId, data, horarioInicio, horarioFim, onClose, onSaved }: Props) {
   const [ucId, setUcId] = useState<number | "">("");
   const [professorId, setProfessorId] = useState<number | "">("");
   const [erro, setErro] = useState<string | null>(null);
   const [resultado, setResultado] = useState<{ aulas_criadas: number; uc_nome: string } | null>(null);
-  const [qtdOverride, setQtdOverride] = useState<string>("");
+  const [horaIni, setHoraIni] = useState<string>(horarioInicio ?? "");
+  const [horaFim, setHoraFim] = useState<string>(horarioFim ?? "");
 
   const { data: pendentes = [], isLoading: loadingUCs } = useQuery({
 
@@ -35,11 +38,21 @@ export function AulaManualModal({ eventoId, data, onClose, onSaved }: Props) {
   const todasUCs = pendentes as any[];
   const ucSelecionadaPreview = ucId !== "" ? todasUCs.find((u: any) => u.uc_id === ucId) : null;
 
-  useEffect(() => {
-    if (ucSelecionadaPreview) {
-      setQtdOverride(String(ucSelecionadaPreview.aulas_faltando));
-    }
-  }, [ucId]);
+  // Cálculo reativo: quantidade de aulas com base no horário informado
+  function parseHHMM(t: string): number | null {
+    const m = t.match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return null;
+    return parseInt(m[1]) * 60 + parseInt(m[2]);
+  }
+  const minIni = parseHHMM(horaIni);
+  const minFim = parseHHMM(horaFim);
+  const horas_por_aula = minIni !== null && minFim !== null && minFim > minIni
+    ? (minFim - minIni) / 60
+    : null;
+  const cargaHoraria = ucSelecionadaPreview?.carga_horaria ?? null;
+  const qtdCalculada = horas_por_aula && cargaHoraria
+    ? Math.ceil(cargaHoraria / horas_por_aula)
+    : null;
 
   // Adiciona UMA aula manual
   const mutationUma = useMutation({
@@ -56,15 +69,13 @@ export function AulaManualModal({ eventoId, data, onClose, onSaved }: Props) {
 
   // Agenda TODAS as pendentes da UC a partir desta data
   const mutationTodas = useMutation({
-    mutationFn: () => {
-      const qtd = parseInt(qtdOverride, 10);
-      return planejamentoApi.agendarUCPendente(eventoId, {
+    mutationFn: () =>
+      planejamentoApi.agendarUCPendente(eventoId, {
         uc_id: ucId as number,
         data_inicio: data,
         professor_id: professorId || null,
-        quantidade: !isNaN(qtd) && qtd > 0 ? qtd : undefined,
-      });
-    },
+        quantidade: qtdCalculada ?? undefined,
+      }),
     onSuccess: (res: any) => {
       if (res.aulas_criadas === 0) {
         setErro(res.aviso ?? "Nenhuma aula criada");
@@ -86,8 +97,6 @@ export function AulaManualModal({ eventoId, data, onClose, onSaved }: Props) {
     .sort((a, b) => b.aulas_faltando - a.aulas_faltando);
   const completas = todas.filter((u) => u.aulas_faltando <= 0);
   const ucSelecionada = ucSelecionadaPreview;
-  const qtdNum = parseInt(qtdOverride, 10);
-  const qtdValida = !isNaN(qtdNum) && qtdNum > 0;
   const isPending = mutationUma.isPending || mutationTodas.isPending;
 
   // Tela de sucesso após agendar todas
@@ -224,7 +233,7 @@ export function AulaManualModal({ eventoId, data, onClose, onSaved }: Props) {
 
           {/* Banner agendar todas — só aparece quando há pendências */}
           {ucSelecionada && ucSelecionada.aulas_faltando > 0 && (
-            <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3">
+            <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 space-y-2.5">
               <div className="flex items-start gap-2.5">
                 <CalendarRange className="h-4 w-4 text-indigo-500 mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
@@ -232,32 +241,59 @@ export function AulaManualModal({ eventoId, data, onClose, onSaved }: Props) {
                     Agendar aulas pendentes a partir desta data
                   </p>
                   <p className="text-[11px] text-indigo-600 mt-0.5 leading-snug">
-                    Cálculo automático: {ucSelecionada.aulas_faltando} aula{ucSelecionada.aulas_faltando !== 1 ? "s" : ""} restante{ucSelecionada.aulas_faltando !== 1 ? "s" : ""}. Ajuste se necessário.
+                    UC de <strong>{ucSelecionada.carga_horaria}h</strong>. Confirme o horário da aula para calcular a quantidade automaticamente.
                   </p>
                 </div>
               </div>
 
-              {/* Quantidade editável */}
-              <div className="mt-2.5 flex items-center gap-2">
-                <label className="text-[11px] font-semibold text-indigo-700 whitespace-nowrap">
-                  Quantidade de aulas:
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={999}
-                  value={qtdOverride}
-                  onChange={(e) => setQtdOverride(e.target.value)}
-                  className="w-20 rounded-lg border border-indigo-300 bg-white px-2 py-1 text-sm font-bold text-indigo-800 text-center focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                />
+              {/* Horário da aula */}
+              <div className="flex items-center gap-3">
+                <div className="flex-1">
+                  <label className="block text-[10px] font-semibold text-indigo-700 uppercase tracking-wide mb-1">
+                    Início
+                  </label>
+                  <input
+                    type="time"
+                    value={horaIni}
+                    onChange={(e) => setHoraIni(e.target.value)}
+                    className="w-full rounded-lg border border-indigo-300 bg-white px-2 py-1.5 text-sm font-medium text-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-[10px] font-semibold text-indigo-700 uppercase tracking-wide mb-1">
+                    Fim
+                  </label>
+                  <input
+                    type="time"
+                    value={horaFim}
+                    onChange={(e) => setHoraFim(e.target.value)}
+                    className="w-full rounded-lg border border-indigo-300 bg-white px-2 py-1.5 text-sm font-medium text-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+                <div className="pt-4 text-center min-w-[60px]">
+                  {qtdCalculada !== null ? (
+                    <div>
+                      <p className="text-2xl font-bold text-indigo-700 leading-none">{qtdCalculada}</p>
+                      <p className="text-[10px] text-indigo-500 mt-0.5">aulas</p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-indigo-400">—</p>
+                  )}
+                </div>
               </div>
+
+              {horas_por_aula !== null && (
+                <p className="text-[10px] text-indigo-500">
+                  {horas_por_aula.toFixed(1)}h por aula · {ucSelecionada.carga_horaria}h total → {qtdCalculada} aula{qtdCalculada !== 1 ? "s" : ""}
+                </p>
+              )}
 
               <button
                 onClick={() => { setErro(null); mutationTodas.mutate(); }}
-                disabled={isPending || !qtdValida}
+                disabled={isPending || qtdCalculada === null}
                 className={cn(
-                  "mt-2.5 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-colors",
-                  isPending || !qtdValida
+                  "w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-colors",
+                  isPending || qtdCalculada === null
                     ? "bg-indigo-100 text-indigo-400 cursor-not-allowed"
                     : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm"
                 )}
@@ -265,7 +301,11 @@ export function AulaManualModal({ eventoId, data, onClose, onSaved }: Props) {
                 {mutationTodas.isPending ? (
                   <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Agendando...</>
                 ) : (
-                  <><CalendarRange className="h-3.5 w-3.5" /> Agendar {qtdValida ? qtdNum : "?"} aula{qtdValida && qtdNum === 1 ? "" : "s"} a partir desta data</>
+                  <><CalendarRange className="h-3.5 w-3.5" />
+                    {qtdCalculada !== null
+                      ? `Agendar ${qtdCalculada} aula${qtdCalculada !== 1 ? "s" : ""} a partir desta data`
+                      : "Informe o horário para continuar"}
+                  </>
                 )}
               </button>
             </div>
