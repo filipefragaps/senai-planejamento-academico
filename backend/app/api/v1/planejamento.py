@@ -42,6 +42,55 @@ _DIAS_MAP = {
 def _norm(s: str) -> str:
     return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode().lower().strip()
 
+
+async def _resolver_curso_id(evento: Evento, evento_id: int, db: AsyncSession) -> int | None:
+    """Resolve curso_id de um evento usando cadeia completa de fallbacks."""
+    curso_id = evento.curso_id
+    pasta = None
+
+    if not curso_id and evento.oferta_id:
+        res = await db.execute(
+            select(OfertaCurso.curso_id, OfertaCurso.pasta).where(OfertaCurso.id == evento.oferta_id)
+        )
+        row = res.one_or_none()
+        if row:
+            curso_id, pasta = row[0], row[1]
+
+    if not curso_id and not pasta:
+        res = await db.execute(
+            select(OfertaCurso.curso_id, OfertaCurso.pasta)
+            .where(OfertaCurso.codigo_evento == str(evento_id))
+        )
+        row = res.one_or_none()
+        if row:
+            curso_id, pasta = row[0], row[1]
+
+    if not curso_id and pasta:
+        res = await db.execute(select(Curso.id).where(Curso.codigo == pasta))
+        curso_id = res.scalar_one_or_none()
+
+    if not curso_id and " - " in (evento.nome_turma or ""):
+        pasta_from_nome = evento.nome_turma.rsplit(" - ", 1)[-1].strip()
+        if pasta_from_nome:
+            res = await db.execute(select(Curso.id).where(Curso.codigo == pasta_from_nome))
+            curso_id = res.scalar_one_or_none()
+
+    if not curso_id and evento.nome_turma:
+        nome_base = evento.nome_turma.split(" - ")[0].strip()
+        res = await db.execute(select(Curso.id).where(Curso.nome.ilike(f"%{nome_base}%")).limit(1))
+        curso_id = res.scalar_one_or_none()
+
+    if not curso_id:
+        res = await db.execute(
+            select(UnidadeCurricular.curso_id)
+            .join(Aula, Aula.unidade_curricular_id == UnidadeCurricular.id)
+            .where(Aula.evento_id == evento_id, UnidadeCurricular.curso_id.is_not(None))
+            .limit(1)
+        )
+        curso_id = res.scalar_one_or_none()
+
+    return curso_id
+
 def _parsear_dias_semana(texto: str) -> list[int]:
     dias = []
     for parte in re.split(r"[,/\s\-e]+", texto):
@@ -580,68 +629,7 @@ async def listar_ucs_evento(
     if not evento:
         raise HTTPException(status_code=404, detail="Evento não encontrado")
 
-    curso_id = evento.curso_id
-    pasta = None
-
-    # Fallback 1: busca curso_id e pasta pela oferta diretamente vinculada
-    if not curso_id and evento.oferta_id:
-        res_of = await db.execute(
-            select(OfertaCurso.curso_id, OfertaCurso.pasta).where(OfertaCurso.id == evento.oferta_id)
-        )
-        row_of = res_of.one_or_none()
-        if row_of:
-            curso_id = row_of[0]
-            pasta = row_of[1]
-
-    # Fallback 2: busca oferta pelo codigo_evento == str(evento_id) quando oferta_id é null
-    if not curso_id and not pasta:
-        res_of2 = await db.execute(
-            select(OfertaCurso.curso_id, OfertaCurso.pasta)
-            .where(OfertaCurso.codigo_evento == str(evento_id))
-        )
-        row_of2 = res_of2.one_or_none()
-        if row_of2:
-            curso_id = row_of2[0]
-            pasta = row_of2[1]
-
-    # Fallback 3: busca curso pelo código da pasta (ex: "18123")
-    if not curso_id and pasta:
-        res_curso = await db.execute(
-            select(Curso.id).where(Curso.codigo == pasta)
-        )
-        curso_id = res_curso.scalar_one_or_none()
-
-    # Fallback 4: extrai código da pasta do nome_turma ("TÉCNICO EM ELETROMECÂNICA - 18123")
-    # As planilhas têm sempre o nome do curso e a pasta na mesma coluna, separados por " - "
-    if not curso_id and " - " in (evento.nome_turma or ""):
-        pasta_from_nome = evento.nome_turma.rsplit(" - ", 1)[-1].strip()
-        if pasta_from_nome:
-            res_pasta = await db.execute(
-                select(Curso.id).where(Curso.codigo == pasta_from_nome)
-            )
-            curso_id = res_pasta.scalar_one_or_none()
-
-    # Fallback 5: busca por nome base do curso (primeiro segmento antes do " - ")
-    if not curso_id and evento.nome_turma:
-        nome_base = evento.nome_turma.split(" - ")[0].strip()
-        res_nome = await db.execute(
-            select(Curso.id).where(Curso.nome.ilike(f"%{nome_base}%")).limit(1)
-        )
-        curso_id = res_nome.scalar_one_or_none()
-
-    # Fallback 6: infere curso_id pelas UCs já vinculadas a aulas deste evento
-    # (garante resultado mesmo quando nenhum link explícito existe no Evento)
-    if not curso_id:
-        res_uc_aula = await db.execute(
-            select(UnidadeCurricular.curso_id)
-            .join(Aula, Aula.unidade_curricular_id == UnidadeCurricular.id)
-            .where(
-                Aula.evento_id == evento_id,
-                UnidadeCurricular.curso_id.is_not(None),
-            )
-            .limit(1)
-        )
-        curso_id = res_uc_aula.scalar_one_or_none()
+    curso_id = await _resolver_curso_id(evento, evento_id, db)
 
     if not curso_id:
         return []
@@ -761,10 +749,7 @@ async def get_ucs_pendentes(
     else:
         horas_por_aula = 1.0
 
-    curso_id = evento.curso_id
-    if not curso_id and evento.oferta_id:
-        res_of = await db.execute(select(OfertaCurso.curso_id).where(OfertaCurso.id == evento.oferta_id))
-        curso_id = res_of.scalar_one_or_none()
+    curso_id = await _resolver_curso_id(evento, evento_id, db)
 
     if not curso_id:
         return []
