@@ -865,6 +865,133 @@ async def adicionar_aula_manual(
     return _serializar_aula(nova_aula, nome_prof=prof_nome, nome_uc=uc.nome)
 
 
+# ── Agendar UC pendente a partir de uma data ─────────────────────────────────
+
+class AgendarUCRequest(BaseModel):
+    uc_id: int
+    data_inicio: str          # YYYY-MM-DD
+    professor_id: Optional[int] = None
+
+
+@router.post("/agendar-uc/{evento_id}", status_code=201)
+async def agendar_uc_pendente(
+    evento_id: int,
+    body: AgendarUCRequest,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """
+    Gera todas as aulas pendentes de uma UC específica a partir de uma data,
+    respeitando os dias da semana do evento. Útil para reagendar uma UC que
+    foi apagada ou corrigida sem mexer nas demais.
+    """
+    res_ev = await db.execute(select(Evento).where(Evento.id == evento_id))
+    evento = res_ev.scalar_one_or_none()
+    if not evento:
+        raise HTTPException(status_code=404, detail="Evento não encontrado")
+
+    res_uc = await db.execute(select(UnidadeCurricular).where(UnidadeCurricular.id == body.uc_id))
+    uc = res_uc.scalar_one_or_none()
+    if not uc:
+        raise HTTPException(status_code=404, detail="UC não encontrada")
+
+    try:
+        data_inicio = date.fromisoformat(body.data_inicio)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Data inválida — use YYYY-MM-DD")
+
+    # Horas por aula a partir do horário do evento
+    hi, hf = evento.horario_inicio, evento.horario_fim
+    if hi and hf:
+        segundos = (hf.hour * 3600 + hf.minute * 60) - (hi.hour * 3600 + hi.minute * 60)
+        horas_por_aula = max(segundos / 3600, 0.5)
+    else:
+        horas_por_aula = 1.0
+
+    # Quantas aulas já existem para esta UC neste evento
+    res_exist = await db.execute(
+        select(func.count(Aula.id))
+        .where(Aula.evento_id == evento_id, Aula.unidade_curricular_id == body.uc_id, Aula.status != "Cancelada")
+    )
+    ja_agendadas = res_exist.scalar_one() or 0
+
+    necessarias = math.ceil((uc.carga_horaria or 0) / horas_por_aula)
+    faltando = max(necessarias - ja_agendadas, 0)
+
+    if faltando == 0:
+        return {"aulas_criadas": 0, "aviso": "UC já está com todas as aulas agendadas"}
+
+    # Dias do evento (0=seg … 6=dom); se vazio, usa todos os dias úteis
+    dias_evento: list[int] = evento.dias_semana or [0, 1, 2, 3, 4]
+
+    # Datas já ocupadas por QUALQUER aula deste evento (evita sobreposição)
+    res_datas = await db.execute(
+        select(Aula.data).where(Aula.evento_id == evento_id, Aula.status != "Cancelada")
+    )
+    datas_ocupadas = {r[0] for r in res_datas.fetchall()}
+
+    # Próximo número de aula
+    res_max = await db.execute(select(func.max(Aula.numero_aula)).where(Aula.evento_id == evento_id))
+    max_num = res_max.scalar_one_or_none() or 0
+
+    # Turno
+    turno_str = "Manhã"
+    if hi:
+        h = hi.hour
+        turno_str = "Tarde" if 12 <= h < 18 else ("Noite" if h >= 18 else "Manhã")
+
+    # Professor
+    tipo_contrato = None
+    prof_nome = None
+    if body.professor_id:
+        res_prof = await db.execute(select(Professor).where(Professor.id == body.professor_id))
+        prof = res_prof.scalar_one_or_none()
+        if prof:
+            tipo_contrato = prof.tipo
+            prof_nome = prof.nome
+
+    # Gera aulas caminhando para frente a partir de data_inicio
+    from datetime import timedelta
+    criadas = []
+    data_atual = data_inicio
+    limite = data_inicio.replace(year=data_inicio.year + 2)  # teto de 2 anos
+
+    while len(criadas) < faltando and data_atual <= limite:
+        # weekday(): 0=seg … 6=dom  (igual ao padrão do sistema)
+        if data_atual.weekday() in dias_evento and data_atual not in datas_ocupadas:
+            max_num += 1
+            aula = Aula(
+                evento_id=evento_id,
+                unidade_curricular_id=body.uc_id,
+                professor_id=body.professor_id,
+                data=data_atual,
+                horario_inicio=evento.horario_inicio,
+                horario_fim=evento.horario_fim,
+                turno=turno_str,
+                status="Agendada",
+                tipo="Regular",
+                etapa=uc.modulo_etapa,
+                sala=evento.sala,
+                numero_aula=max_num,
+                tipo_contrato=tipo_contrato,
+                alterada_manualmente=False,
+            )
+            db.add(aula)
+            datas_ocupadas.add(data_atual)
+            criadas.append(aula)
+        data_atual += timedelta(days=1)
+
+    await db.commit()
+    for a in criadas:
+        await db.refresh(a)
+
+    return {
+        "aulas_criadas": len(criadas),
+        "uc_nome": uc.nome,
+        "aulas": [_serializar_aula(a, nome_prof=prof_nome, nome_uc=uc.nome) for a in criadas],
+    }
+
+
 # ── Remover Aula ──────────────────────────────────────────────────────────────
 
 @router.delete("/aula/{aula_id}", status_code=204)
