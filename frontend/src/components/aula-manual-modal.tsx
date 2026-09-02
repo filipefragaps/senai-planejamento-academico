@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { planejamentoApi, professoresApi } from "@/lib/api";
 import { X, Loader2, Plus, AlertCircle, CalendarPlus, CalendarRange, CheckCircle2 } from "lucide-react";
@@ -18,8 +18,10 @@ export function AulaManualModal({ eventoId, data, onClose, onSaved }: Props) {
   const [professorId, setProfessorId] = useState<number | "">("");
   const [erro, setErro] = useState<string | null>(null);
   const [resultado, setResultado] = useState<{ aulas_criadas: number; uc_nome: string } | null>(null);
+  const [qtdOverride, setQtdOverride] = useState<string>("");
 
   const { data: pendentes = [], isLoading: loadingUCs } = useQuery({
+
     queryKey: ["pendentes", eventoId],
     queryFn: () => planejamentoApi.pendentes(eventoId),
   });
@@ -29,6 +31,15 @@ export function AulaManualModal({ eventoId, data, onClose, onSaved }: Props) {
     queryFn: () => professoresApi.listar({ ativo: true }),
     staleTime: 300_000,
   });
+
+  const todasUCs = pendentes as any[];
+  const ucSelecionadaPreview = ucId !== "" ? todasUCs.find((u: any) => u.uc_id === ucId) : null;
+
+  useEffect(() => {
+    if (ucSelecionadaPreview) {
+      setQtdOverride(String(ucSelecionadaPreview.aulas_faltando));
+    }
+  }, [ucId]);
 
   // Adiciona UMA aula manual
   const mutationUma = useMutation({
@@ -45,12 +56,15 @@ export function AulaManualModal({ eventoId, data, onClose, onSaved }: Props) {
 
   // Agenda TODAS as pendentes da UC a partir desta data
   const mutationTodas = useMutation({
-    mutationFn: () =>
-      planejamentoApi.agendarUCPendente(eventoId, {
+    mutationFn: () => {
+      const qtd = parseInt(qtdOverride, 10);
+      return planejamentoApi.agendarUCPendente(eventoId, {
         uc_id: ucId as number,
         data_inicio: data,
         professor_id: professorId || null,
-      }),
+        quantidade: !isNaN(qtd) && qtd > 0 ? qtd : undefined,
+      });
+    },
     onSuccess: (res: any) => {
       if (res.aulas_criadas === 0) {
         setErro(res.aviso ?? "Nenhuma aula criada");
@@ -71,7 +85,9 @@ export function AulaManualModal({ eventoId, data, onClose, onSaved }: Props) {
     .filter((u) => u.aulas_faltando > 0)
     .sort((a, b) => b.aulas_faltando - a.aulas_faltando);
   const completas = todas.filter((u) => u.aulas_faltando <= 0);
-  const ucSelecionada = ucId !== "" ? todas.find((u) => u.uc_id === ucId) : null;
+  const ucSelecionada = ucSelecionadaPreview;
+  const qtdNum = parseInt(qtdOverride, 10);
+  const qtdValida = !isNaN(qtdNum) && qtdNum > 0;
   const isPending = mutationUma.isPending || mutationTodas.isPending;
 
   // Tela de sucesso após agendar todas
@@ -213,19 +229,35 @@ export function AulaManualModal({ eventoId, data, onClose, onSaved }: Props) {
                 <CalendarRange className="h-4 w-4 text-indigo-500 mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold text-indigo-800">
-                    Agendar todas as {ucSelecionada.aulas_faltando} aulas pendentes
+                    Agendar aulas pendentes a partir desta data
                   </p>
                   <p className="text-[11px] text-indigo-600 mt-0.5 leading-snug">
-                    Gera as {ucSelecionada.aulas_faltando} aulas restantes a partir desta data, respeitando os dias da semana do evento.
+                    Cálculo automático: {ucSelecionada.aulas_faltando} aula{ucSelecionada.aulas_faltando !== 1 ? "s" : ""} restante{ucSelecionada.aulas_faltando !== 1 ? "s" : ""}. Ajuste se necessário.
                   </p>
                 </div>
               </div>
+
+              {/* Quantidade editável */}
+              <div className="mt-2.5 flex items-center gap-2">
+                <label className="text-[11px] font-semibold text-indigo-700 whitespace-nowrap">
+                  Quantidade de aulas:
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={999}
+                  value={qtdOverride}
+                  onChange={(e) => setQtdOverride(e.target.value)}
+                  className="w-20 rounded-lg border border-indigo-300 bg-white px-2 py-1 text-sm font-bold text-indigo-800 text-center focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+              </div>
+
               <button
                 onClick={() => { setErro(null); mutationTodas.mutate(); }}
-                disabled={isPending}
+                disabled={isPending || !qtdValida}
                 className={cn(
                   "mt-2.5 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-colors",
-                  isPending
+                  isPending || !qtdValida
                     ? "bg-indigo-100 text-indigo-400 cursor-not-allowed"
                     : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm"
                 )}
@@ -233,7 +265,7 @@ export function AulaManualModal({ eventoId, data, onClose, onSaved }: Props) {
                 {mutationTodas.isPending ? (
                   <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Agendando...</>
                 ) : (
-                  <><CalendarRange className="h-3.5 w-3.5" /> Agendar {ucSelecionada.aulas_faltando} aulas a partir desta data</>
+                  <><CalendarRange className="h-3.5 w-3.5" /> Agendar {qtdValida ? qtdNum : "?"} aula{qtdValida && qtdNum === 1 ? "" : "s"} a partir desta data</>
                 )}
               </button>
             </div>

@@ -871,6 +871,7 @@ class AgendarUCRequest(BaseModel):
     uc_id: int
     data_inicio: str          # YYYY-MM-DD
     professor_id: Optional[int] = None
+    quantidade: Optional[int] = None  # sobrescreve o cálculo automático
 
 
 @router.post("/agendar-uc/{evento_id}", status_code=201)
@@ -916,9 +917,9 @@ async def agendar_uc_pendente(
     ja_agendadas = res_exist.scalar_one() or 0
 
     necessarias = math.ceil((uc.carga_horaria or 0) / horas_por_aula)
-    faltando = max(necessarias - ja_agendadas, 0)
+    faltando = body.quantidade if body.quantidade is not None else max(necessarias - ja_agendadas, 0)
 
-    if faltando == 0:
+    if faltando <= 0:
         return {"aulas_criadas": 0, "aviso": "UC já está com todas as aulas agendadas"}
 
     # Dias do evento (0=seg … 6=dom); se vazio, usa todos os dias úteis
