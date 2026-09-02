@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { CronogramaTable, AulaRow } from "@/components/cronograma-table";
 import { AulaEditDrawer } from "@/components/aula-edit-drawer";
+import { AulaManualModal } from "@/components/aula-manual-modal";
 import { PlanejamentoModal, UCParaPlanejar } from "@/components/planejamento-modal";
 import { OtimizacaoGlobalModal } from "@/components/otimizacao-global-modal";
 import { toast } from "sonner";
@@ -154,11 +155,13 @@ interface CalendarioProps {
   eventos?: Evento[];
   eventoAtualId?: number | null;
   onEventoChange?: (ev: Evento | null) => void;
+  // callback para abrir modal de adicionar aula manual num dia
+  onAdicionarAula?: (data: string) => void;
 }
 
 function CalendarioMes({
   mes, ano, aulas, loading, diaSelecionado, onDiaClick, onMes, onAno, onAulaClick,
-  eventos, eventoAtualId, onEventoChange,
+  eventos, eventoAtualId, onEventoChange, onAdicionarAula,
 }: CalendarioProps) {
   const [buscaEvento, setBuscaEvento] = useState("");
   const [areaLocal, setAreaLocal] = useState("");
@@ -411,9 +414,21 @@ function CalendarioMes({
                     {aulasNoDia.length === 0 ? "Nenhuma aula" : `${aulasNoDia.length} aula(s)`}
                   </p>
                 </div>
-                <button onClick={() => onDiaClick(null)} className="p-1.5 rounded-lg hover:bg-blue-500 text-blue-200 hover:text-white transition-colors">
-                  <X className="h-4 w-4" />
-                </button>
+                <div className="flex items-center gap-1.5">
+                  {onAdicionarAula && (
+                    <button
+                      onClick={() => onAdicionarAula(diaSelecionado!)}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-medium transition-colors"
+                      title="Adicionar aula neste dia"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Adicionar aula
+                    </button>
+                  )}
+                  <button onClick={() => onDiaClick(null)} className="p-1.5 rounded-lg hover:bg-blue-500 text-blue-200 hover:text-white transition-colors">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
 
               {aulasNoDia.length === 0 ? (
@@ -1006,6 +1021,7 @@ export default function EventosPage() {
   const [mesCal, setMesCal] = useState(_hoje.getMonth() + 1);
   const [anoCal, setAnoCal] = useState(_hoje.getFullYear());
   const [diaSel, setDiaSel] = useState<string | null>(null);
+  const [aulaManualData, setAulaManualData] = useState<string | null>(null);
 
   // ── Queries ────────────────────────────────────────────────────────────────
 
@@ -1726,6 +1742,7 @@ export default function EventosPage() {
                         }
                         setDiaSel(null);
                       }}
+                      onAdicionarAula={eventoSelecionado ? (data) => setAulaManualData(data) : undefined}
                     />
                   )}
 
@@ -2184,6 +2201,19 @@ export default function EventosPage() {
       </div>
 
       {/* ── Drawers & Modals ─────────────────────────────────────────────────── */}
+
+      {aulaManualData && eventoSelecionado && (
+        <AulaManualModal
+          eventoId={eventoSelecionado.id}
+          data={aulaManualData}
+          onClose={() => setAulaManualData(null)}
+          onSaved={() => {
+            setAulaManualData(null);
+            qc.invalidateQueries({ queryKey: ["cronograma", eventoSelecionado.id] });
+            qc.invalidateQueries({ queryKey: ["pendentes", eventoSelecionado.id] });
+          }}
+        />
+      )}
 
       <AulaEditDrawer
         aula={aulaEditando}
