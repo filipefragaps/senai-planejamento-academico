@@ -44,10 +44,16 @@ def _norm(s: str) -> str:
 
 
 async def _resolver_curso_id(evento: Evento, evento_id: int, db: AsyncSession) -> int | None:
-    """Resolve curso_id de um evento usando cadeia completa de fallbacks."""
+    """
+    Resolve curso_id de um evento usando fallbacks baseados em código/ID.
+    Fallbacks por nome parcial (ilike) foram removidos — causavam associação
+    com a pasta errada quando múltiplos cursos têm nomes similares.
+    Se nenhum fallback resolver, retorna None (pasta não cadastrada).
+    """
     curso_id = evento.curso_id
     pasta = None
 
+    # Fallback 1: via oferta vinculada ao evento
     if not curso_id and evento.oferta_id:
         res = await db.execute(
             select(OfertaCurso.curso_id, OfertaCurso.pasta).where(OfertaCurso.id == evento.oferta_id)
@@ -56,6 +62,7 @@ async def _resolver_curso_id(evento: Evento, evento_id: int, db: AsyncSession) -
         if row:
             curso_id, pasta = row[0], row[1]
 
+    # Fallback 2: oferta cujo codigo_evento bate com o id do evento
     if not curso_id and not pasta:
         res = await db.execute(
             select(OfertaCurso.curso_id, OfertaCurso.pasta)
@@ -65,29 +72,18 @@ async def _resolver_curso_id(evento: Evento, evento_id: int, db: AsyncSession) -
         if row:
             curso_id, pasta = row[0], row[1]
 
+    # Fallback 3: pasta conhecida → busca Curso pelo código exato
     if not curso_id and pasta:
         res = await db.execute(select(Curso.id).where(Curso.codigo == pasta))
         curso_id = res.scalar_one_or_none()
 
+    # Fallback 4: extrai código da pasta do nome_turma ("... - 20157") e busca exato
+    # Só aplica se o sufixo parece um código numérico (evita false positives como "SEDUC")
     if not curso_id and " - " in (evento.nome_turma or ""):
-        pasta_from_nome = evento.nome_turma.rsplit(" - ", 1)[-1].strip()
-        if pasta_from_nome:
-            res = await db.execute(select(Curso.id).where(Curso.codigo == pasta_from_nome))
+        sufixo = evento.nome_turma.rsplit(" - ", 1)[-1].strip()
+        if sufixo and sufixo.isdigit():
+            res = await db.execute(select(Curso.id).where(Curso.codigo == sufixo))
             curso_id = res.scalar_one_or_none()
-
-    if not curso_id and evento.nome_turma:
-        nome_base = evento.nome_turma.split(" - ")[0].strip()
-        res = await db.execute(select(Curso.id).where(Curso.nome.ilike(f"%{nome_base}%")).limit(1))
-        curso_id = res.scalar_one_or_none()
-
-    if not curso_id:
-        res = await db.execute(
-            select(UnidadeCurricular.curso_id)
-            .join(Aula, Aula.unidade_curricular_id == UnidadeCurricular.id)
-            .where(Aula.evento_id == evento_id, UnidadeCurricular.curso_id.is_not(None))
-            .limit(1)
-        )
-        curso_id = res.scalar_one_or_none()
 
     return curso_id
 
