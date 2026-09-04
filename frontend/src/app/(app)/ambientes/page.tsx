@@ -9,6 +9,7 @@ import {
   Plus, Search, X, Trash2, Upload, Download, FlaskConical,
   BookOpen, Layers, DoorOpen, Filter, ChevronDown, Loader2, Tag,
   AlertTriangle, Users, LayoutGrid, List, ChevronLeft, ChevronRight,
+  Zap,
 } from "lucide-react";
 import { AmbienteDrawer } from "@/components/ambiente-drawer";
 import { cn } from "@/lib/utils";
@@ -452,6 +453,7 @@ function GradeOcupacao() {
   const ambientes: any[] = data?.ambientes ?? [];
   const blocos: string[] = data?.blocos ?? [];
   const ocupacoes: any[] = data?.ocupacoes ?? [];
+  const extras: string[] = data?.extras ?? [];
 
   // Índice: ambiente-nome (uppercase) → data → turno → lista de ocupações
   const idx = useMemo(() => {
@@ -475,39 +477,67 @@ function GradeOcupacao() {
 
   function OcupCell({ nomeAmb, iso }: { nomeAmb: string; iso: string }) {
     const byTurno = idx.get(nomeAmb.toUpperCase())?.get(iso);
-    const hasAny = byTurno && [...byTurno.values()].some((arr) => arr.length > 0);
     return (
-      <td className="border border-gray-200 p-0 align-top min-w-[110px]">
+      <td className="border border-gray-200 p-0 align-top min-w-[120px]">
         <div className="divide-y divide-gray-100">
           {TURNOS.map((turno) => {
             const aulas = byTurno?.get(turno) ?? [];
             const s = TURNO_STYLE[turno];
+            const choque = aulas.length > 1;
+
             if (aulas.length === 0) {
               return (
-                <div key={turno} className="px-1.5 py-1 flex items-center gap-1 h-[36px]">
-                  <span className={cn("w-1.5 h-1.5 rounded-full shrink-0 opacity-30", s.dot)} />
-                  <span className="text-[10px] text-gray-300">{turno[0]}</span>
+                <div key={turno} className="px-1.5 py-1 flex items-center gap-1 h-[34px]">
+                  <span className={cn("w-1.5 h-1.5 rounded-full shrink-0 opacity-20", s.dot)} />
+                  <span className="text-[10px] text-gray-200">{turno[0]}</span>
                 </div>
               );
             }
+
             return (
-              <div key={turno} className={cn("px-1.5 py-1 min-h-[36px]", s.bg)}>
+              <div
+                key={turno}
+                className={cn(
+                  "px-1.5 py-1 min-h-[34px]",
+                  choque ? "bg-red-50 border-l-2 border-red-400" : s.bg
+                )}
+              >
                 <div className="flex items-center gap-1 mb-0.5">
-                  <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", s.dot)} />
-                  <span className={cn("text-[9px] font-bold uppercase tracking-wide", s.text)}>{turno}</span>
+                  {choque ? (
+                    <Zap className="w-2.5 h-2.5 text-red-500 shrink-0" />
+                  ) : (
+                    <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", s.dot)} />
+                  )}
+                  <span className={cn(
+                    "text-[9px] font-bold uppercase tracking-wide",
+                    choque ? "text-red-600" : s.text
+                  )}>
+                    {choque ? `CHOQUE (${aulas.length})` : turno}
+                  </span>
                 </div>
                 {aulas.map((a: any, i: number) => (
-                  <div key={i} className="mb-0.5 last:mb-0">
-                    <p className={cn("text-[10px] font-semibold leading-tight truncate max-w-[100px]", s.text)} title={a.evento_nome ?? ""}>
+                  <div
+                    key={i}
+                    className={cn(
+                      "mb-1 last:mb-0 pl-1",
+                      choque && i > 0 && "mt-1 pt-1 border-t border-red-200"
+                    )}
+                  >
+                    <p
+                      className={cn("text-[10px] font-semibold leading-tight truncate max-w-[108px]", choque ? "text-red-700" : s.text)}
+                      title={a.evento_nome ?? ""}
+                    >
                       {a.evento_nome ?? "—"}
                     </p>
                     {a.uc_nome && (
-                      <p className="text-[9px] text-gray-500 leading-tight truncate max-w-[100px]" title={a.uc_nome}>
+                      <p className="text-[9px] text-gray-500 leading-tight truncate max-w-[108px]" title={a.uc_nome}>
                         {a.uc_nome}
                       </p>
                     )}
                     {a.horario_inicio && (
-                      <p className="text-[9px] text-gray-400">{a.horario_inicio}{a.horario_fim ? `–${a.horario_fim}` : ""}</p>
+                      <p className={cn("text-[9px]", choque ? "text-red-400 font-semibold" : "text-gray-400")}>
+                        {a.horario_inicio}{a.horario_fim ? `–${a.horario_fim}` : ""}
+                      </p>
                     )}
                   </div>
                 ))}
@@ -567,6 +597,9 @@ function GradeOcupacao() {
               </span>
             );
           })}
+          <span className="flex items-center gap-1 text-xs text-red-500 font-medium">
+            <Zap className="w-3 h-3" /> Choque
+          </span>
         </div>
       </div>
 
@@ -634,8 +667,26 @@ function GradeOcupacao() {
               </tbody>
             </table>
           </div>
-          <div className="px-4 py-2 border-t bg-gray-50 text-xs text-gray-400">
-            {ambientes.length} ambiente(s) · {ocupacoes.length} aula(s) no período
+          <div className="px-4 py-2 border-t bg-gray-50 text-xs text-gray-400 flex items-center gap-4 flex-wrap">
+            <span>{ambientes.length} ambiente(s) · {ocupacoes.length} aula(s) no período</span>
+            {(() => {
+              const choques = ocupacoes.reduce((acc: Record<string, number>, o: any) => {
+                const k = `${o.ambiente}|${o.data}|${o.turno}`;
+                acc[k] = (acc[k] ?? 0) + 1;
+                return acc;
+              }, {});
+              const total = Object.values(choques).filter((v) => (v as number) > 1).length;
+              return total > 0 ? (
+                <span className="flex items-center gap-1 text-red-500 font-semibold">
+                  <Zap className="h-3 w-3" /> {total} choque(s) de sala
+                </span>
+              ) : null;
+            })()}
+            {extras.length > 0 && (
+              <span className="text-amber-600">
+                {extras.length} sala(s) com aulas mas sem cadastro: {extras.slice(0, 3).join(", ")}{extras.length > 3 ? "…" : ""}
+              </span>
+            )}
           </div>
         </div>
       )}

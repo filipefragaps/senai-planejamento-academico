@@ -131,7 +131,7 @@ async def ocupacao(
     from app.models.evento import Evento
     from app.models.professor import Professor
     from app.models.unidade_curricular import UnidadeCurricular
-    from sqlalchemy import text
+    from sqlalchemy import case, text as _text
 
     try:
         d_ini = _date.fromisoformat(data_inicio)
@@ -146,10 +146,23 @@ async def ocupacao(
     res_amb = await db.execute(q_amb.order_by(Ambiente.bloco, Ambiente.nome))
     ambientes_db = res_amb.scalars().all()
 
-    # Aulas do período com sala preenchida
+    # Nomes/siglas cadastrados para cruzar com aulas (case-insensitive)
+    # Mapa: uppercase → nome canônico do ambiente
+    nome_map: dict[str, str] = {}
+    for a in ambientes_db:
+        nome_map[a.nome.upper()] = a.nome
+        if a.sigla:
+            nome_map[a.sigla.upper()] = a.nome
+
+    # Campo de sala efetivo: COALESCE(ambiente, sala) — cobre importações antigas
+    sala_col = case(
+        (Aula.ambiente.is_not(None), Aula.ambiente),
+        else_=Aula.sala,
+    ).label("sala_efetiva")
+
     res_aulas = await db.execute(
         select(
-            Aula.ambiente,
+            sala_col,
             Aula.data,
             Aula.turno,
             Aula.horario_inicio,
@@ -167,20 +180,22 @@ async def ocupacao(
                 Aula.data >= d_ini,
                 Aula.data <= d_fim,
                 Aula.status != "Cancelada",
-                Aula.ambiente.is_not(None),
-                Aula.ambiente != "",
+                or_(
+                    and_(Aula.ambiente.is_not(None), Aula.ambiente != ""),
+                    and_(Aula.sala.is_not(None), Aula.sala != ""),
+                ),
             )
         )
-        .order_by(Aula.data, Aula.ambiente, Aula.horario_inicio)
+        .order_by(Aula.data, sala_col, Aula.horario_inicio)
     )
     rows = res_aulas.fetchall()
 
     # Blocos disponíveis (para filtro no front)
     blocos = sorted({a.bloco for a in ambientes_db if a.bloco})
 
-    # Ambientes citados em aulas mas não cadastrados (aparecem como extras)
+    # Ambientes citados em aulas mas não cadastrados
     nomes_cadastrados = {a.nome.upper() for a in ambientes_db}
-    nomes_aulas = {(r.ambiente or "").upper() for r in rows if r.ambiente}
+    nomes_aulas = {(r.sala_efetiva or "").upper() for r in rows if r.sala_efetiva}
     extras = sorted(nomes_aulas - nomes_cadastrados)
 
     def _turno_from_hora(h) -> str:
@@ -190,9 +205,12 @@ async def ocupacao(
 
     ocupacoes: list[dict] = []
     for r in rows:
+        sala_raw = r.sala_efetiva or ""
+        # Resolve para o nome canônico do ambiente cadastrado (se existir)
+        nome_ambiente = nome_map.get(sala_raw.upper(), sala_raw)
         turno = r.turno or _turno_from_hora(r.horario_inicio)
         ocupacoes.append({
-            "ambiente": r.ambiente,
+            "ambiente": nome_ambiente,
             "data": r.data.isoformat() if r.data else None,
             "turno": turno,
             "horario_inicio": str(r.horario_inicio)[:5] if r.horario_inicio else None,
