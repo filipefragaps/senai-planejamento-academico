@@ -121,10 +121,15 @@ async def debug_aulas(
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    """Debug: retorna campos de sala/ambiente de todas as aulas no período."""
+    """
+    Debug completo: mostra valores brutos do banco, siglas cadastradas,
+    e o resultado da resolução para cada valor distinto encontrado.
+    """
+    import re as _re
     from datetime import date as _date
     from app.models.aula import Aula
     from app.models.evento import Evento
+    from sqlalchemy import func as _func
 
     try:
         d_ini = _date.fromisoformat(data_inicio)
@@ -132,6 +137,12 @@ async def debug_aulas(
     except ValueError:
         raise HTTPException(status_code=422, detail="Datas inválidas")
 
+    # Ambientes cadastrados
+    res_amb = await db.execute(select(Ambiente).where(Ambiente.ativo == True))
+    ambs = res_amb.scalars().all()
+    siglas_cadastradas = {(a.sigla or a.nome): {"sigla": a.sigla, "nome": a.nome, "bloco": a.bloco} for a in ambs}
+
+    # Aulas no período
     res = await db.execute(
         select(
             Aula.id,
@@ -147,32 +158,48 @@ async def debug_aulas(
             Evento.professor_id.label("evento_prof_id"),
         )
         .join(Evento, Aula.evento_id == Evento.id)
-        .where(
-            and_(
-                Aula.data >= d_ini,
-                Aula.data <= d_fim,
-            )
-        )
-        .order_by(Aula.data, Aula.id)
-        .limit(200)
+        .where(and_(Aula.data >= d_ini, Aula.data <= d_fim))
+        .order_by(Aula.fonte, Aula.data, Aula.id)
+        .limit(500)
     )
     rows = res.fetchall()
-    return [
-        {
-            "aula_id": r.id,
-            "data": r.data.isoformat() if r.data else None,
-            "aula_ambiente": r.ambiente,
-            "aula_sala": r.sala,
-            "status": r.status,
-            "professor_id": r.professor_id,
-            "fonte": r.fonte,
-            "evento_id": r.evento_id,
-            "evento_nome": r.nome_turma,
-            "evento_sala": r.evento_sala,
-            "evento_prof_id": r.evento_prof_id,
-        }
-        for r in rows
-    ]
+
+    # Valores brutos distintos e sua origem (COALESCE)
+    distinctos: dict[str, dict] = {}
+    for r in rows:
+        raw = r.ambiente or r.sala or r.evento_sala or ""
+        if not raw:
+            continue
+        if raw not in distinctos:
+            distinctos[raw] = {
+                "raw": raw,
+                "fonte": r.fonte,
+                "count": 0,
+                "professor_id_nulo": 0,
+            }
+        distinctos[raw]["count"] += 1
+        if r.professor_id is None:
+            distinctos[raw]["professor_id_nulo"] += 1
+
+    return {
+        "siglas_cadastradas": list(siglas_cadastradas.keys()),
+        "valores_brutos_distintos": sorted(distinctos.values(), key=lambda x: x["raw"]),
+        "aulas": [
+            {
+                "aula_id": r.id,
+                "data": r.data.isoformat() if r.data else None,
+                "fonte": r.fonte,
+                "aula_ambiente": r.ambiente,
+                "aula_sala": r.sala,
+                "evento_sala": r.evento_sala,
+                "sala_efetiva": r.ambiente or r.sala or r.evento_sala,
+                "professor_id": r.professor_id,
+                "evento_prof_id": r.evento_prof_id,
+                "evento_nome": r.nome_turma,
+            }
+            for r in rows
+        ],
+    }
 
 
 @router.get("/ocupacao")

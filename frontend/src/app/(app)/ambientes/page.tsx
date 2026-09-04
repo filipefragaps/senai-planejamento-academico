@@ -440,7 +440,7 @@ function GradeOcupacao() {
   const today = new Date();
   const [weekStart, setWeekStart] = useState(() => weekMonday(today));
   const [filtroBloco, setFiltroBloco] = useState<string>("");
-  const [debugData, setDebugData] = useState<any[] | null>(null);
+  const [debugData, setDebugData] = useState<any | null>(null);
   const [debugLoading, setDebugLoading] = useState(false);
 
   const weekEnd = addDays(weekStart, 5); // Mon→Sat
@@ -720,53 +720,90 @@ function GradeOcupacao() {
 
       {/* Painel de diagnóstico */}
       {debugData !== null && (
-        <div className="mt-4 border rounded-lg bg-white p-4 text-xs">
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-semibold text-gray-700">Diagnóstico — aulas no período ({debugData.length})</span>
+        <div className="mt-4 border rounded-lg bg-white p-4 text-xs space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-gray-700">Diagnóstico de Ambientes e Professores</span>
             <button className="text-gray-400 hover:text-gray-600" onClick={() => setDebugData(null)}>✕ fechar</button>
           </div>
-          {debugData.length === 0 ? (
-            <p className="text-gray-400">Nenhuma aula encontrada neste período.</p>
-          ) : (
+
+          {/* Valores brutos distintos vs siglas cadastradas */}
+          <div>
+            <p className="font-semibold text-gray-600 mb-1">
+              Valores brutos no banco ({(debugData.valores_brutos_distintos ?? []).length} distintos) vs siglas cadastradas
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[10px] border-collapse">
+                <thead>
+                  <tr className="bg-gray-100 text-gray-500">
+                    <th className="border px-2 py-1 text-left">Valor em aula.ambiente (banco)</th>
+                    <th className="border px-2 py-1 text-left">Fonte</th>
+                    <th className="border px-2 py-1 text-left">Qtd aulas</th>
+                    <th className="border px-2 py-1 text-left">Prof. id nulo</th>
+                    <th className="border px-2 py-1 text-left">Sigla cadastrada correspondente?</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(debugData.valores_brutos_distintos ?? []).map((v: any) => {
+                    const siglas: string[] = debugData.siglas_cadastradas ?? [];
+                    const match = siglas.find((s: string) => s.toUpperCase() === (v.raw || "").toUpperCase());
+                    return (
+                      <tr key={v.raw} className={match ? "hover:bg-gray-50" : "bg-red-50"}>
+                        <td className="border px-2 py-0.5 font-mono text-blue-700">{v.raw || <span className="text-red-400">null</span>}</td>
+                        <td className="border px-2 py-0.5">{v.fonte ?? "—"}</td>
+                        <td className="border px-2 py-0.5 text-center">{v.count}</td>
+                        <td className="border px-2 py-0.5 text-center">{v.professor_id_nulo > 0 ? <span className="text-red-500">{v.professor_id_nulo}</span> : "ok"}</td>
+                        <td className="border px-2 py-0.5">{match ? <span className="text-green-600">✓ {match}</span> : <span className="text-red-500">✗ SEM MATCH</span>}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-gray-400 mt-1">Linhas vermelhas = valor não encontrado em nenhuma sigla cadastrada</p>
+          </div>
+
+          {/* Siglas cadastradas */}
+          <div>
+            <p className="font-semibold text-gray-600 mb-1">Siglas cadastradas ({(debugData.siglas_cadastradas ?? []).length})</p>
+            <div className="flex flex-wrap gap-1">
+              {(debugData.siglas_cadastradas ?? []).map((s: string) => (
+                <span key={s} className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-mono">{s}</span>
+              ))}
+            </div>
+          </div>
+
+          {/* Aulas individuais */}
+          <div>
+            <p className="font-semibold text-gray-600 mb-1">Aulas individuais ({(debugData.aulas ?? []).length})</p>
             <div className="overflow-x-auto">
               <table className="w-full text-[10px] border-collapse">
                 <thead>
                   <tr className="bg-gray-100 text-gray-500">
                     <th className="border px-2 py-1 text-left">ID</th>
                     <th className="border px-2 py-1 text-left">Data</th>
-                    <th className="border px-2 py-1 text-left">Evento</th>
+                    <th className="border px-2 py-1 text-left">Fonte</th>
                     <th className="border px-2 py-1 text-left">aula.ambiente</th>
-                    <th className="border px-2 py-1 text-left">aula.sala</th>
-                    <th className="border px-2 py-1 text-left">evento.sala</th>
+                    <th className="border px-2 py-1 text-left">sala_efetiva</th>
                     <th className="border px-2 py-1 text-left">prof_id</th>
-                    <th className="border px-2 py-1 text-left">fonte</th>
-                    <th className="border px-2 py-1 text-left">status</th>
+                    <th className="border px-2 py-1 text-left">evt_prof</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {debugData.slice(0, 50).map((r: any) => (
-                    <tr key={r.aula_id} className={
-                      !r.aula_ambiente && !r.aula_sala && !r.evento_sala
-                        ? "bg-red-50"
-                        : "hover:bg-gray-50"
-                    }>
+                  {(debugData.aulas ?? []).slice(0, 80).map((r: any) => (
+                    <tr key={r.aula_id} className={!r.sala_efetiva ? "bg-red-50" : "hover:bg-gray-50"}>
                       <td className="border px-2 py-0.5 font-mono">{r.aula_id}</td>
                       <td className="border px-2 py-0.5">{r.data}</td>
-                      <td className="border px-2 py-0.5 max-w-[120px] truncate" title={r.evento_nome}>{r.evento_nome}</td>
-                      <td className="border px-2 py-0.5 text-blue-700">{r.aula_ambiente ?? <span className="text-red-400">null</span>}</td>
-                      <td className="border px-2 py-0.5 text-green-700">{r.aula_sala ?? <span className="text-red-400">null</span>}</td>
-                      <td className="border px-2 py-0.5 text-purple-700">{r.evento_sala ?? <span className="text-red-400">null</span>}</td>
-                      <td className="border px-2 py-0.5">{r.professor_id ?? "—"}</td>
                       <td className="border px-2 py-0.5">{r.fonte ?? "—"}</td>
-                      <td className="border px-2 py-0.5">{r.status}</td>
+                      <td className="border px-2 py-0.5 text-blue-700 font-mono">{r.aula_ambiente ?? <span className="text-gray-300">null</span>}</td>
+                      <td className="border px-2 py-0.5 text-green-700 font-mono">{r.sala_efetiva ?? <span className="text-red-400">null</span>}</td>
+                      <td className="border px-2 py-0.5">{r.professor_id ?? <span className="text-red-400">null</span>}</td>
+                      <td className="border px-2 py-0.5">{r.evento_prof_id ?? "—"}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              {debugData.length > 50 && <p className="text-gray-400 mt-1">…e mais {debugData.length - 50} aulas</p>}
-              <p className="mt-2 text-gray-400">Linhas em vermelho = sem nenhuma sala definida (não aparecem na grade)</p>
             </div>
-          )}
+          </div>
         </div>
       )}
     </div>
