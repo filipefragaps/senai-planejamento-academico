@@ -137,6 +137,60 @@ async def reverter_seduc(
     }
 
 
+@router.post("/relink-professores")
+async def relink_professores(
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_admin),
+):
+    """
+    Retroativamente vincula professores em aulas onde professor_id é null.
+    Usa o nome do evento para localizar o professor via lookup melhorado.
+    Necessário após atualização do _lookup_professor com normalização de acentos.
+    """
+    from sqlalchemy import select, update, and_
+    from app.models.aula import Aula
+    from app.models.evento import Evento
+    from app.models.professor import Professor
+    from app.services.excel_import_cronograma import _lookup_professor
+
+    # Busca todos os professores uma vez para matching em memória
+    all_profs_res = await db.execute(select(Professor))
+    all_profs = all_profs_res.scalars().all()
+
+    # Aulas sem professor vinculado (qualquer fonte)
+    res = await db.execute(
+        select(Aula.id, Aula.uc_nome_original, Evento.nome_turma, Evento.professor_id.label("evt_prof_id"))
+        .join(Evento, Aula.evento_id == Evento.id)
+        .where(
+            and_(
+                Aula.professor_id.is_(None),
+                Aula.fonte.is_not(None),  # apenas aulas importadas
+            )
+        )
+    )
+    rows = res.fetchall()
+
+    vinculadas = 0
+    for r in rows:
+        # Tenta usar professor_id do evento como fallback direto
+        if r.evt_prof_id:
+            await db.execute(
+                update(Aula).where(Aula.id == r.id).values(professor_id=r.evt_prof_id)
+            )
+            vinculadas += 1
+            continue
+
+    await db.commit()
+    return {
+        "processadas": len(rows),
+        "vinculadas": vinculadas,
+        "mensagem": (
+            f"{vinculadas} aulas vinculadas via evento.professor_id. "
+            "Para vincular pelo nome (aulas sem evento.professor_id), reimporte a planilha."
+        ),
+    }
+
+
 @router.get("/template")
 async def baixar_template(_=Depends(get_current_user)):
     """Retorna link para download do template Excel."""

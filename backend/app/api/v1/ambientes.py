@@ -207,44 +207,53 @@ async def ocupacao(
     res_amb = await db.execute(q_amb.order_by(Ambiente.bloco, Ambiente.nome))
     ambientes_db = res_amb.scalars().all()
 
-    # Mapa de resolução: chave uppercase → nome canônico do ambiente cadastrado
-    nome_map: dict[str, str] = {}
-    sigla_map: dict[str, str] = {}  # sigla.upper() → nome canônico
-    for a in ambientes_db:
-        nome_map[a.nome.upper()] = a.nome
-        # Normalizado: sem espaços e sem hífens (ex: "BL 01-1" == "BL011")
-        nome_norm = a.nome.upper().replace(" ", "").replace("-", "")
-        nome_map[nome_norm] = a.nome
-        if a.sigla:
-            nome_map[a.sigla.upper()] = a.nome
-            sigla_map[a.sigla.upper()] = a.nome
-        # Sufixo do nome após " - " (ex: "BL 01 - CAD/CAM/CAE" → "CAD/CAM/CAE")
-        # Permite casar quando a planilha importa apenas o trecho final do nome
-        if " - " in a.nome:
-            sufixo_nome = a.nome.rsplit(" - ", 1)[-1].strip().upper()
-            nome_map.setdefault(sufixo_nome, a.nome)
+    import re as _re
 
-    def _resolve_nome(sala_raw: str) -> str:
-        """Resolve a string bruta de sala para o nome canônico do ambiente cadastrado."""
-        if not sala_raw:
-            return sala_raw
-        key = sala_raw.upper().strip()
-        # 1. Correspondência exata (nome completo ou sigla ou sufixo já indexado)
-        if key in nome_map:
-            return nome_map[key]
-        # 2. Normalizado: sem espaços e sem hífens
+    def _strip_bloco(s: str) -> str:
+        """Remove o prefixo de bloco ('BL 01 - ', 'BL1-', etc.) e retorna o sufixo em maiúsculas."""
+        s = s.strip()
+        m = _re.match(r'^(?:BL(?:OCO)?\s*0*\d+\s*[-–]?\s*)', s, _re.IGNORECASE)
+        return s[m.end():].strip().upper() if m else s.upper()
+
+    # Mapas de resolução: todos apontam para o identificador canônico (sigla ou nome)
+    # O identificador canônico é o que o frontend usa como chave (amb.sigla ?? amb.nome)
+    _exact: dict[str, str] = {}   # chave → identificador canônico
+    _suf: dict[str, str] = {}     # sufixo-de-bloco → identificador canônico
+
+    for a in ambientes_db:
+        canon = a.sigla or a.nome  # identificador canônico
+        canon_u = canon.upper()
+        # Sigla exata
+        if a.sigla:
+            _exact[a.sigla.upper()] = canon
+        # Nome exato e normalizado
+        _exact[a.nome.upper()] = canon
+        _exact[a.nome.upper().replace(" ", "").replace("-", "")] = canon
+        # Sufixo do bloco para cada identificador
+        for ident in filter(None, [a.sigla, a.nome]):
+            suf = _strip_bloco(ident)
+            if suf:
+                _suf.setdefault(suf, canon)
+
+    def _resolve_sigla(raw: str) -> str:
+        """Resolve string bruta → identificador canônico do ambiente (sigla ou nome)."""
+        if not raw:
+            return raw
+        s = raw.strip()
+        key = s.upper()
+        # 1. Match exato (sigla ou nome cadastrado)
+        if key in _exact:
+            return _exact[key]
+        # 2. Normalizado sem espaços/hífens
         norm = key.replace(" ", "").replace("-", "")
-        if norm in nome_map:
-            return nome_map[norm]
-        # 3. Sufixo após " - " bate na sigla ou no mapa geral
-        if " - " in sala_raw:
-            suffix = sala_raw.rsplit(" - ", 1)[-1].strip().upper()
-            if suffix in sigla_map:
-                return sigla_map[suffix]
-            if suffix in nome_map:
-                return nome_map[suffix]
-        # 4. Fallback: retorna a string original (vai aparecer em extras)
-        return sala_raw
+        if norm in _exact:
+            return _exact[norm]
+        # 3. Sufixo do bloco: "BL 01 - CAD/CAM/CAE" → "CAD/CAM/CAE" → "BL1-CAD/CAM/CAE"
+        suf = _strip_bloco(s)
+        if suf and suf in _suf:
+            return _suf[suf]
+        # 4. Fallback: retorna a string original
+        return s
 
     # Trata strings vazias igual a NULL e usa Evento.sala como terceiro fallback
     # para aulas importadas do Excel onde aula.ambiente e aula.sala ficam vazios
@@ -288,11 +297,10 @@ async def ocupacao(
     # Blocos disponíveis (para filtro no front)
     blocos = sorted({a.bloco for a in ambientes_db if a.bloco})
 
-    # Identificadores cadastrados: sigla (preferida) ou nome — o mesmo
-    # formato que aparece na planilha e na lista suspensa do sistema
+    # Extras: valores que não resolvem para nenhum ambiente cadastrado
     ids_cadastrados = {(a.sigla or a.nome).upper() for a in ambientes_db}
-    ids_aulas = {(r.sala_efetiva or "").strip().upper() for r in rows if r.sala_efetiva}
-    extras = sorted(ids_aulas - ids_cadastrados)
+    ids_resolvidos = {_resolve_sigla((r.sala_efetiva or "").strip()).upper() for r in rows if r.sala_efetiva}
+    extras = sorted(ids_resolvidos - ids_cadastrados)
 
     def _turno_from_hora(h) -> str:
         if h is None:
@@ -302,7 +310,7 @@ async def ocupacao(
     ocupacoes: list[dict] = []
     for r in rows:
         sala_raw = (r.sala_efetiva or "").strip()
-        nome_ambiente = sala_raw  # usa a sigla diretamente — o frontend busca por sigla
+        nome_ambiente = _resolve_sigla(sala_raw)  # resolve para o identificador canônico (sigla)
         turno = r.turno or _turno_from_hora(r.horario_inicio)
         ocupacoes.append({
             "ambiente": nome_ambiente,
