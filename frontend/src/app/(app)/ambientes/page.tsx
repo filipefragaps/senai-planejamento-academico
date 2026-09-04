@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ambientesApi, downloadBlob } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import {
   Plus, Search, X, Trash2, Upload, Download, FlaskConical,
   BookOpen, Layers, DoorOpen, Filter, ChevronDown, Loader2, Tag,
-  AlertTriangle, Users,
+  AlertTriangle, Users, LayoutGrid, List, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { AmbienteDrawer } from "@/components/ambiente-drawer";
 import { cn } from "@/lib/utils";
@@ -402,9 +402,254 @@ function ConfirmDeleteLoteModal({
 
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
+// ── GradeOcupacao ─────────────────────────────────────────────────────────────
+
+const TURNOS = ["Manhã", "Tarde", "Noite"] as const;
+type Turno = typeof TURNOS[number];
+
+const TURNO_STYLE: Record<Turno, { bg: string; text: string; dot: string }> = {
+  "Manhã":  { bg: "bg-amber-100",  text: "text-amber-800",  dot: "bg-amber-400"  },
+  "Tarde":  { bg: "bg-sky-100",    text: "text-sky-800",    dot: "bg-sky-400"    },
+  "Noite":  { bg: "bg-indigo-100", text: "text-indigo-800", dot: "bg-indigo-400" },
+};
+
+function weekMonday(d: Date): Date {
+  const day = d.getDay(); // 0=Sun
+  const diff = day === 0 ? -6 : 1 - day;
+  const m = new Date(d);
+  m.setDate(d.getDate() + diff);
+  return m;
+}
+
+function addDays(d: Date, n: number): Date {
+  const r = new Date(d);
+  r.setDate(r.getDate() + n);
+  return r;
+}
+
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function GradeOcupacao() {
+  const today = new Date();
+  const [weekStart, setWeekStart] = useState(() => weekMonday(today));
+  const [filtroBloco, setFiltroBloco] = useState<string>("");
+
+  const weekEnd = addDays(weekStart, 5); // Mon→Sat
+  const dias = Array.from({ length: 6 }, (_, i) => addDays(weekStart, i));
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["ambientes-ocupacao", isoDate(weekStart), filtroBloco],
+    queryFn: () => ambientesApi.ocupacao({
+      data_inicio: isoDate(weekStart),
+      data_fim: isoDate(weekEnd),
+      bloco: filtroBloco || undefined,
+    }),
+    staleTime: 60_000,
+  });
+
+  const ambientes: any[] = data?.ambientes ?? [];
+  const blocos: string[] = data?.blocos ?? [];
+  const ocupacoes: any[] = data?.ocupacoes ?? [];
+
+  // Índice: ambiente-nome (uppercase) → data → turno → lista de ocupações
+  const idx = useMemo(() => {
+    const m = new Map<string, Map<string, Map<string, any[]>>>();
+    for (const o of ocupacoes) {
+      const key = (o.ambiente ?? "").toUpperCase();
+      if (!m.has(key)) m.set(key, new Map());
+      const byDate = m.get(key)!;
+      if (!byDate.has(o.data)) byDate.set(o.data, new Map());
+      const byTurno = byDate.get(o.data)!;
+      const t = o.turno ?? "Manhã";
+      if (!byTurno.has(t)) byTurno.set(t, []);
+      byTurno.get(t)!.push(o);
+    }
+    return m;
+  }, [ocupacoes]);
+
+  const diaNomes = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+  const navLabel = `${weekStart.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} – ${weekEnd.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}`;
+
+  function OcupCell({ nomeAmb, iso }: { nomeAmb: string; iso: string }) {
+    const byTurno = idx.get(nomeAmb.toUpperCase())?.get(iso);
+    const hasAny = byTurno && [...byTurno.values()].some((arr) => arr.length > 0);
+    return (
+      <td className="border border-gray-200 p-0 align-top min-w-[110px]">
+        <div className="divide-y divide-gray-100">
+          {TURNOS.map((turno) => {
+            const aulas = byTurno?.get(turno) ?? [];
+            const s = TURNO_STYLE[turno];
+            if (aulas.length === 0) {
+              return (
+                <div key={turno} className="px-1.5 py-1 flex items-center gap-1 h-[36px]">
+                  <span className={cn("w-1.5 h-1.5 rounded-full shrink-0 opacity-30", s.dot)} />
+                  <span className="text-[10px] text-gray-300">{turno[0]}</span>
+                </div>
+              );
+            }
+            return (
+              <div key={turno} className={cn("px-1.5 py-1 min-h-[36px]", s.bg)}>
+                <div className="flex items-center gap-1 mb-0.5">
+                  <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", s.dot)} />
+                  <span className={cn("text-[9px] font-bold uppercase tracking-wide", s.text)}>{turno}</span>
+                </div>
+                {aulas.map((a: any, i: number) => (
+                  <div key={i} className="mb-0.5 last:mb-0">
+                    <p className={cn("text-[10px] font-semibold leading-tight truncate max-w-[100px]", s.text)} title={a.evento_nome ?? ""}>
+                      {a.evento_nome ?? "—"}
+                    </p>
+                    {a.uc_nome && (
+                      <p className="text-[9px] text-gray-500 leading-tight truncate max-w-[100px]" title={a.uc_nome}>
+                        {a.uc_nome}
+                      </p>
+                    )}
+                    {a.horario_inicio && (
+                      <p className="text-[9px] text-gray-400">{a.horario_inicio}{a.horario_fim ? `–${a.horario_fim}` : ""}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </td>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Controles */}
+      <div className="flex items-center gap-3 flex-wrap">
+        {/* Navegação de semana */}
+        <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-1 py-1">
+          <button
+            onClick={() => setWeekStart(addDays(weekStart, -7))}
+            className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <span className="text-sm font-medium text-gray-700 min-w-[200px] text-center px-1">{navLabel}</span>
+          <button
+            onClick={() => setWeekStart(addDays(weekStart, 7))}
+            className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+        <button
+          onClick={() => setWeekStart(weekMonday(today))}
+          className="px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-colors"
+        >
+          Semana atual
+        </button>
+
+        {/* Filtro por bloco */}
+        <select
+          className="input text-sm py-2 min-w-[140px]"
+          value={filtroBloco}
+          onChange={(e) => setFiltroBloco(e.target.value)}
+        >
+          <option value="">Todos os blocos</option>
+          {blocos.map((b) => <option key={b} value={b}>{b}</option>)}
+        </select>
+
+        {/* Legenda */}
+        <div className="ml-auto flex items-center gap-3">
+          {TURNOS.map((t) => {
+            const s = TURNO_STYLE[t];
+            return (
+              <span key={t} className="flex items-center gap-1 text-xs text-gray-500">
+                <span className={cn("w-2.5 h-2.5 rounded-full", s.dot)} />
+                {t}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Grade */}
+      {isLoading ? (
+        <div className="flex items-center justify-center py-20 text-gray-400">
+          <Loader2 className="h-8 w-8 animate-spin mr-3" />
+          <span>Carregando ocupação...</span>
+        </div>
+      ) : ambientes.length === 0 ? (
+        <div className="card flex flex-col items-center justify-center py-16 text-center gap-4 text-gray-400">
+          <DoorOpen className="h-12 w-12 opacity-30" />
+          <p className="font-medium text-gray-500">Nenhum ambiente cadastrado.</p>
+        </div>
+      ) : (
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap sticky left-0 bg-gray-50 z-10 border-r border-gray-200">
+                    Ambiente
+                  </th>
+                  {dias.map((d, i) => {
+                    const isToday = isoDate(d) === isoDate(today);
+                    return (
+                      <th
+                        key={i}
+                        className={cn(
+                          "px-3 py-3 text-center text-xs font-semibold uppercase tracking-wide whitespace-nowrap min-w-[110px]",
+                          isToday ? "bg-blue-50 text-blue-700" : "text-gray-500"
+                        )}
+                      >
+                        <div>{diaNomes[i]}</div>
+                        <div className={cn("font-bold text-sm", isToday ? "text-blue-700" : "text-gray-800")}>
+                          {d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+                        </div>
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {ambientes.map((amb: any, ri: number) => (
+                  <tr key={amb.id} className={cn("border-b last:border-0", ri % 2 === 0 ? "bg-white" : "bg-gray-50/30")}>
+                    <td className={cn("px-3 py-2 sticky left-0 z-10 border-r border-gray-200 min-w-[160px]", ri % 2 === 0 ? "bg-white" : "bg-gray-50/30")}>
+                      <div className="flex flex-col gap-0.5">
+                        {amb.bloco && (
+                          <span className="font-mono text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded self-start">{amb.bloco}</span>
+                        )}
+                        <p className="text-xs font-semibold text-gray-800 leading-snug">{amb.sigla ?? amb.nome}</p>
+                        {amb.sigla && <p className="text-[10px] text-gray-400 leading-tight truncate max-w-[140px]" title={amb.nome}>{amb.nome}</p>}
+                        {amb.capacidade != null && (
+                          <span className="flex items-center gap-0.5 text-[10px] text-gray-400">
+                            <Users className="h-2.5 w-2.5" />{amb.capacidade}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    {dias.map((d) => (
+                      <OcupCell key={isoDate(d)} nomeAmb={amb.nome} iso={isoDate(d)} />
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-4 py-2 border-t bg-gray-50 text-xs text-gray-400">
+            {ambientes.length} ambiente(s) · {ocupacoes.length} aula(s) no período
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
+
 export default function AmbientesPage() {
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [aba, setAba] = useState<"lista" | "grade">("lista");
 
   // Filtros
   const [busca, setBusca] = useState("");
@@ -527,6 +772,36 @@ export default function AmbientesPage() {
           </button>
         </div>
       </PageHeader>
+
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-gray-200">
+        <button
+          onClick={() => setAba("lista")}
+          className={cn(
+            "flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
+            aba === "lista"
+              ? "border-blue-600 text-blue-700"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          )}
+        >
+          <List className="h-4 w-4" /> Lista
+        </button>
+        <button
+          onClick={() => setAba("grade")}
+          className={cn(
+            "flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
+            aba === "grade"
+              ? "border-blue-600 text-blue-700"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          )}
+        >
+          <LayoutGrid className="h-4 w-4" /> Grade de Ocupação
+        </button>
+      </div>
+
+      {aba === "grade" && <GradeOcupacao />}
+
+      {aba === "lista" && <>
 
       {/* Cards resumo */}
       <div className="grid grid-cols-3 gap-4">
@@ -773,6 +1048,8 @@ export default function AmbientesPage() {
           </div>
         </div>
       )}
+
+      </>}
 
       {/* Drawer de detalhe/edição */}
       {drawerAberto && (

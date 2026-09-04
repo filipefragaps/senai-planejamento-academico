@@ -114,6 +114,103 @@ async def listar(
     return [_serializar(a) for a in ambientes]
 
 
+@router.get("/ocupacao")
+async def ocupacao(
+    data_inicio: str,
+    data_fim: str,
+    bloco: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """
+    Grade de ocupação: retorna todos os ambientes cadastrados + aulas
+    agendadas no intervalo, agrupadas por ambiente/dia/turno.
+    """
+    from datetime import date as _date
+    from app.models.aula import Aula
+    from app.models.evento import Evento
+    from app.models.professor import Professor
+    from app.models.unidade_curricular import UnidadeCurricular
+    from sqlalchemy import text
+
+    try:
+        d_ini = _date.fromisoformat(data_inicio)
+        d_fim = _date.fromisoformat(data_fim)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Datas inválidas — use YYYY-MM-DD")
+
+    # Ambientes cadastrados
+    q_amb = select(Ambiente).where(Ambiente.ativo == True)
+    if bloco:
+        q_amb = q_amb.where(Ambiente.bloco == bloco.upper())
+    res_amb = await db.execute(q_amb.order_by(Ambiente.bloco, Ambiente.nome))
+    ambientes_db = res_amb.scalars().all()
+
+    # Aulas do período com sala preenchida
+    res_aulas = await db.execute(
+        select(
+            Aula.ambiente,
+            Aula.data,
+            Aula.turno,
+            Aula.horario_inicio,
+            Aula.horario_fim,
+            Evento.nome_turma,
+            Evento.id.label("evento_id"),
+            UnidadeCurricular.nome.label("uc_nome"),
+            Professor.nome.label("prof_nome"),
+        )
+        .join(Evento, Aula.evento_id == Evento.id)
+        .outerjoin(UnidadeCurricular, Aula.unidade_curricular_id == UnidadeCurricular.id)
+        .outerjoin(Professor, Aula.professor_id == Professor.id)
+        .where(
+            and_(
+                Aula.data >= d_ini,
+                Aula.data <= d_fim,
+                Aula.status != "Cancelada",
+                Aula.ambiente.is_not(None),
+                Aula.ambiente != "",
+            )
+        )
+        .order_by(Aula.data, Aula.ambiente, Aula.horario_inicio)
+    )
+    rows = res_aulas.fetchall()
+
+    # Blocos disponíveis (para filtro no front)
+    blocos = sorted({a.bloco for a in ambientes_db if a.bloco})
+
+    # Ambientes citados em aulas mas não cadastrados (aparecem como extras)
+    nomes_cadastrados = {a.nome.upper() for a in ambientes_db}
+    nomes_aulas = {(r.ambiente or "").upper() for r in rows if r.ambiente}
+    extras = sorted(nomes_aulas - nomes_cadastrados)
+
+    def _turno_from_hora(h) -> str:
+        if h is None:
+            return "Manhã"
+        return "Noite" if h.hour >= 18 else ("Tarde" if h.hour >= 12 else "Manhã")
+
+    ocupacoes: list[dict] = []
+    for r in rows:
+        turno = r.turno or _turno_from_hora(r.horario_inicio)
+        ocupacoes.append({
+            "ambiente": r.ambiente,
+            "data": r.data.isoformat() if r.data else None,
+            "turno": turno,
+            "horario_inicio": str(r.horario_inicio)[:5] if r.horario_inicio else None,
+            "horario_fim": str(r.horario_fim)[:5] if r.horario_fim else None,
+            "evento_nome": r.nome_turma,
+            "evento_id": r.evento_id,
+            "uc_nome": r.uc_nome,
+            "prof_nome": r.prof_nome,
+        })
+
+    return {
+        "ambientes": [_serializar(a) for a in ambientes_db],
+        "extras": extras,
+        "blocos": blocos,
+        "ocupacoes": ocupacoes,
+    }
+
+
 @router.post("/", status_code=201)
 async def criar(
     body: AmbienteCreate,

@@ -338,6 +338,8 @@ export const ambientesApi = {
       transformRequest: (data, headers) => { if (headers) delete headers["Content-Type"]; return data; },
     }).then((r) => r.data);
   },
+  ocupacao: (params: { data_inicio: string; data_fim: string; bloco?: string }) =>
+    api.get("/ambientes/ocupacao", { params }).then((r) => r.data),
 };
 
 // Contratos de Docentes
