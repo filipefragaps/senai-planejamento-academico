@@ -160,6 +160,89 @@ async def listar_regencias(
     return await calcular_regencia_todos(db, data_inicio, data_fim)
 
 
+@router.get("/debug-grade")
+async def debug_grade_professor(
+    nome: str,
+    data_inicio: str,
+    data_fim: str,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """Debug: compara aulas encontradas pela regência vs pela grade para um professor."""
+    from datetime import date as _date
+    from app.models.evento import Evento
+    from sqlalchemy import and_ as _and_, or_ as _or_
+
+    d_ini = _date.fromisoformat(data_inicio)
+    d_fim = _date.fromisoformat(data_fim)
+
+    res_profs = await db.execute(select(Professor).where(Professor.nome.ilike(f"%{nome}%")))
+    professores = res_profs.scalars().all()
+
+    resultado = []
+    for prof in professores:
+        # Método regência: só Aula.professor_id, sem join Evento
+        res_reg = await db.execute(
+            select(Aula.id, Aula.data, Aula.status, Aula.professor_id, Aula.evento_id, Aula.fonte)
+            .where(_and_(
+                Aula.professor_id == prof.id,
+                Aula.data >= d_ini,
+                Aula.data <= d_fim,
+            ))
+            .order_by(Aula.data)
+        )
+        aulas_regencia = [
+            {"id": r.id, "data": str(r.data), "status": r.status, "evento_id": r.evento_id, "fonte": r.fonte}
+            for r in res_reg.fetchall()
+        ]
+
+        # Método grade: com JOIN Evento
+        res_grade = await db.execute(
+            select(Aula.id, Aula.data, Aula.status, Aula.professor_id, Aula.evento_id, Aula.fonte, Evento.professor_id.label("evt_prof"))
+            .select_from(Aula)
+            .join(Evento, Aula.evento_id == Evento.id)
+            .where(_and_(
+                Aula.data >= d_ini,
+                Aula.data <= d_fim,
+                Aula.status != "Cancelada",
+                _or_(Aula.professor_id == prof.id, Evento.professor_id == prof.id),
+            ))
+            .order_by(Aula.data)
+        )
+        aulas_grade = [
+            {"id": r.id, "data": str(r.data), "status": r.status, "evento_id": r.evento_id, "fonte": r.fonte, "evt_prof": r.evt_prof}
+            for r in res_grade.fetchall()
+        ]
+
+        # Aulas sem evento vinculado (evento_id null ou evento deletado)
+        res_sem_evento = await db.execute(
+            select(Aula.id, Aula.data, Aula.status, Aula.evento_id)
+            .where(_and_(
+                Aula.professor_id == prof.id,
+                Aula.data >= d_ini,
+                Aula.data <= d_fim,
+                ~Aula.evento_id.in_(select(Evento.id)),
+            ))
+        )
+        sem_evento = [
+            {"id": r.id, "data": str(r.data), "status": r.status, "evento_id": r.evento_id}
+            for r in res_sem_evento.fetchall()
+        ]
+
+        resultado.append({
+            "professor_id": prof.id,
+            "nome": prof.nome,
+            "total_regencia": len(aulas_regencia),
+            "total_grade": len(aulas_grade),
+            "total_sem_evento": len(sem_evento),
+            "aulas_regencia": aulas_regencia,
+            "aulas_grade": aulas_grade,
+            "sem_evento_vinculado": sem_evento,
+        })
+
+    return resultado
+
+
 @router.get("/{professor_id}/detalhes")
 async def obter_professor_detalhes(
     professor_id: int,
