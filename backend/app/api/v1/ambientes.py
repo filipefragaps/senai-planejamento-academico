@@ -288,15 +288,11 @@ async def ocupacao(
     # Blocos disponíveis (para filtro no front)
     blocos = sorted({a.bloco for a in ambientes_db if a.bloco})
 
-    # Ambientes citados em aulas mas não cadastrados — computa APÓS resolução
-    # para que siglas que resolvem corretamente não apareçam como "sem correspondência"
-    nomes_cadastrados = {a.nome.upper() for a in ambientes_db}
-    nomes_aulas_resolvidos = {
-        _resolve_nome((r.sala_efetiva or "").strip()).upper()
-        for r in rows
-        if r.sala_efetiva
-    }
-    extras = sorted(nomes_aulas_resolvidos - nomes_cadastrados)
+    # Identificadores cadastrados: sigla (preferida) ou nome — o mesmo
+    # formato que aparece na planilha e na lista suspensa do sistema
+    ids_cadastrados = {(a.sigla or a.nome).upper() for a in ambientes_db}
+    ids_aulas = {(r.sala_efetiva or "").strip().upper() for r in rows if r.sala_efetiva}
+    extras = sorted(ids_aulas - ids_cadastrados)
 
     def _turno_from_hora(h) -> str:
         if h is None:
@@ -305,8 +301,8 @@ async def ocupacao(
 
     ocupacoes: list[dict] = []
     for r in rows:
-        sala_raw = r.sala_efetiva or ""
-        nome_ambiente = _resolve_nome(sala_raw)
+        sala_raw = (r.sala_efetiva or "").strip()
+        nome_ambiente = sala_raw  # usa a sigla diretamente — o frontend busca por sigla
         turno = r.turno or _turno_from_hora(r.horario_inicio)
         ocupacoes.append({
             "ambiente": nome_ambiente,

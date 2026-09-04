@@ -667,7 +667,7 @@ function GradeOcupacao() {
                       </div>
                     </td>
                     {dias.map((d) => (
-                      <OcupCell key={isoDate(d)} nomeAmb={amb.nome} iso={isoDate(d)} />
+                      <OcupCell key={isoDate(d)} nomeAmb={amb.sigla ?? amb.nome} iso={isoDate(d)} />
                     ))}
                   </tr>
                 ))}
