@@ -524,13 +524,12 @@ function GradeOcupacao() {
                     )}
                   >
                     <p
-                      className={cn("text-[10px] font-semibold leading-tight truncate max-w-[108px]", choque ? "text-red-700" : s.text)}
-                      title={a.evento_nome ?? ""}
+                      className={cn("text-[10px] font-semibold leading-snug break-words", choque ? "text-red-700" : s.text)}
                     >
                       {a.evento_nome ?? "—"}
                     </p>
                     {a.uc_nome && (
-                      <p className="text-[9px] text-gray-500 leading-tight truncate max-w-[108px]" title={a.uc_nome}>
+                      <p className="text-[9px] text-gray-500 leading-snug break-words">
                         {a.uc_nome}
                       </p>
                     )}
