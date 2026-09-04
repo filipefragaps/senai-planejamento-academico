@@ -185,10 +185,12 @@ async def ocupacao(
         # 4. Fallback: retorna a string original (vai aparecer em extras)
         return sala_raw
 
-    # COALESCE(NULLIF(ambiente,''), NULLIF(sala,'')) — trata strings vazias igual a NULL
+    # Trata strings vazias igual a NULL e usa Evento.sala como terceiro fallback
+    # para aulas importadas do Excel onde aula.ambiente e aula.sala ficam vazios
     sala_col = sqlfunc.coalesce(
         sqlfunc.nullif(Aula.ambiente, ""),
         sqlfunc.nullif(Aula.sala, ""),
+        sqlfunc.nullif(Evento.sala, ""),
     ).label("sala_efetiva")
 
     res_aulas = await db.execute(
@@ -214,6 +216,7 @@ async def ocupacao(
                 sqlfunc.coalesce(
                     sqlfunc.nullif(Aula.ambiente, ""),
                     sqlfunc.nullif(Aula.sala, ""),
+                    sqlfunc.nullif(Evento.sala, ""),
                 ).is_not(None),
             )
         )

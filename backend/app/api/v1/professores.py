@@ -72,16 +72,29 @@ async def ocupacao_professores(
     except ValueError:
         raise HTTPException(status_code=422, detail="Datas inválidas — use YYYY-MM-DD")
 
+    # Usa Evento.sala como terceiro fallback (aulas do Excel não gravam sala na aula)
     sala_col = _func.coalesce(
         _func.nullif(Aula.ambiente, ""),
         _func.nullif(Aula.sala, ""),
+        _func.nullif(Evento.sala, ""),
     ).label("sala_efetiva")
 
-    # Professores com aulas no período
+    # Professor efetivo: usa Aula.professor_id; fallback = Evento.professor_id
+    # (aulas importadas do Excel podem ter professor_id null na aula quando
+    # o nome não foi encontrado no lookup, mas o evento tem o professor correto)
+    from sqlalchemy.orm import aliased as _aliased
+    from sqlalchemy import or_ as _or_
+
+    ProfAula = _aliased(Professor, name="prof_aula")
+    ProfEvento = _aliased(Professor, name="prof_evento")
+
+    prof_id_col = _func.coalesce(ProfAula.id, ProfEvento.id).label("prof_id")
+    prof_nome_col = _func.coalesce(ProfAula.nome, ProfEvento.nome).label("prof_nome")
+
     res = await db.execute(
         select(
-            Professor.id,
-            Professor.nome,
+            prof_id_col,
+            prof_nome_col,
             Aula.data,
             Aula.turno,
             Aula.horario_inicio,
@@ -91,17 +104,22 @@ async def ocupacao_professores(
             UnidadeCurricular.nome.label("uc_nome"),
             sala_col,
         )
-        .join(Aula, Aula.professor_id == Professor.id)
         .join(Evento, Aula.evento_id == Evento.id)
+        .outerjoin(ProfAula, Aula.professor_id == ProfAula.id)
+        .outerjoin(
+            ProfEvento,
+            _and_(Aula.professor_id.is_(None), Evento.professor_id == ProfEvento.id),
+        )
         .outerjoin(UnidadeCurricular, Aula.unidade_curricular_id == UnidadeCurricular.id)
         .where(
             _and_(
                 Aula.data >= d_ini,
                 Aula.data <= d_fim,
                 Aula.status != "Cancelada",
+                _or_(Aula.professor_id.is_not(None), Evento.professor_id.is_not(None)),
             )
         )
-        .order_by(Professor.nome, Aula.data, Aula.horario_inicio)
+        .order_by(prof_nome_col, Aula.data, Aula.horario_inicio)
     )
     rows = res.fetchall()
 
@@ -115,13 +133,16 @@ async def ocupacao_professores(
     profs_map: dict[int, str] = {}
     ocupacoes: list[dict] = []
     for r in rows:
-        if r.id not in profs_map:
-            profs_ids.append(r.id)
-            profs_map[r.id] = r.nome
+        pid = r.prof_id
+        if pid is None:
+            continue
+        if pid not in profs_map:
+            profs_ids.append(pid)
+            profs_map[pid] = r.prof_nome
         turno = r.turno or _turno(r.horario_inicio)
         ocupacoes.append({
-            "professor_id": r.id,
-            "professor_nome": r.nome,
+            "professor_id": pid,
+            "professor_nome": r.prof_nome,
             "data": r.data.isoformat() if r.data else None,
             "turno": turno,
             "horario_inicio": str(r.horario_inicio)[:5] if r.horario_inicio else None,
