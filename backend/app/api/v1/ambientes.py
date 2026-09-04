@@ -239,24 +239,67 @@ async def ocupacao(
     def _strip_bloco(s: str) -> str:
         """Remove o prefixo de bloco ('BL 01 - ', 'BL1-', etc.) e retorna o sufixo em maiúsculas."""
         s = s.strip()
-        m = _re.match(r'^(?:BL(?:OCO)?\s*0*\d+\s*[-–]?\s*)', s, _re.IGNORECASE)
+        m = _re.match(r'^(?:BL(?:OCO)?\s*\.?\s*0*\d+\s*[-–/]?\s*)', s, _re.IGNORECASE)
         return s[m.end():].strip().upper() if m else s.upper()
 
+    def _normalize_raw(s: str) -> str:
+        """Normaliza valor bruto do Excel para o formato canônico 'BL XX - YYY'.
+
+        Lida com os padrões reais encontrados nas planilhas:
+          BL 09 SALA 207          → BL 09 - 207
+          BL 09/207               → BL 09 - 207
+          BL 09/101 - SALA DE AULA→ BL 09 - 101
+          BL 07/MODELAGEM 1 (SALA DE AULA) → BL 07 - MODELAGEM 1
+          BL 01/6 (LAB. SOFTWARE) → BL 01 - SOFTWARE
+          BL.01 SALA 11           → BL 01 - 11
+          BLOCO 1 SALA 02         → BL 01 - 2
+          UEG - SALA 11           → UEG - 11
+          BL 06/SIEMENS           → BL 06 - SIEMENS
+        """
+        t = s.strip().upper()
+
+        # Remove sufixos de ruído no final
+        t = _re.sub(r'\s*[-–]\s*SALA DE AULA\s*$', '', t).strip()
+        t = _re.sub(r'\s*\(SALA DE AULA\)\s*$', '', t).strip()
+        t = _re.sub(r'\s*\(LABORAT[OÓ]RIO\)\s*$', '', t).strip()
+
+        # "(LAB. NOME)" → reconstrói como "BL XX - NOME"
+        m_lab = _re.search(r'\(LAB\.\s*(.+?)\)\s*$', t)
+        if m_lab:
+            bloco_m = _re.match(r'^BL(?:OCO)?\s*\.?\s*0*(\d+)', t)
+            if bloco_m:
+                t = f"BL {int(bloco_m.group(1)):02d} - {m_lab.group(1).strip()}"
+
+        # BLOCO N → BL 0N (dois dígitos)
+        t = _re.sub(r'\bBLOCO\s+0*(\d+)', lambda m: f"BL {int(m.group(1)):02d}", t)
+
+        # BL.XX → BL XX (ponto → espaço)
+        t = _re.sub(r'\bBL\.(\d)', r'BL \1', t)
+
+        # "- SALA N" e "- SALA NOME" → "- N" (remove a palavra SALA entre separador e id)
+        t = _re.sub(r'([-–]\s*)SALA\s+(\S)', r'\1\2', t)
+
+        # "BL XX SALA N" → "BL XX - N" (SALA como separador)
+        t = _re.sub(r'(BL\s+\d+)\s+SALA\s+(\S)', r'\1 - \2', t)
+
+        # "BL XX/NOME" → "BL XX - NOME" (barra como separador)
+        t = _re.sub(r'(BL\s+\d+)/(.+)', r'\1 - \2', t)
+
+        # Remove zeros à esquerda no número de sala: "BL 01 - 02" → "BL 01 - 2"
+        t = _re.sub(r'(-\s*)0+(\d+\s*$)', lambda m: m.group(1) + m.group(2), t)
+
+        return _re.sub(r'\s+', ' ', t).strip()
+
     # Mapas de resolução: todos apontam para o identificador canônico (sigla ou nome)
-    # O identificador canônico é o que o frontend usa como chave (amb.sigla ?? amb.nome)
     _exact: dict[str, str] = {}   # chave → identificador canônico
     _suf: dict[str, str] = {}     # sufixo-de-bloco → identificador canônico
 
     for a in ambientes_db:
-        canon = a.sigla or a.nome  # identificador canônico
-        canon_u = canon.upper()
-        # Sigla exata
+        canon = a.sigla or a.nome
         if a.sigla:
             _exact[a.sigla.upper()] = canon
-        # Nome exato e normalizado
         _exact[a.nome.upper()] = canon
         _exact[a.nome.upper().replace(" ", "").replace("-", "")] = canon
-        # Sufixo do bloco para cada identificador
         for ident in filter(None, [a.sigla, a.nome]):
             suf = _strip_bloco(ident)
             if suf:
@@ -268,18 +311,30 @@ async def ocupacao(
             return raw
         s = raw.strip()
         key = s.upper()
-        # 1. Match exato (sigla ou nome cadastrado)
+
+        # 1. Match exato
         if key in _exact:
             return _exact[key]
-        # 2. Normalizado sem espaços/hífens
-        norm = key.replace(" ", "").replace("-", "")
-        if norm in _exact:
-            return _exact[norm]
-        # 3. Sufixo do bloco: "BL 01 - CAD/CAM/CAE" → "CAD/CAM/CAE" → "BL1-CAD/CAM/CAE"
+        # 2. Sem espaços/hífens
+        if key.replace(" ", "").replace("-", "") in _exact:
+            return _exact[key.replace(" ", "").replace("-", "")]
+        # 3. Sufixo do bloco (ex: "CAD/CAM/CAE" → "BL1-CAD/CAM/CAE")
         suf = _strip_bloco(s)
         if suf and suf in _suf:
             return _suf[suf]
-        # 4. Fallback: retorna a string original
+
+        # 4. Normaliza o valor bruto e tenta novamente
+        norm = _normalize_raw(s)
+        nkey = norm.upper()
+        if nkey in _exact:
+            return _exact[nkey]
+        if nkey.replace(" ", "").replace("-", "") in _exact:
+            return _exact[nkey.replace(" ", "").replace("-", "")]
+        suf2 = _strip_bloco(norm)
+        if suf2 and suf2 in _suf:
+            return _suf[suf2]
+
+        # 5. Fallback
         return s
 
     # Trata strings vazias igual a NULL e usa Evento.sala como terceiro fallback
