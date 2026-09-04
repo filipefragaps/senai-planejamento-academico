@@ -288,10 +288,15 @@ async def ocupacao(
     # Blocos disponíveis (para filtro no front)
     blocos = sorted({a.bloco for a in ambientes_db if a.bloco})
 
-    # Ambientes citados em aulas mas não cadastrados
+    # Ambientes citados em aulas mas não cadastrados — computa APÓS resolução
+    # para que siglas que resolvem corretamente não apareçam como "sem correspondência"
     nomes_cadastrados = {a.nome.upper() for a in ambientes_db}
-    nomes_aulas = {(r.sala_efetiva or "").upper() for r in rows if r.sala_efetiva}
-    extras = sorted(nomes_aulas - nomes_cadastrados)
+    nomes_aulas_resolvidos = {
+        _resolve_nome((r.sala_efetiva or "").strip()).upper()
+        for r in rows
+        if r.sala_efetiva
+    }
+    extras = sorted(nomes_aulas_resolvidos - nomes_cadastrados)
 
     def _turno_from_hora(h) -> str:
         if h is None:
