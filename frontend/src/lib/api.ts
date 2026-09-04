@@ -342,6 +342,8 @@ export const ambientesApi = {
   },
   ocupacao: (params: { data_inicio: string; data_fim: string; bloco?: string }) =>
     api.get("/ambientes/ocupacao", { params }).then((r) => r.data),
+  debugAulas: (params: { data_inicio: string; data_fim: string }) =>
+    api.get("/ambientes/debug-aulas", { params }).then((r) => r.data),
 };
 
 // Contratos de Docentes

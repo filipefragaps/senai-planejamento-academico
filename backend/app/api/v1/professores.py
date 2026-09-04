@@ -104,6 +104,7 @@ async def ocupacao_professores(
             UnidadeCurricular.nome.label("uc_nome"),
             sala_col,
         )
+        .select_from(Aula)
         .join(Evento, Aula.evento_id == Evento.id)
         .outerjoin(ProfAula, Aula.professor_id == ProfAula.id)
         .outerjoin(

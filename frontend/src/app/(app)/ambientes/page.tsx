@@ -440,6 +440,8 @@ function GradeOcupacao() {
   const today = new Date();
   const [weekStart, setWeekStart] = useState(() => weekMonday(today));
   const [filtroBloco, setFiltroBloco] = useState<string>("");
+  const [debugData, setDebugData] = useState<any[] | null>(null);
+  const [debugLoading, setDebugLoading] = useState(false);
 
   const weekEnd = addDays(weekStart, 5); // Mon→Sat
   const dias = Array.from({ length: 6 }, (_, i) => addDays(weekStart, i));
@@ -673,7 +675,19 @@ function GradeOcupacao() {
             </table>
           </div>
           <div className="px-4 py-2 border-t bg-gray-50 text-xs text-gray-400 flex items-center gap-4 flex-wrap">
-            <span>{ambientes.length} ambiente(s) · {ocupacoes.length} aula(s) no período</span>
+            <span>{ambientes.length} ambiente(s) · {ocupacoes.length} aula(s) com sala no período</span>
+            <button
+              className="underline text-blue-400 hover:text-blue-600"
+              onClick={async () => {
+                setDebugLoading(true);
+                try {
+                  const d = await ambientesApi.debugAulas({ data_inicio: isoDate(weekStart), data_fim: isoDate(weekEnd) });
+                  setDebugData(d);
+                } catch { setDebugData([]); } finally { setDebugLoading(false); }
+              }}
+            >
+              {debugLoading ? "carregando…" : "diagnosticar"}
+            </button>
             {(() => {
               const choques = ocupacoes.reduce((acc: Record<string, number>, o: any) => {
                 const k = `${o.ambiente}|${o.data}|${o.turno}`;
@@ -701,6 +715,58 @@ function GradeOcupacao() {
               </span>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Painel de diagnóstico */}
+      {debugData !== null && (
+        <div className="mt-4 border rounded-lg bg-white p-4 text-xs">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-semibold text-gray-700">Diagnóstico — aulas no período ({debugData.length})</span>
+            <button className="text-gray-400 hover:text-gray-600" onClick={() => setDebugData(null)}>✕ fechar</button>
+          </div>
+          {debugData.length === 0 ? (
+            <p className="text-gray-400">Nenhuma aula encontrada neste período.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[10px] border-collapse">
+                <thead>
+                  <tr className="bg-gray-100 text-gray-500">
+                    <th className="border px-2 py-1 text-left">ID</th>
+                    <th className="border px-2 py-1 text-left">Data</th>
+                    <th className="border px-2 py-1 text-left">Evento</th>
+                    <th className="border px-2 py-1 text-left">aula.ambiente</th>
+                    <th className="border px-2 py-1 text-left">aula.sala</th>
+                    <th className="border px-2 py-1 text-left">evento.sala</th>
+                    <th className="border px-2 py-1 text-left">prof_id</th>
+                    <th className="border px-2 py-1 text-left">fonte</th>
+                    <th className="border px-2 py-1 text-left">status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {debugData.slice(0, 50).map((r: any) => (
+                    <tr key={r.aula_id} className={
+                      !r.aula_ambiente && !r.aula_sala && !r.evento_sala
+                        ? "bg-red-50"
+                        : "hover:bg-gray-50"
+                    }>
+                      <td className="border px-2 py-0.5 font-mono">{r.aula_id}</td>
+                      <td className="border px-2 py-0.5">{r.data}</td>
+                      <td className="border px-2 py-0.5 max-w-[120px] truncate" title={r.evento_nome}>{r.evento_nome}</td>
+                      <td className="border px-2 py-0.5 text-blue-700">{r.aula_ambiente ?? <span className="text-red-400">null</span>}</td>
+                      <td className="border px-2 py-0.5 text-green-700">{r.aula_sala ?? <span className="text-red-400">null</span>}</td>
+                      <td className="border px-2 py-0.5 text-purple-700">{r.evento_sala ?? <span className="text-red-400">null</span>}</td>
+                      <td className="border px-2 py-0.5">{r.professor_id ?? "—"}</td>
+                      <td className="border px-2 py-0.5">{r.fonte ?? "—"}</td>
+                      <td className="border px-2 py-0.5">{r.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {debugData.length > 50 && <p className="text-gray-400 mt-1">…e mais {debugData.length - 50} aulas</p>}
+              <p className="mt-2 text-gray-400">Linhas em vermelho = sem nenhuma sala definida (não aparecem na grade)</p>
+            </div>
+          )}
         </div>
       )}
     </div>

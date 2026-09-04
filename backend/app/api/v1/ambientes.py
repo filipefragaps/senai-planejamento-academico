@@ -114,6 +114,67 @@ async def listar(
     return [_serializar(a) for a in ambientes]
 
 
+@router.get("/debug-aulas")
+async def debug_aulas(
+    data_inicio: str,
+    data_fim: str,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """Debug: retorna campos de sala/ambiente de todas as aulas no período."""
+    from datetime import date as _date
+    from app.models.aula import Aula
+    from app.models.evento import Evento
+
+    try:
+        d_ini = _date.fromisoformat(data_inicio)
+        d_fim = _date.fromisoformat(data_fim)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Datas inválidas")
+
+    res = await db.execute(
+        select(
+            Aula.id,
+            Aula.data,
+            Aula.ambiente,
+            Aula.sala,
+            Aula.status,
+            Aula.professor_id,
+            Aula.fonte,
+            Evento.id.label("evento_id"),
+            Evento.nome_turma,
+            Evento.sala.label("evento_sala"),
+            Evento.professor_id.label("evento_prof_id"),
+        )
+        .join(Evento, Aula.evento_id == Evento.id)
+        .where(
+            and_(
+                Aula.data >= d_ini,
+                Aula.data <= d_fim,
+            )
+        )
+        .order_by(Aula.data, Aula.id)
+        .limit(200)
+    )
+    rows = res.fetchall()
+    return [
+        {
+            "aula_id": r.id,
+            "data": r.data.isoformat() if r.data else None,
+            "aula_ambiente": r.ambiente,
+            "aula_sala": r.sala,
+            "status": r.status,
+            "professor_id": r.professor_id,
+            "fonte": r.fonte,
+            "evento_id": r.evento_id,
+            "evento_nome": r.nome_turma,
+            "evento_sala": r.evento_sala,
+            "evento_prof_id": r.evento_prof_id,
+        }
+        for r in rows
+    ]
+
+
 @router.get("/ocupacao")
 async def ocupacao(
     data_inicio: str,
