@@ -64,6 +64,34 @@ async def _aplicar_migracoes(engine) -> None:
             "WHERE LOWER(tipo) IN ('feriado','recesso','ferias','férias','folga',"
             "'compensacao','compensação','sem aula') AND letivo = 1"
         ),
+        # Popula curso_id via oferta_id (quando a oferta tem curso_id definido)
+        (
+            "UPDATE eventos SET curso_id = o.curso_id "
+            "FROM ofertas_cursos o "
+            "WHERE eventos.curso_id IS NULL "
+            "AND eventos.oferta_id = o.id "
+            "AND o.curso_id IS NOT NULL"
+        ),
+        # Popula curso_id via código de pasta no final do nome_turma ("... - 20157")
+        # ou do campo disciplina ("NOME DO CURSO - 20157")
+        (
+            "UPDATE eventos SET curso_id = c.id "
+            "FROM cursos c "
+            "WHERE eventos.curso_id IS NULL "
+            "AND c.ativo = true "
+            "AND ("
+            "  eventos.nome_turma LIKE '% - ' || c.codigo "
+            "  OR eventos.disciplina LIKE '% - ' || c.codigo"
+            ")"
+        ),
+        # Popula curso_id via oferta cujo codigo_evento bate com o id do evento
+        (
+            "UPDATE eventos SET curso_id = o.curso_id "
+            "FROM ofertas_cursos o "
+            "WHERE eventos.curso_id IS NULL "
+            "AND o.codigo_evento = eventos.id::text "
+            "AND o.curso_id IS NOT NULL"
+        ),
         # Popula tipo_modalidade via oferta_id direto
         (
             "UPDATE eventos SET tipo_modalidade = o.modalidade "

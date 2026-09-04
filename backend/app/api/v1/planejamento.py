@@ -77,13 +77,35 @@ async def _resolver_curso_id(evento: Evento, evento_id: int, db: AsyncSession) -
         res = await db.execute(select(Curso.id).where(Curso.codigo == pasta))
         curso_id = res.scalar_one_or_none()
 
-    # Fallback 4: extrai código da pasta do nome_turma ("... - 20157") e busca exato
-    # Só aplica se o sufixo parece um código numérico (evita false positives como "SEDUC")
-    if not curso_id and " - " in (evento.nome_turma or ""):
-        sufixo = evento.nome_turma.rsplit(" - ", 1)[-1].strip()
-        if sufixo and sufixo.isdigit():
-            res = await db.execute(select(Curso.id).where(Curso.codigo == sufixo))
-            curso_id = res.scalar_one_or_none()
+    # Fallback 4: extrai código de pasta do nome_turma ("... - 20157") — sufixo numérico exato
+    if not curso_id:
+        for campo in [evento.nome_turma or "", evento.disciplina or ""]:
+            if " - " in campo:
+                sufixo = campo.rsplit(" - ", 1)[-1].strip()
+                if sufixo and sufixo.isdigit():
+                    res = await db.execute(select(Curso.id).where(Curso.codigo == sufixo))
+                    curso_id = res.scalar_one_or_none()
+                    if curso_id:
+                        break
+
+    # Fallback 5: busca no banco pelo padrão LIKE usado nas migrações de startup
+    # "nome_turma LIKE '% - ' || c.codigo" — robusto para qualquer separador SQL
+    if not curso_id:
+        from sqlalchemy import text as _text
+        res = await db.execute(
+            _text(
+                "SELECT c.id FROM cursos c "
+                "WHERE c.ativo = true "
+                "AND ("
+                "  :turma LIKE '% - ' || c.codigo "
+                "  OR :disc LIKE '% - ' || c.codigo"
+                ") LIMIT 1"
+            ),
+            {"turma": evento.nome_turma or "", "disc": evento.disciplina or ""},
+        )
+        row = res.fetchone()
+        if row:
+            curso_id = row[0]
 
     return curso_id
 
