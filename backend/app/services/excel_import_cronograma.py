@@ -245,14 +245,31 @@ def _enrich_from_oferta(evento: "Evento", oferta: "OfertaCurso") -> None:
 
 # ── lookup helpers ─────────────────────────────────────────────────────────────
 
+def _norm_nome(s: str) -> str:
+    """Normaliza nome para comparação: minúsculas, sem acentos."""
+    s = unicodedata.normalize("NFD", s.strip().lower())
+    return "".join(c for c in s if unicodedata.category(c) != "Mn")
+
+
 async def _lookup_professor(nome: str, db: AsyncSession) -> int | None:
-    if not nome:
+    if not nome or not nome.strip():
         return None
+    # Tenta primeiro via SQL ilike (case-insensitive, rápido)
     result = await db.execute(
         select(Professor).where(Professor.nome.ilike(f"%{nome.strip()}%"))
     )
     prof = result.scalars().first()
-    return prof.id if prof else None
+    if prof:
+        return prof.id
+    # Fallback: normaliza acentos e compara em Python
+    # Útil quando Excel tem "Joao" e DB tem "João" ou vice-versa
+    nome_norm = _norm_nome(nome)
+    all_profs_res = await db.execute(select(Professor))
+    for p in all_profs_res.scalars().all():
+        p_norm = _norm_nome(p.nome)
+        if nome_norm == p_norm or nome_norm in p_norm or p_norm in nome_norm:
+            return p.id
+    return None
 
 
 async def _lookup_ou_criar_evento(
