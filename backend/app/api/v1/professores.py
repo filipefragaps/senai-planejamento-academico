@@ -52,6 +52,88 @@ async def criar_professor(
     return professor
 
 
+@router.get("/ocupacao")
+async def ocupacao_professores(
+    data_inicio: str,
+    data_fim: str,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """Grade de ocupação semanal por professor."""
+    from datetime import date as _date
+    from app.models.aula import Aula
+    from app.models.evento import Evento
+    from app.models.unidade_curricular import UnidadeCurricular
+    from sqlalchemy import case as _case, and_ as _and_, or_ as _or_
+
+    try:
+        d_ini = _date.fromisoformat(data_inicio)
+        d_fim = _date.fromisoformat(data_fim)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Datas inválidas — use YYYY-MM-DD")
+
+    # Professores ativos com aulas no período
+    res = await db.execute(
+        select(
+            Professor.id,
+            Professor.nome,
+            Aula.data,
+            Aula.turno,
+            Aula.horario_inicio,
+            Aula.horario_fim,
+            Evento.nome_turma,
+            Evento.id.label("evento_id"),
+            UnidadeCurricular.nome.label("uc_nome"),
+            _case(
+                (Aula.ambiente.is_not(None), Aula.ambiente),
+                else_=Aula.sala,
+            ).label("sala_efetiva"),
+        )
+        .join(Aula, Aula.professor_id == Professor.id)
+        .join(Evento, Aula.evento_id == Evento.id)
+        .outerjoin(UnidadeCurricular, Aula.unidade_curricular_id == UnidadeCurricular.id)
+        .where(
+            _and_(
+                Aula.data >= d_ini,
+                Aula.data <= d_fim,
+                Aula.status != "Cancelada",
+            )
+        )
+        .order_by(Professor.nome, Aula.data, Aula.horario_inicio)
+    )
+    rows = res.fetchall()
+
+    def _turno(h) -> str:
+        if h is None:
+            return "Manhã"
+        return "Noite" if h.hour >= 18 else ("Tarde" if h.hour >= 12 else "Manhã")
+
+    # Professores distintos com aulas no período
+    profs_ids: list[int] = []
+    profs_map: dict[int, str] = {}
+    ocupacoes: list[dict] = []
+    for r in rows:
+        if r.id not in profs_map:
+            profs_ids.append(r.id)
+            profs_map[r.id] = r.nome
+        turno = r.turno or _turno(r.horario_inicio)
+        ocupacoes.append({
+            "professor_id": r.id,
+            "professor_nome": r.nome,
+            "data": r.data.isoformat() if r.data else None,
+            "turno": turno,
+            "horario_inicio": str(r.horario_inicio)[:5] if r.horario_inicio else None,
+            "horario_fim": str(r.horario_fim)[:5] if r.horario_fim else None,
+            "evento_nome": r.nome_turma,
+            "evento_id": r.evento_id,
+            "uc_nome": r.uc_nome,
+            "sala": r.sala_efetiva,
+        })
+
+    professores_lista = [{"id": pid, "nome": profs_map[pid]} for pid in profs_ids]
+    return {"professores": professores_lista, "ocupacoes": ocupacoes}
+
+
 @router.get("/regencia", response_model=list[dict])
 async def listar_regencias(
     data_inicio: date | None = None,

@@ -146,13 +146,36 @@ async def ocupacao(
     res_amb = await db.execute(q_amb.order_by(Ambiente.bloco, Ambiente.nome))
     ambientes_db = res_amb.scalars().all()
 
-    # Nomes/siglas cadastrados para cruzar com aulas (case-insensitive)
-    # Mapa: uppercase → nome canônico do ambiente
+    # Mapa de resolução: chave uppercase → nome canônico do ambiente cadastrado
     nome_map: dict[str, str] = {}
+    sigla_map: dict[str, str] = {}  # sigla.upper() → nome canônico
     for a in ambientes_db:
         nome_map[a.nome.upper()] = a.nome
+        # Normalizado: sem espaços e sem hífens (ex: "BL 01-1" == "BL011")
+        nome_norm = a.nome.upper().replace(" ", "").replace("-", "")
+        nome_map[nome_norm] = a.nome
         if a.sigla:
             nome_map[a.sigla.upper()] = a.nome
+            sigla_map[a.sigla.upper()] = a.nome
+
+    def _resolve_nome(sala_raw: str) -> str:
+        """Resolve a string bruta de sala para o nome canônico do ambiente cadastrado."""
+        if not sala_raw:
+            return sala_raw
+        key = sala_raw.upper()
+        # 1. Correspondência exata / normalizada
+        if key in nome_map:
+            return nome_map[key]
+        norm = key.replace(" ", "").replace("-", "")
+        if norm in nome_map:
+            return nome_map[norm]
+        # 2. Sufixo após " - " bate na sigla (ex: "BL 01 - CAD/CAM/CAE" → sigla "CAD/CAM/CAE")
+        if " - " in sala_raw:
+            suffix = sala_raw.rsplit(" - ", 1)[-1].strip().upper()
+            if suffix in sigla_map:
+                return sigla_map[suffix]
+        # 3. Fallback: retorna a string original
+        return sala_raw
 
     # Campo de sala efetivo: COALESCE(ambiente, sala) — cobre importações antigas
     sala_col = case(
@@ -206,8 +229,7 @@ async def ocupacao(
     ocupacoes: list[dict] = []
     for r in rows:
         sala_raw = r.sala_efetiva or ""
-        # Resolve para o nome canônico do ambiente cadastrado (se existir)
-        nome_ambiente = nome_map.get(sala_raw.upper(), sala_raw)
+        nome_ambiente = _resolve_nome(sala_raw)
         turno = r.turno or _turno_from_hora(r.horario_inicio)
         ocupacoes.append({
             "ambiente": nome_ambiente,

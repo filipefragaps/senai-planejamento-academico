@@ -9,7 +9,7 @@ import { AulaManualModal } from "@/components/aula-manual-modal";
 import { CalendarioImpressaoModal } from "@/components/calendario-impressao-modal";
 import { cn } from "@/lib/utils";
 import {
-  ChevronLeft, ChevronRight, Loader2, X, Printer, CalendarDays, LayoutGrid, Filter, FileDown, Search, ChevronDown, Plus, Trash2,
+  ChevronLeft, ChevronRight, Loader2, X, Printer, CalendarDays, LayoutGrid, Filter, FileDown, Search, ChevronDown, Plus, Trash2, Zap,
 } from "lucide-react";
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -240,6 +240,40 @@ export default function CronogramaPage() {
         .sort((a: any, b: any) => (a.horario_inicio ?? "").localeCompare(b.horario_inicio ?? ""))
         .filter((a: any) => turnoFiltro === "todos" || turnoDeHorario(a.horario_inicio) === turnoFiltro)
     : [];
+
+  // Detecção de choques: salas e professores com aulas sobrepostas no mesmo dia
+  function toMin(h: string | null | undefined): number {
+    if (!h) return 0;
+    const [hh, mm] = h.slice(0, 5).split(":").map(Number);
+    return hh * 60 + (mm || 0);
+  }
+  function overlaps(a: any, b: any): boolean {
+    return toMin(a.horario_inicio) < toMin(b.horario_fim) &&
+           toMin(b.horario_inicio) < toMin(a.horario_fim);
+  }
+  const { choqueAmbientes, choqueProfessores } = useMemo(() => {
+    const salaGrupos: Record<string, any[]> = {};
+    const profGrupos: Record<string, any[]> = {};
+    for (const a of aulasNoDia as any[]) {
+      const sala = (a.ambiente || a.sala || "").trim();
+      if (sala) { salaGrupos[sala] ??= []; salaGrupos[sala].push(a); }
+      const prof = String(a.professor_id ?? "");
+      if (prof && prof !== "null") { profGrupos[prof] ??= []; profGrupos[prof].push(a); }
+    }
+    const cAmb = new Set<string>();
+    for (const [k, arr] of Object.entries(salaGrupos)) {
+      for (let i = 0; i < arr.length; i++)
+        for (let j = i + 1; j < arr.length; j++)
+          if (overlaps(arr[i], arr[j])) cAmb.add(k);
+    }
+    const cProf = new Set<string>();
+    for (const [k, arr] of Object.entries(profGrupos)) {
+      for (let i = 0; i < arr.length; i++)
+        for (let j = i + 1; j < arr.length; j++)
+          if (overlaps(arr[i], arr[j])) cProf.add(k);
+    }
+    return { choqueAmbientes: cAmb, choqueProfessores: cProf };
+  }, [aulasNoDia]);
 
   const deleteMutation = useMutation({
     mutationFn: (aulaId: number) => planejamentoApi.removerAula(aulaId),
@@ -866,9 +900,21 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
                         )}
                       </td>
                       <td className="px-4 py-3 text-gray-600">
-                        {a.professor_nome || <span className="text-gray-400 italic">Não definido</span>}
+                        <span className="flex items-center gap-1">
+                          {choqueProfessores.has(String(a.professor_id ?? "")) && (
+                            <span title="Professor com choque de horário"><Zap className="h-3.5 w-3.5 text-red-500 shrink-0" /></span>
+                          )}
+                          {a.professor_nome || <span className="text-gray-400 italic">Não definido</span>}
+                        </span>
                       </td>
-                      <td className="px-4 py-3 text-gray-500">{a.ambiente || a.sala || "—"}</td>
+                      <td className="px-4 py-3 text-gray-500">
+                        <span className="flex items-center gap-1">
+                          {choqueAmbientes.has((a.ambiente || a.sala || "").trim()) && (
+                            <span title="Sala com choque de horário"><Zap className="h-3.5 w-3.5 text-red-500 shrink-0" /></span>
+                          )}
+                          {a.ambiente || a.sala || "—"}
+                        </span>
+                      </td>
                       <td className="px-4 py-3">
                         <span className={cn(
                           "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border",

@@ -69,6 +69,8 @@ export const professoresApi = {
     api.put(`/professores/${id}`, data).then((r) => r.data),
   regencias: (params?: { data_inicio?: string; data_fim?: string }) =>
     api.get("/professores/regencia", { params }).then((r) => r.data),
+  ocupacao: (params: { data_inicio: string; data_fim: string }) =>
+    api.get("/professores/ocupacao", { params }).then((r) => r.data),
   regencia: (id: number, params?: any) =>
     api.get(`/professores/${id}/regencia`, { params }).then((r) => r.data),
   adicionarDisponibilidade: (

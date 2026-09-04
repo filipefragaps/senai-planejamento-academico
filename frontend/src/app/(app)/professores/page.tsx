@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { professoresApi, contratosApi, eventosApi, type ContratoEventoRef } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
@@ -9,6 +9,7 @@ import { ProfessorDrawer } from "@/components/professor-drawer";
 import { toast } from "sonner";
 import {
   Plus, Search, X, Pencil, ChevronRight, Clock, BookOpen, User, Briefcase,
+  LayoutGrid, List, ChevronLeft, Zap, Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -75,8 +76,205 @@ const FILTROS_TIPO = [
   { key: "RPA",                label: "RPA",               grupo: "extra" },
 ] as const;
 
+// ── GradeProfessores ──────────────────────────────────────────────────────────
+
+const TURNOS_PROF = ["Manhã", "Tarde", "Noite"] as const;
+const TURNO_STYLE_PROF: Record<string, { bg: string; text: string; dot: string }> = {
+  "Manhã":  { bg: "bg-amber-50",   text: "text-amber-800",  dot: "bg-amber-400"  },
+  "Tarde":  { bg: "bg-sky-50",     text: "text-sky-800",    dot: "bg-sky-400"    },
+  "Noite":  { bg: "bg-indigo-50",  text: "text-indigo-800", dot: "bg-indigo-400" },
+};
+function _wkMon(d: Date): Date {
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  const m = new Date(d); m.setDate(d.getDate() + diff); return m;
+}
+function _addDays(d: Date, n: number): Date { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
+function _iso(d: Date): string { return d.toISOString().slice(0, 10); }
+
+function GradeProfessores() {
+  const today = new Date();
+  const [weekStart, setWeekStart] = useState(() => _wkMon(today));
+  const weekEnd = _addDays(weekStart, 5);
+  const dias = Array.from({ length: 6 }, (_, i) => _addDays(weekStart, i));
+  const diaNomes = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["professores-ocupacao", _iso(weekStart)],
+    queryFn: () => professoresApi.ocupacao({ data_inicio: _iso(weekStart), data_fim: _iso(weekEnd) }),
+    staleTime: 60_000,
+  });
+
+  const professoresLista: any[] = data?.professores ?? [];
+  const ocupacoes: any[] = data?.ocupacoes ?? [];
+
+  const idx = useMemo(() => {
+    const m = new Map<number, Map<string, Map<string, any[]>>>();
+    for (const o of ocupacoes) {
+      if (!m.has(o.professor_id)) m.set(o.professor_id, new Map());
+      const byDate = m.get(o.professor_id)!;
+      if (!byDate.has(o.data)) byDate.set(o.data, new Map());
+      const byTurno = byDate.get(o.data)!;
+      const t = o.turno ?? "Manhã";
+      if (!byTurno.has(t)) byTurno.set(t, []);
+      byTurno.get(t)!.push(o);
+    }
+    return m;
+  }, [ocupacoes]);
+
+  const navLabel = `${weekStart.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} – ${weekEnd.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}`;
+
+  function ProfCell({ profId, iso }: { profId: number; iso: string }) {
+    const byTurno = idx.get(profId)?.get(iso);
+    return (
+      <td className="border border-gray-200 p-0 align-top min-w-[130px]">
+        <div className="divide-y divide-gray-100">
+          {TURNOS_PROF.map((turno) => {
+            const aulas = byTurno?.get(turno) ?? [];
+            const s = TURNO_STYLE_PROF[turno];
+            const choque = aulas.length > 1;
+            if (aulas.length === 0) {
+              return (
+                <div key={turno} className="px-1.5 py-1 flex items-center gap-1 h-[34px]">
+                  <span className={cn("w-1.5 h-1.5 rounded-full shrink-0 opacity-20", s.dot)} />
+                  <span className="text-[10px] text-gray-200">{turno[0]}</span>
+                </div>
+              );
+            }
+            return (
+              <div key={turno} className={cn("px-1.5 py-1 min-h-[34px]", choque ? "bg-red-50 border-l-2 border-red-400" : s.bg)}>
+                <div className="flex items-center gap-1 mb-0.5">
+                  {choque
+                    ? <Zap className="w-2.5 h-2.5 text-red-500 shrink-0" />
+                    : <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", s.dot)} />}
+                  <span className={cn("text-[9px] font-bold uppercase tracking-wide", choque ? "text-red-600" : s.text)}>
+                    {choque ? `CHOQUE (${aulas.length})` : turno}
+                  </span>
+                </div>
+                {aulas.map((a: any, i: number) => (
+                  <div key={i} className={cn("mb-1 last:mb-0 pl-1", choque && i > 0 && "mt-1 pt-1 border-t border-red-200")}>
+                    <p className={cn("text-[10px] font-semibold leading-snug break-words", choque ? "text-red-700" : s.text)}>
+                      {a.evento_nome ?? "—"}
+                    </p>
+                    {a.uc_nome && (
+                      <p className="text-[9px] text-gray-500 leading-snug break-words">{a.uc_nome}</p>
+                    )}
+                    {a.sala && (
+                      <p className={cn("text-[9px]", choque ? "text-red-400" : "text-gray-400")}>{a.sala}</p>
+                    )}
+                    {a.horario_inicio && (
+                      <p className={cn("text-[9px]", choque ? "text-red-400 font-semibold" : "text-gray-400")}>
+                        {a.horario_inicio}{a.horario_fim ? `–${a.horario_fim}` : ""}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </td>
+    );
+  }
+
+  const choqueCount = useMemo(() => {
+    const acc: Record<string, number> = {};
+    for (const o of ocupacoes) {
+      const k = `${o.professor_id}|${o.data}|${o.turno}`;
+      acc[k] = (acc[k] ?? 0) + 1;
+    }
+    return Object.values(acc).filter((v) => v > 1).length;
+  }, [ocupacoes]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-1 py-1">
+          <button onClick={() => setWeekStart(_addDays(weekStart, -7))} className="p-1.5 rounded hover:bg-gray-100 text-gray-500 transition-colors">
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <span className="text-sm font-medium text-gray-700 min-w-[200px] text-center px-1">{navLabel}</span>
+          <button onClick={() => setWeekStart(_addDays(weekStart, 7))} className="p-1.5 rounded hover:bg-gray-100 text-gray-500 transition-colors">
+            <ChevronLeft className="h-4 w-4 rotate-180" />
+          </button>
+        </div>
+        <button onClick={() => setWeekStart(_wkMon(today))} className="px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-colors">
+          Semana atual
+        </button>
+        <div className="ml-auto flex items-center gap-3">
+          {TURNOS_PROF.map((t) => (
+            <span key={t} className="flex items-center gap-1 text-xs text-gray-500">
+              <span className={cn("w-2.5 h-2.5 rounded-full", TURNO_STYLE_PROF[t].dot)} />{t}
+            </span>
+          ))}
+          <span className="flex items-center gap-1 text-xs text-red-500 font-medium">
+            <Zap className="w-3 h-3" /> Choque
+          </span>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-20 text-gray-400">
+          <Loader2 className="h-8 w-8 animate-spin mr-3" /><span>Carregando...</span>
+        </div>
+      ) : professoresLista.length === 0 ? (
+        <div className="card flex flex-col items-center justify-center py-16 text-center gap-4 text-gray-400">
+          <User className="h-12 w-12 opacity-30" />
+          <p className="font-medium text-gray-500">Nenhum professor com aulas nesta semana.</p>
+        </div>
+      ) : (
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide sticky left-0 bg-gray-50 z-10 border-r border-gray-200 min-w-[180px]">
+                    Professor
+                  </th>
+                  {dias.map((d, i) => {
+                    const isToday = _iso(d) === _iso(today);
+                    return (
+                      <th key={i} className={cn("px-3 py-3 text-center text-xs font-semibold uppercase tracking-wide whitespace-nowrap min-w-[130px]", isToday ? "bg-blue-50 text-blue-700" : "text-gray-500")}>
+                        <div>{diaNomes[i]}</div>
+                        <div className={cn("font-bold text-sm", isToday ? "text-blue-700" : "text-gray-800")}>
+                          {d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+                        </div>
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {professoresLista.map((prof: any, ri: number) => (
+                  <tr key={prof.id} className={cn("border-b last:border-0", ri % 2 === 0 ? "bg-white" : "bg-gray-50/30")}>
+                    <td className={cn("px-3 py-2 sticky left-0 z-10 border-r border-gray-200", ri % 2 === 0 ? "bg-white" : "bg-gray-50/30")}>
+                      <p className="text-xs font-semibold text-gray-800 leading-snug">{prof.nome}</p>
+                    </td>
+                    {dias.map((d) => <ProfCell key={_iso(d)} profId={prof.id} iso={_iso(d)} />)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-4 py-2 border-t bg-gray-50 text-xs text-gray-400 flex items-center gap-4">
+            <span>{professoresLista.length} professor(es) com aulas · {ocupacoes.length} aula(s) no período</span>
+            {choqueCount > 0 && (
+              <span className="flex items-center gap-1 text-red-500 font-semibold">
+                <Zap className="h-3 w-3" /> {choqueCount} choque(s) de docente
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
+
 export default function ProfessoresPage() {
   const qc = useQueryClient();
+  const [aba, setAba] = useState<"lista" | "grade">("lista");
   const [search, setSearch] = useState("");
   const [filtroTipo, setFiltroTipo] = useState<string>("todos");
   const [selected, setSelected] = useState<any | null>(null);
@@ -208,17 +406,37 @@ export default function ProfessoresPage() {
   }
 
   return (
-    <div className="flex gap-6 h-full">
+    <div className="space-y-0">
+      <PageHeader title="Professores" description="Gestão de professores, regência docente e grade semanal">
+        <button onClick={() => setDrawer("new")} className="btn-primary flex items-center gap-2">
+          <Plus className="h-4 w-4" /> Novo Professor
+        </button>
+      </PageHeader>
+
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-gray-200 mb-4">
+        <button
+          onClick={() => setAba("lista")}
+          className={cn("flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
+            aba === "lista" ? "border-blue-600 text-blue-700" : "border-transparent text-gray-500 hover:text-gray-700")}
+        >
+          <List className="h-4 w-4" /> Lista
+        </button>
+        <button
+          onClick={() => setAba("grade")}
+          className={cn("flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
+            aba === "grade" ? "border-blue-600 text-blue-700" : "border-transparent text-gray-500 hover:text-gray-700")}
+        >
+          <LayoutGrid className="h-4 w-4" /> Grade de Docentes
+        </button>
+      </div>
+
+      {aba === "grade" && <GradeProfessores />}
+
+      {aba === "lista" && <div className="flex gap-6 h-full">
       {/* ─── Lista ─── */}
       <div className={cn("flex-1 min-w-0 transition-all", selected ? "max-w-[52%]" : "")}>
-        <PageHeader title="Professores" description="Gestão de professores e regência docente">
-          <button
-            onClick={() => setDrawer("new")}
-            className="btn-primary flex items-center gap-2"
-          >
-            <Plus className="h-4 w-4" /> Novo Professor
-          </button>
-        </PageHeader>
+        <div className="hidden">{/* PageHeader moved above */}</div>
 
         <div className="relative mb-3">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -910,6 +1128,7 @@ export default function ProfessoresPage() {
           onDeleted={() => setDrawer(null)}
         />
       )}
+      </div>}
     </div>
   );
 }
