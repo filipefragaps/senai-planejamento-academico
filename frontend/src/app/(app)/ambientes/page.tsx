@@ -458,6 +458,8 @@ function GradeOcupacao() {
   const blocos: string[] = data?.blocos ?? [];
   const ocupacoes: any[] = data?.ocupacoes ?? [];
   const extras: string[] = data?.extras ?? [];
+  const debugRawSalas: string[] = data?.debug_raw_salas ?? [];
+  const debugTotalAulas: number = data?.debug_total_aulas ?? 0;
 
   // Índice: ambiente-nome (uppercase) → data → turno → lista de ocupações
   const idx = useMemo(() => {
@@ -686,8 +688,16 @@ function GradeOcupacao() {
               ) : null;
             })()}
             {extras.length > 0 && (
-              <span className="text-amber-600">
-                {extras.length} sala(s) com aulas mas sem cadastro: {extras.slice(0, 3).join(", ")}{extras.length > 3 ? "…" : ""}
+              <span
+                className="text-amber-600 cursor-help"
+                title={`Valores brutos encontrados no banco:\n${debugRawSalas.join("\n")}`}
+              >
+                ⚠ {extras.length} sala(s) sem correspondência cadastrada: {extras.slice(0, 5).join(", ")}{extras.length > 5 ? "…" : ""}
+                {debugRawSalas.length > 0 && (
+                  <span className="text-[10px] text-amber-500 ml-1">
+                    (raw: {debugRawSalas.slice(0, 3).join("; ")}{debugRawSalas.length > 3 ? "…" : ""})
+                  </span>
+                )}
               </span>
             )}
           </div>

@@ -157,24 +157,32 @@ async def ocupacao(
         if a.sigla:
             nome_map[a.sigla.upper()] = a.nome
             sigla_map[a.sigla.upper()] = a.nome
+        # Sufixo do nome após " - " (ex: "BL 01 - CAD/CAM/CAE" → "CAD/CAM/CAE")
+        # Permite casar quando a planilha importa apenas o trecho final do nome
+        if " - " in a.nome:
+            sufixo_nome = a.nome.rsplit(" - ", 1)[-1].strip().upper()
+            nome_map.setdefault(sufixo_nome, a.nome)
 
     def _resolve_nome(sala_raw: str) -> str:
         """Resolve a string bruta de sala para o nome canônico do ambiente cadastrado."""
         if not sala_raw:
             return sala_raw
-        key = sala_raw.upper()
-        # 1. Correspondência exata / normalizada
+        key = sala_raw.upper().strip()
+        # 1. Correspondência exata (nome completo ou sigla ou sufixo já indexado)
         if key in nome_map:
             return nome_map[key]
+        # 2. Normalizado: sem espaços e sem hífens
         norm = key.replace(" ", "").replace("-", "")
         if norm in nome_map:
             return nome_map[norm]
-        # 2. Sufixo após " - " bate na sigla (ex: "BL 01 - CAD/CAM/CAE" → sigla "CAD/CAM/CAE")
+        # 3. Sufixo após " - " bate na sigla ou no mapa geral
         if " - " in sala_raw:
             suffix = sala_raw.rsplit(" - ", 1)[-1].strip().upper()
             if suffix in sigla_map:
                 return sigla_map[suffix]
-        # 3. Fallback: retorna a string original
+            if suffix in nome_map:
+                return nome_map[suffix]
+        # 4. Fallback: retorna a string original (vai aparecer em extras)
         return sala_raw
 
     # COALESCE(NULLIF(ambiente,''), NULLIF(sala,'')) — trata strings vazias igual a NULL
@@ -243,11 +251,16 @@ async def ocupacao(
             "prof_nome": r.prof_nome,
         })
 
+    # Todas as strings brutas distintas encontradas (para diagnóstico)
+    raw_vals = sorted({(r.sala_efetiva or "").strip() for r in rows if r.sala_efetiva})
+
     return {
         "ambientes": [_serializar(a) for a in ambientes_db],
         "extras": extras,
         "blocos": blocos,
         "ocupacoes": ocupacoes,
+        "debug_raw_salas": raw_vals,
+        "debug_total_aulas": len(rows),
     }
 
 
