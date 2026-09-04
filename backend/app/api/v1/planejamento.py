@@ -760,12 +760,14 @@ async def get_ucs_pendentes(
     if not evento:
         raise HTTPException(status_code=404, detail="Evento não encontrado")
 
+    # horas_por_aula do evento — usado apenas como fallback para aulas sem horário registrado
+    # e para converter horas_faltando → número de aulas a criar
     hi, hf = evento.horario_inicio, evento.horario_fim
     if hi and hf:
-        segundos = (hf.hour * 3600 + hf.minute * 60) - (hi.hour * 3600 + hi.minute * 60)
-        horas_por_aula = max(segundos / 3600, 0.5)
+        segundos_ev = (hf.hour * 3600 + hf.minute * 60) - (hi.hour * 3600 + hi.minute * 60)
+        horas_por_aula_evento = max(segundos_ev / 3600, 0.5)
     else:
-        horas_por_aula = 1.0
+        horas_por_aula_evento = 1.0
 
     curso_id = await _resolver_curso_id(evento, evento_id, db)
 
@@ -779,28 +781,44 @@ async def get_ucs_pendentes(
     )
     ucs = res_ucs.scalars().all()
 
-    res_count = await db.execute(
-        select(Aula.unidade_curricular_id, func.count(Aula.id).label("contagem"))
+    # Soma horas reais de cada aula (horario_fim - horario_inicio individual),
+    # em vez de usar a janela geral do evento. Assim "Eletrônica Digitais" com
+    # aulas de 3h não é confundida com aulas de 4h do horário geral do evento.
+    res_aulas = await db.execute(
+        select(Aula.unidade_curricular_id, Aula.horario_inicio, Aula.horario_fim)
         .where(and_(Aula.evento_id == evento_id, Aula.status != "Cancelada"))
-        .group_by(Aula.unidade_curricular_id)
     )
-    contagens = {row[0]: row[1] for row in res_count.fetchall()}
+    horas_agendadas_por_uc: dict[int, float] = {}
+    contagens_uc: dict[int, int] = {}
+    for uc_id_r, h_ini, h_fim in res_aulas.fetchall():
+        if uc_id_r is None:
+            continue
+        contagens_uc[uc_id_r] = contagens_uc.get(uc_id_r, 0) + 1
+        if h_ini and h_fim:
+            seg = (h_fim.hour * 3600 + h_fim.minute * 60) - (h_ini.hour * 3600 + h_ini.minute * 60)
+            horas = max(seg / 3600, 0.0)
+        else:
+            horas = horas_por_aula_evento  # fallback para aulas sem horário
+        horas_agendadas_por_uc[uc_id_r] = horas_agendadas_por_uc.get(uc_id_r, 0.0) + horas
 
     resultado = []
     for uc in ucs:
         if not uc.carga_horaria:
             continue
-        necessarias = math.ceil(uc.carga_horaria / horas_por_aula)
-        agendadas = contagens.get(uc.id, 0)
+        horas_ag = horas_agendadas_por_uc.get(uc.id, 0.0)
+        horas_faltando = max((uc.carga_horaria or 0) - horas_ag, 0.0)
+        aulas_faltando = math.ceil(horas_faltando / horas_por_aula_evento) if horas_faltando > 0 else 0
         resultado.append({
             "uc_id": uc.id,
             "uc_nome": uc.nome,
             "uc_codigo": uc.codigo_uc,
             "etapa": uc.modulo_etapa,
             "carga_horaria": uc.carga_horaria,
-            "aulas_necessarias": necessarias,
-            "aulas_agendadas": agendadas,
-            "aulas_faltando": max(necessarias - agendadas, 0),
+            "horas_agendadas": round(horas_ag, 1),
+            "horas_faltando": round(horas_faltando, 1),
+            "aulas_agendadas": contagens_uc.get(uc.id, 0),
+            "aulas_necessarias": math.ceil((uc.carga_horaria or 0) / horas_por_aula_evento),
+            "aulas_faltando": aulas_faltando,
         })
 
     return resultado

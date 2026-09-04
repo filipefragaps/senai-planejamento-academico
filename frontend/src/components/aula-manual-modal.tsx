@@ -180,11 +180,11 @@ export function AulaManualModal({ eventoId, data, horarioInicio, horarioFim, onC
                 <option value="">Selecione uma UC...</option>
 
                 {comPendencia.length > 0 && (
-                  <optgroup label={`Com aulas pendentes (${comPendencia.length})`}>
+                  <optgroup label={`Com carga horária pendente (${comPendencia.length})`}>
                     {comPendencia.map((u: any) => (
                       <option key={u.uc_id} value={u.uc_id}>
                         {u.uc_nome}
-                        {u.etapa ? ` [${u.etapa}]` : ""} — falta {u.aulas_faltando} aula{u.aulas_faltando !== 1 ? "s" : ""}
+                        {u.etapa ? ` [${u.etapa}]` : ""} — falta {u.horas_faltando ?? u.aulas_faltando}h
                       </option>
                     ))}
                   </optgroup>
@@ -205,9 +205,9 @@ export function AulaManualModal({ eventoId, data, horarioInicio, horarioFim, onC
             {/* Resumo da UC selecionada */}
             {ucSelecionada && (
               <p className="mt-1.5 text-xs text-gray-500">
-                {ucSelecionada.aulas_agendadas} de {ucSelecionada.aulas_necessarias} aula(s) agendadas
+                {ucSelecionada.horas_agendadas ?? ucSelecionada.aulas_agendadas}h de {ucSelecionada.carga_horaria}h agendadas
                 {ucSelecionada.aulas_faltando > 0
-                  ? ` · falta ${ucSelecionada.aulas_faltando}`
+                  ? ` · falta ${ucSelecionada.horas_faltando ?? ucSelecionada.aulas_faltando}h`
                   : " · completa"}
               </p>
             )}
@@ -241,7 +241,7 @@ export function AulaManualModal({ eventoId, data, horarioInicio, horarioFim, onC
                     Agendar aulas pendentes a partir desta data
                   </p>
                   <p className="text-[11px] text-indigo-600 mt-0.5 leading-snug">
-                    UC de <strong>{ucSelecionada.carga_horaria}h</strong>. Confirme o horário da aula para calcular a quantidade automaticamente.
+                    UC de <strong>{ucSelecionada.carga_horaria}h</strong> · {ucSelecionada.horas_agendadas ?? 0}h agendadas · falta <strong>{ucSelecionada.horas_faltando ?? ucSelecionada.aulas_faltando}h</strong>. Confirme o horário para calcular.
                   </p>
                 </div>
               </div>
