@@ -64,7 +64,7 @@ async def ocupacao_professores(
     from app.models.aula import Aula
     from app.models.evento import Evento
     from app.models.unidade_curricular import UnidadeCurricular
-    from sqlalchemy import case as _case, and_ as _and_, or_ as _or_
+    from sqlalchemy import and_ as _and_, func as _func
 
     try:
         d_ini = _date.fromisoformat(data_inicio)
@@ -72,7 +72,12 @@ async def ocupacao_professores(
     except ValueError:
         raise HTTPException(status_code=422, detail="Datas inválidas — use YYYY-MM-DD")
 
-    # Professores ativos com aulas no período
+    sala_col = _func.coalesce(
+        _func.nullif(Aula.ambiente, ""),
+        _func.nullif(Aula.sala, ""),
+    ).label("sala_efetiva")
+
+    # Professores com aulas no período
     res = await db.execute(
         select(
             Professor.id,
@@ -84,10 +89,7 @@ async def ocupacao_professores(
             Evento.nome_turma,
             Evento.id.label("evento_id"),
             UnidadeCurricular.nome.label("uc_nome"),
-            _case(
-                (Aula.ambiente.is_not(None), Aula.ambiente),
-                else_=Aula.sala,
-            ).label("sala_efetiva"),
+            sala_col,
         )
         .join(Aula, Aula.professor_id == Professor.id)
         .join(Evento, Aula.evento_id == Evento.id)

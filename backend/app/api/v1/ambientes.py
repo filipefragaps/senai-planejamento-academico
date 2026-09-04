@@ -131,7 +131,7 @@ async def ocupacao(
     from app.models.evento import Evento
     from app.models.professor import Professor
     from app.models.unidade_curricular import UnidadeCurricular
-    from sqlalchemy import case, text as _text
+    from sqlalchemy import case, func as sqlfunc, text as _text
 
     try:
         d_ini = _date.fromisoformat(data_inicio)
@@ -177,10 +177,10 @@ async def ocupacao(
         # 3. Fallback: retorna a string original
         return sala_raw
 
-    # Campo de sala efetivo: COALESCE(ambiente, sala) — cobre importações antigas
-    sala_col = case(
-        (Aula.ambiente.is_not(None), Aula.ambiente),
-        else_=Aula.sala,
+    # COALESCE(NULLIF(ambiente,''), NULLIF(sala,'')) — trata strings vazias igual a NULL
+    sala_col = sqlfunc.coalesce(
+        sqlfunc.nullif(Aula.ambiente, ""),
+        sqlfunc.nullif(Aula.sala, ""),
     ).label("sala_efetiva")
 
     res_aulas = await db.execute(
@@ -203,10 +203,10 @@ async def ocupacao(
                 Aula.data >= d_ini,
                 Aula.data <= d_fim,
                 Aula.status != "Cancelada",
-                or_(
-                    and_(Aula.ambiente.is_not(None), Aula.ambiente != ""),
-                    and_(Aula.sala.is_not(None), Aula.sala != ""),
-                ),
+                sqlfunc.coalesce(
+                    sqlfunc.nullif(Aula.ambiente, ""),
+                    sqlfunc.nullif(Aula.sala, ""),
+                ).is_not(None),
             )
         )
         .order_by(Aula.data, sala_col, Aula.horario_inicio)
