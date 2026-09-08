@@ -419,7 +419,7 @@ async def ocupacao(
     }
 
 
-@router.post("/normalizar-aulas", dependencies=[Depends(get_current_user)])
+@router.post("/normalizar-aulas")
 async def normalizar_aulas_ambiente(
     dry_run: bool = True,
     db: AsyncSession = Depends(get_db),
