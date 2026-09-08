@@ -461,6 +461,21 @@ async def normalizar_aulas_ambiente(
         if t.replace(" ", "").replace("-", "") in exact:
             return exact[t.replace(" ", "").replace("-", "")]
 
+        # Extrai nome do LAB dos parênteses ANTES de remover o sufixo
+        # Ex: "BL 01/6 (LAB. SOFTWARE)" → "BL 01 - SOFTWARE"
+        # Ex: "BL 01/9 (LAB. CAD/CAM/ CAE)" → "BL 01 - CAD/CAM/CAE"
+        m_lab = _re.search(r'\(LAB\.\s*(.+?)\)\s*$', t)
+        if m_lab:
+            bloco_m = _re.match(r'^BL(?:OCO)?\s*\.?\s*0*(\d+)', t)
+            if bloco_m:
+                lab_name = _re.sub(r'/\s+', '/', m_lab.group(1).strip())
+                lab_name = _re.sub(r'\s+', ' ', lab_name)
+                candidate = f"BL {int(bloco_m.group(1)):02d} - {lab_name}"
+                if candidate in exact:
+                    return exact[candidate]
+                if candidate.replace(" ", "").replace("-", "") in exact:
+                    return exact[candidate.replace(" ", "").replace("-", "")]
+
         # Remove sufixos entre parênteses: (SALA DE AULA), (LABORATÓRIO), etc.
         t = _re.sub(r'\s*\([^)]+\)\s*$', '', t).strip()
 
@@ -478,14 +493,26 @@ async def normalizar_aulas_ambiente(
         t = _re.sub(r'\bBLOCO\s+0*(\d+)', lambda m: f"BL {int(m.group(1)):02d}", t)
         # BL.XX → BL XX
         t = _re.sub(r'\bBL\.(\d)', r'BL \1', t)
-        # BL XX SALA N → BL XX - N
-        t = _re.sub(r'(BL\s+\d+)\s+SALA\s+(\S)', r'\1 - \2', t)
+        # "X - SALA N" → "X - N" (UEG - SALA 11 → UEG - 11)
+        t = _re.sub(r'([-–]\s*)SALA\s+(\S)', r'\1\2', t)
+        # "UEG SALA DE AULA N" → "UEG - N"
+        t = _re.sub(r'^UEG\s+SALA\s+DE\s+AULA\s+(\S+)\s*$', r'UEG - \1', t)
+        # BL XX SALA N → BL XX - N (espaço após SALA opcional)
+        t = _re.sub(r'(BL\s+\d+)\s+SALA\s*(\S)', r'\1 - \2', t)
         # BL XX/NOME → BL XX - NOME
         t = _re.sub(r'(BL\s+\d+)/(.+)', r'\1 - \2', t)
         # Outros XX/NOME → XX - NOME (CTA/VR, etc.)
         t = _re.sub(r'(\w+)/(\w)', r'\1 - \2', t)
         # Remove zeros à esquerda no número: - 02 → - 2
         t = _re.sub(r'(-\s*)0+(\d+)\s*$', lambda m: m.group(1) + m.group(2), t)
+        # "SALA N BLOCO M" → "BL 0M - N" (ordem inversa)
+        m_rev = _re.match(r'^SALA\s+(\S+)\s+BLOCO\s+0*(\d+)\s*$', t)
+        if m_rev:
+            t = f"BL {int(m_rev.group(2)):02d} - {m_rev.group(1)}"
+        # "LABORATORIO DE XXX BLOCO N" → "BL 0N - XXX"
+        m_lde = _re.match(r'^LABORATORIO\s+DE\s+(\S+)\s+BLOCO\s+0*(\d+)\s*$', t)
+        if m_lde:
+            t = f"BL {int(m_lde.group(2)):02d} - {m_lde.group(1)}"
         # Normaliza espaços
         t = _re.sub(r'\s+', ' ', t).strip()
 
