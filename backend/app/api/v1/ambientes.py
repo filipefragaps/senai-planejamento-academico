@@ -368,6 +368,7 @@ async def ocupacao(
                 sqlfunc.coalesce(
                     sqlfunc.nullif(Aula.ambiente, ""),
                     sqlfunc.nullif(Aula.sala, ""),
+                    sqlfunc.nullif(Evento.sala, ""),
                 ).is_not(None),
             )
         )
