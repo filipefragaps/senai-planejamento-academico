@@ -582,7 +582,7 @@ function GradeOcupacao() {
           </button>
         </div>
         <button
-          onClick={() => setWeekStart(weekMonday(today))}
+          onClick={() => setWeekStart(weekMonday(new Date()))}
           className="px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-colors"
         >
           Semana atual
@@ -636,7 +636,7 @@ function GradeOcupacao() {
                     Ambiente
                   </th>
                   {dias.map((d, i) => {
-                    const isToday = isoDate(d) === isoDate(today);
+                    const isToday = isoDate(d) === isoDate(new Date());
                     return (
                       <th
                         key={i}
