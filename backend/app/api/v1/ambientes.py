@@ -488,6 +488,16 @@ async def normalizar_aulas_ambiente(
         if t.replace(" ", "").replace("-", "") in exact:
             return exact[t.replace(" ", "").replace("-", "")]
 
+        # Padrões de ordem inversa — checar ANTES de substituir BLOCO → BL
+        # "SALA N BLOCO M" → "BL 0M - N"
+        m_rev = _re.match(r'^SALA\s+(\S+)\s+BLOCO\s+0*(\d+)\s*$', t)
+        if m_rev:
+            t = f"BL {int(m_rev.group(2)):02d} - {m_rev.group(1)}"
+        # "LABORATORIO DE XXX BLOCO N" → "BL 0N - XXX"
+        m_lde = _re.match(r'^LABORATORIO\s+DE\s+(\S+)\s+BLOCO\s+0*(\d+)\s*$', t)
+        if m_lde:
+            t = f"BL {int(m_lde.group(2)):02d} - {m_lde.group(1)}"
+
         # Normaliza separadores
         # BLOCO N → BL 0N
         t = _re.sub(r'\bBLOCO\s+0*(\d+)', lambda m: f"BL {int(m.group(1)):02d}", t)
@@ -505,14 +515,6 @@ async def normalizar_aulas_ambiente(
         t = _re.sub(r'(\w+)/(\w)', r'\1 - \2', t)
         # Remove zeros à esquerda no número: - 02 → - 2
         t = _re.sub(r'(-\s*)0+(\d+)\s*$', lambda m: m.group(1) + m.group(2), t)
-        # "SALA N BLOCO M" → "BL 0M - N" (ordem inversa)
-        m_rev = _re.match(r'^SALA\s+(\S+)\s+BLOCO\s+0*(\d+)\s*$', t)
-        if m_rev:
-            t = f"BL {int(m_rev.group(2)):02d} - {m_rev.group(1)}"
-        # "LABORATORIO DE XXX BLOCO N" → "BL 0N - XXX"
-        m_lde = _re.match(r'^LABORATORIO\s+DE\s+(\S+)\s+BLOCO\s+0*(\d+)\s*$', t)
-        if m_lde:
-            t = f"BL {int(m_lde.group(2)):02d} - {m_lde.group(1)}"
         # Normaliza espaços
         t = _re.sub(r'\s+', ' ', t).strip()
 
