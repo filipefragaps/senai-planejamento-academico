@@ -419,6 +419,126 @@ async def ocupacao(
     }
 
 
+@router.post("/normalizar-aulas", dependencies=[Depends(get_current_user)])
+async def normalizar_aulas_ambiente(
+    dry_run: bool = True,
+    db: AsyncSession = Depends(get_db),
+):
+    """Normaliza aula.ambiente para o formato das siglas cadastradas.
+
+    Remove parênteses, barras e variações de formato que impedem o match
+    na Grade de Ambientes. Com dry_run=true apenas mostra o que seria alterado.
+    """
+    import re as _re
+    from app.models.aula import Aula
+    from sqlalchemy import update, distinct
+
+    # Carrega ambientes cadastrados
+    res_amb = await db.execute(select(Ambiente).where(Ambiente.ativo == True))
+    ambientes_db = res_amb.scalars().all()
+
+    # Monta mapa NFC-upper → sigla canônica
+    _nfc = lambda s: unicodedata.normalize("NFC", s or "")
+    exact: dict[str, str] = {}
+    for a in ambientes_db:
+        canon = a.sigla or a.nome
+        if a.sigla:
+            exact[_nfc(a.sigla).upper()] = canon
+        exact[_nfc(a.nome).upper()] = canon
+        # Sem espaços/hífens
+        exact[_nfc(a.sigla or "").upper().replace(" ", "").replace("-", "")] = canon
+        exact[_nfc(a.nome).upper().replace(" ", "").replace("-", "")] = canon
+
+    def _normalizar(raw: str) -> str | None:
+        """Tenta converter raw → sigla canônica. Retorna None se não encontrar."""
+        if not raw:
+            return None
+        t = unicodedata.normalize("NFC", raw.strip()).upper()
+
+        # Tenta lookup direto primeiro
+        if t in exact:
+            return exact[t]
+        if t.replace(" ", "").replace("-", "") in exact:
+            return exact[t.replace(" ", "").replace("-", "")]
+
+        # Remove sufixos entre parênteses: (SALA DE AULA), (LABORATÓRIO), etc.
+        t = _re.sub(r'\s*\([^)]+\)\s*$', '', t).strip()
+
+        # Remove sufixos após traço: - SALA DE AULA
+        t = _re.sub(r'\s*[-–]\s*SALA DE AULA\s*$', '', t).strip()
+
+        # Lookup após limpeza
+        if t in exact:
+            return exact[t]
+        if t.replace(" ", "").replace("-", "") in exact:
+            return exact[t.replace(" ", "").replace("-", "")]
+
+        # Normaliza separadores
+        # BLOCO N → BL 0N
+        t = _re.sub(r'\bBLOCO\s+0*(\d+)', lambda m: f"BL {int(m.group(1)):02d}", t)
+        # BL.XX → BL XX
+        t = _re.sub(r'\bBL\.(\d)', r'BL \1', t)
+        # BL XX SALA N → BL XX - N
+        t = _re.sub(r'(BL\s+\d+)\s+SALA\s+(\S)', r'\1 - \2', t)
+        # BL XX/NOME → BL XX - NOME
+        t = _re.sub(r'(BL\s+\d+)/(.+)', r'\1 - \2', t)
+        # Outros XX/NOME → XX - NOME (CTA/VR, etc.)
+        t = _re.sub(r'(\w+)/(\w)', r'\1 - \2', t)
+        # Remove zeros à esquerda no número: - 02 → - 2
+        t = _re.sub(r'(-\s*)0+(\d+)\s*$', lambda m: m.group(1) + m.group(2), t)
+        # Normaliza espaços
+        t = _re.sub(r'\s+', ' ', t).strip()
+
+        if t in exact:
+            return exact[t]
+        if t.replace(" ", "").replace("-", "") in exact:
+            return exact[t.replace(" ", "").replace("-", "")]
+
+        return None
+
+    # Busca todos os valores distintos de aula.ambiente não nulos
+    res_vals = await db.execute(
+        select(distinct(Aula.ambiente)).where(Aula.ambiente.isnot(None), Aula.ambiente != "")
+    )
+    raw_values = [r[0] for r in res_vals.fetchall()]
+
+    alteracoes = []
+    sem_match = []
+
+    for raw in raw_values:
+        canon = _normalizar(raw)
+        if canon and canon != raw:
+            # Conta quantas aulas seriam afetadas
+            res_count = await db.execute(
+                select(func.count(Aula.id)).where(Aula.ambiente == raw)
+            )
+            qtd = res_count.scalar() or 0
+            alteracoes.append({"de": raw, "para": canon, "aulas": qtd})
+            if not dry_run:
+                await db.execute(
+                    update(Aula).where(Aula.ambiente == raw).values(ambiente=canon)
+                )
+        elif not canon:
+            sem_match.append(raw)
+
+    if not dry_run:
+        await db.commit()
+
+    total_aulas = sum(a["aulas"] for a in alteracoes)
+    return {
+        "dry_run": dry_run,
+        "alteracoes": alteracoes,
+        "total_alteracoes": len(alteracoes),
+        "total_aulas_afetadas": total_aulas,
+        "sem_match": sem_match,
+        "mensagem": (
+            f"{'[SIMULAÇÃO] ' if dry_run else ''}Encontradas {len(alteracoes)} correções "
+            f"cobrindo {total_aulas} aulas. "
+            f"{len(sem_match)} valores sem correspondência cadastrada."
+        ),
+    }
+
+
 @router.post("/", status_code=201)
 async def criar(
     body: AmbienteCreate,
