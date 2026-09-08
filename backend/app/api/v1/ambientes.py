@@ -357,7 +357,7 @@ async def ocupacao(
             UnidadeCurricular.nome.label("uc_nome"),
             Professor.nome.label("prof_nome"),
         )
-        .join(Evento, Aula.evento_id == Evento.id)
+        .outerjoin(Evento, Aula.evento_id == Evento.id)
         .outerjoin(UnidadeCurricular, Aula.unidade_curricular_id == UnidadeCurricular.id)
         .outerjoin(Professor, Aula.professor_id == Professor.id)
         .where(
@@ -368,7 +368,6 @@ async def ocupacao(
                 sqlfunc.coalesce(
                     sqlfunc.nullif(Aula.ambiente, ""),
                     sqlfunc.nullif(Aula.sala, ""),
-                    sqlfunc.nullif(Evento.sala, ""),
                 ).is_not(None),
             )
         )

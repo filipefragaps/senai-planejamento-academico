@@ -94,14 +94,14 @@ async def ocupacao_professores(
             sala_col,
         )
         .select_from(Aula)
-        .join(Evento, Aula.evento_id == Evento.id)
+        .outerjoin(Evento, Aula.evento_id == Evento.id)
         .outerjoin(UnidadeCurricular, Aula.unidade_curricular_id == UnidadeCurricular.id)
         .where(
             _and_(
                 Aula.data >= d_ini,
                 Aula.data <= d_fim,
                 Aula.status != "Cancelada",
-                _or_(Aula.professor_id.isnot(None), Evento.professor_id.isnot(None)),
+                Aula.professor_id.isnot(None),
             )
         )
         .order_by(prof_id_col, Aula.data, Aula.horario_inicio)
