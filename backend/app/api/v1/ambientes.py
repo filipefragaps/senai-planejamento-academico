@@ -119,7 +119,6 @@ async def debug_aulas(
     data_inicio: str,
     data_fim: str,
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
 ):
     """
     Debug completo: mostra valores brutos do banco, siglas cadastradas,
