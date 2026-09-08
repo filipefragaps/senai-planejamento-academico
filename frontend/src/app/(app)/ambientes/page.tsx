@@ -479,6 +479,8 @@ function GradeOcupacao() {
       if (!byTurno.has(t)) byTurno.set(t, []);
       byTurno.get(t)!.push(o);
     }
+    // diagnóstico temporário — remover após resolver
+    console.log("[Grade] ocupacoes:", ocupacoes.length, "| idx keys:", [...m.keys()]);
     return m;
   }, [ocupacoes]);
 
