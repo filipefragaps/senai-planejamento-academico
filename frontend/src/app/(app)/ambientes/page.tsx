@@ -442,7 +442,6 @@ function GradeOcupacao() {
 
   useEffect(() => { setMounted(true); }, []);
 
-  if (!mounted) return <div className="p-8 text-center text-gray-400">Carregando grade...</div>;
   const [filtroBloco, setFiltroBloco] = useState<string>("");
   const [debugData, setDebugData] = useState<any | null>(null);
   const [debugLoading, setDebugLoading] = useState(false);
@@ -482,6 +481,8 @@ function GradeOcupacao() {
     }
     return m;
   }, [ocupacoes]);
+
+  if (!mounted) return <div className="p-8 text-center text-gray-400">Carregando grade...</div>;
 
   const diaNomes = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
