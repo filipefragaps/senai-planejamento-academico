@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useMemo, useCallback } from "react";
+import { useState, useRef, useMemo, useCallback, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ambientesApi, downloadBlob } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
@@ -437,8 +437,12 @@ function isoDate(d: Date): string {
 }
 
 function GradeOcupacao() {
-  const today = new Date();
-  const [weekStart, setWeekStart] = useState(() => weekMonday(today));
+  const [mounted, setMounted] = useState(false);
+  const [weekStart, setWeekStart] = useState<Date>(() => weekMonday(new Date()));
+
+  useEffect(() => { setMounted(true); }, []);
+
+  if (!mounted) return <div className="p-8 text-center text-gray-400">Carregando grade...</div>;
   const [filtroBloco, setFiltroBloco] = useState<string>("");
   const [debugData, setDebugData] = useState<any | null>(null);
   const [debugLoading, setDebugLoading] = useState(false);
