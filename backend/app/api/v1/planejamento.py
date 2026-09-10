@@ -573,19 +573,40 @@ async def cronograma_geral(
             cursos = {c.id: c.nome for c in res2.scalars().all()}
 
     # Buscar coordenador via oferta vinculada ao evento
+    # Caminho 1: oferta_id direto
     oferta_ids = {e.oferta_id for e in eventos.values() if e.oferta_id}
-    ofertas_coord: dict[int, str | None] = {}
+    ofertas_coord_by_id: dict[int, str | None] = {}
     if oferta_ids:
         res3 = await db.execute(
             select(OfertaCurso.id, OfertaCurso.coordenador).where(OfertaCurso.id.in_(oferta_ids))
         )
-        ofertas_coord = {row[0]: row[1] for row in res3.all()}
+        ofertas_coord_by_id = {row[0]: row[1] for row in res3.all()}
+
+    # Caminho 2: fallback por nome_turma == codigo_evento (quando oferta_id não está preenchido)
+    nomes_sem_oferta = {
+        e.nome_turma.strip(): e.id
+        for e in eventos.values()
+        if not e.oferta_id and e.nome_turma
+    }
+    coord_by_evento_id: dict[int, str | None] = {}
+    if nomes_sem_oferta:
+        res4 = await db.execute(
+            select(OfertaCurso.codigo_evento, OfertaCurso.coordenador)
+            .where(OfertaCurso.codigo_evento.in_(list(nomes_sem_oferta.keys())))
+        )
+        for codigo, coord in res4.all():
+            ev_id = nomes_sem_oferta.get(codigo)
+            if ev_id is not None:
+                coord_by_evento_id[ev_id] = coord
 
     rows = []
     for a in aulas:
         ev = eventos.get(a.evento_id)
         nome_curso = cursos.get(ev.curso_id) if ev and ev.curso_id else None
-        coordenador = ofertas_coord.get(ev.oferta_id) if ev and ev.oferta_id else None
+        if ev and ev.oferta_id:
+            coordenador = ofertas_coord_by_id.get(ev.oferta_id)
+        else:
+            coordenador = coord_by_evento_id.get(a.evento_id)
 
         # Garante que nome_evento sempre exibe: código – nome do curso
         nome_evt = (ev.nome_turma or "") if ev else ""
