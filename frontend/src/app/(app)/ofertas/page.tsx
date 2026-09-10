@@ -87,7 +87,7 @@ export default function OfertasPage() {
   const [novoEventoAberto, setNovoEventoAberto] = useState(false);
   const [semestre, setSemestre] = useState<number | undefined>(undefined);
   const [filtroModalidade, setFiltroModalidade] = useState("");
-  const [filtroArea, setFiltroArea] = useState("");
+  const [filtroStatus, setFiltroStatus] = useState("");
   const [filtroTurno, setFiltroTurno] = useState("");
   const [filtroCoordenador, setFiltroCoordenador] = useState("");
   const [busca, setBusca] = useState("");
@@ -99,12 +99,12 @@ export default function OfertasPage() {
   });
 
   const { data: ofertas = [], isLoading, refetch } = useQuery({
-    queryKey: ["ofertas", semestre, filtroModalidade, filtroArea, filtroTurno, filtroCoordenador, busca],
+    queryKey: ["ofertas", semestre, filtroModalidade, filtroStatus, filtroTurno, filtroCoordenador, busca],
     queryFn: () =>
       ofertasApi.listar({
         semestre,
         modalidade: filtroModalidade || undefined,
-        area: filtroArea || undefined,
+        status: filtroStatus || undefined,
         turno: filtroTurno || undefined,
         coordenador: filtroCoordenador || undefined,
         busca: busca || undefined,
@@ -150,13 +150,13 @@ export default function OfertasPage() {
   function limparFiltros() {
     setSemestre(undefined);
     setFiltroModalidade("");
-    setFiltroArea("");
+    setFiltroStatus("");
     setFiltroTurno("");
     setFiltroCoordenador("");
     setBusca("");
   }
 
-  const temFiltro = !!semestre || !!filtroModalidade || !!filtroArea || !!filtroTurno || !!filtroCoordenador || !!busca;
+  const temFiltro = !!semestre || !!filtroModalidade || !!filtroStatus || !!filtroTurno || !!filtroCoordenador || !!busca;
 
   const iniciou   = stats?.por_status?.["INICIOU"] ?? 0;
   const emMatr    = stats?.por_status?.["EM MATRÍCULA"] ?? 0;
@@ -268,11 +268,11 @@ export default function OfertasPage() {
             ))}
           </select>
 
-          {/* Área */}
-          <select className="input w-44" value={filtroArea} onChange={(e) => setFiltroArea(e.target.value)}>
-            <option value="">Todas as áreas</option>
-            {(stats?.areas ?? []).map((a: string) => (
-              <option key={a} value={a}>{a}</option>
+          {/* Status */}
+          <select className="input w-44" value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)}>
+            <option value="">Todos os status</option>
+            {Object.keys(stats?.por_status ?? {}).sort().map((s: string) => (
+              <option key={s} value={s}>{s}</option>
             ))}
           </select>
 
