@@ -137,7 +137,7 @@ export const dashboardApi = {
 export const ofertasApi = {
   listar: (params?: {
     semestre?: number; status?: string; modalidade?: string;
-    area?: string; turno?: string; busca?: string; skip?: number; limit?: number;
+    area?: string; turno?: string; coordenador?: string; busca?: string; skip?: number; limit?: number;
   }) => api.get("/ofertas/", { params }).then((r) => r.data),
   stats: (semestre?: number) =>
     api.get("/ofertas/stats", { params: { semestre } }).then((r) => r.data),

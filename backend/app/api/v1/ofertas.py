@@ -153,6 +153,7 @@ async def listar_ofertas(
     modalidade: str | None = None,
     area: str | None = None,
     turno: str | None = None,
+    coordenador: str | None = None,
     busca: str | None = None,
     skip: int = 0,
     limit: int = 200,
@@ -170,6 +171,10 @@ async def listar_ofertas(
         query = query.where(OfertaCurso.area == area)
     if turno:
         query = query.where(OfertaCurso.turno == turno)
+    if coordenador == "__sem__":
+        query = query.where(OfertaCurso.coordenador == None)
+    elif coordenador:
+        query = query.where(OfertaCurso.coordenador == coordenador)
     if busca:
         b = f"%{busca}%"
         query = query.where(
@@ -214,6 +219,7 @@ async def estatisticas_ofertas(
     mod_q = await db.execute(select(OfertaCurso.modalidade).distinct().order_by(OfertaCurso.modalidade))
     area_q = await db.execute(select(OfertaCurso.area).distinct().order_by(OfertaCurso.area))
     turno_q = await db.execute(select(OfertaCurso.turno).distinct().order_by(OfertaCurso.turno))
+    coord_q = await db.execute(select(OfertaCurso.coordenador).distinct().order_by(OfertaCurso.coordenador))
 
     return {
         "total": total,
@@ -223,6 +229,7 @@ async def estatisticas_ofertas(
         "modalidades": [r[0] for r in mod_q if r[0]],
         "areas": [r[0] for r in area_q if r[0]],
         "turnos": [r[0] for r in turno_q if r[0]],
+        "coordenadores": [r[0] for r in coord_q if r[0]],
     }
 
 

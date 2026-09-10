@@ -89,6 +89,7 @@ export default function OfertasPage() {
   const [filtroModalidade, setFiltroModalidade] = useState("");
   const [filtroArea, setFiltroArea] = useState("");
   const [filtroTurno, setFiltroTurno] = useState("");
+  const [filtroCoordenador, setFiltroCoordenador] = useState("");
   const [busca, setBusca] = useState("");
 
   // ── Queries ──────────────────────────────────────────────────────────────
@@ -98,13 +99,14 @@ export default function OfertasPage() {
   });
 
   const { data: ofertas = [], isLoading, refetch } = useQuery({
-    queryKey: ["ofertas", semestre, filtroModalidade, filtroArea, filtroTurno, busca],
+    queryKey: ["ofertas", semestre, filtroModalidade, filtroArea, filtroTurno, filtroCoordenador, busca],
     queryFn: () =>
       ofertasApi.listar({
         semestre,
         modalidade: filtroModalidade || undefined,
         area: filtroArea || undefined,
         turno: filtroTurno || undefined,
+        coordenador: filtroCoordenador || undefined,
         busca: busca || undefined,
         limit: 500,
       }),
@@ -150,10 +152,11 @@ export default function OfertasPage() {
     setFiltroModalidade("");
     setFiltroArea("");
     setFiltroTurno("");
+    setFiltroCoordenador("");
     setBusca("");
   }
 
-  const temFiltro = !!semestre || !!filtroModalidade || !!filtroArea || !!filtroTurno || !!busca;
+  const temFiltro = !!semestre || !!filtroModalidade || !!filtroArea || !!filtroTurno || !!filtroCoordenador || !!busca;
 
   const iniciou   = stats?.por_status?.["INICIOU"] ?? 0;
   const emMatr    = stats?.por_status?.["EM MATRÍCULA"] ?? 0;
@@ -278,6 +281,15 @@ export default function OfertasPage() {
             <option value="">Todos os turnos</option>
             {(stats?.turnos ?? []).map((t: string) => (
               <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+
+          {/* Coordenador */}
+          <select className="input w-48" value={filtroCoordenador} onChange={(e) => setFiltroCoordenador(e.target.value)}>
+            <option value="">Todos os coordenadores</option>
+            <option value="__sem__">Sem coordenador</option>
+            {(stats?.coordenadores ?? []).map((c: string) => (
+              <option key={c} value={c}>{c}</option>
             ))}
           </select>
 
