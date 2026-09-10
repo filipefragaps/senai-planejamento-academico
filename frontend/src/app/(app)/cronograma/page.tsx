@@ -2,7 +2,7 @@
 
 import { useState, useRef, useMemo, useEffect } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
-import { planejamentoApi, professoresApi, eventosApi, relatoriosApi, downloadBlob } from "@/lib/api";
+import { planejamentoApi, professoresApi, eventosApi, ofertasApi, relatoriosApi, downloadBlob } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { AulaEditDrawer } from "@/components/aula-edit-drawer";
 import { AulaManualModal } from "@/components/aula-manual-modal";
@@ -155,6 +155,12 @@ export default function CronogramaPage() {
     staleTime: 300_000,
   });
 
+  const { data: ofertasStats } = useQuery({
+    queryKey: ["ofertas-stats-coordenadores"],
+    queryFn: () => ofertasApi.stats(),
+    staleTime: 300_000,
+  });
+
   const eventoMap = useMemo(() =>
     new Map((todosEventos as any[]).map((e: any) => [e.id, e.nome_turma ?? e.disciplina ?? ""])),
     [todosEventos]
@@ -170,13 +176,7 @@ export default function CronogramaPage() {
     [filtroModalidades]
   );
 
-  const coordenadores = useMemo(() => {
-    const set = new Set<string>();
-    for (const e of todosEventos as any[]) {
-      if (e.coordenador) set.add(e.coordenador);
-    }
-    return Array.from(set).sort();
-  }, [todosEventos]);
+  const coordenadores: string[] = ofertasStats?.coordenadores ?? [];
 
   const eventosFiltrados = useMemo(() => {
     const q = buscaEvento.toLowerCase();
