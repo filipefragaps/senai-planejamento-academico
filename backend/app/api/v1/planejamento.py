@@ -194,12 +194,13 @@ def _serializar_alocacao(a) -> dict:
     }
 
 
-def _serializar_aula(a: Aula, nome_prof: str | None = None, nome_uc: str | None = None, nome_evento: str | None = None, nome_curso: str | None = None) -> dict:
+def _serializar_aula(a: Aula, nome_prof: str | None = None, nome_uc: str | None = None, nome_evento: str | None = None, nome_curso: str | None = None, coordenador: str | None = None) -> dict:
     return {
         "id": a.id,
         "evento_id": a.evento_id,
         "nome_evento": nome_evento,
         "nome_curso": nome_curso,
+        "coordenador": coordenador,
         "data": a.data.isoformat() if a.data else None,
         "turno": a.turno,
         "horario_inicio": str(a.horario_inicio)[:5] if a.horario_inicio else None,
@@ -571,10 +572,20 @@ async def cronograma_geral(
             res2 = await db.execute(select(Curso).where(Curso.id.in_(curso_ids)))
             cursos = {c.id: c.nome for c in res2.scalars().all()}
 
+    # Buscar coordenador via oferta vinculada ao evento
+    oferta_ids = {e.oferta_id for e in eventos.values() if e.oferta_id}
+    ofertas_coord: dict[int, str | None] = {}
+    if oferta_ids:
+        res3 = await db.execute(
+            select(OfertaCurso.id, OfertaCurso.coordenador).where(OfertaCurso.id.in_(oferta_ids))
+        )
+        ofertas_coord = {row[0]: row[1] for row in res3.all()}
+
     rows = []
     for a in aulas:
         ev = eventos.get(a.evento_id)
         nome_curso = cursos.get(ev.curso_id) if ev and ev.curso_id else None
+        coordenador = ofertas_coord.get(ev.oferta_id) if ev and ev.oferta_id else None
 
         # Garante que nome_evento sempre exibe: código – nome do curso
         nome_evt = (ev.nome_turma or "") if ev else ""
@@ -590,6 +601,7 @@ async def cronograma_geral(
             nome_uc=ucs.get(a.unidade_curricular_id),
             nome_evento=nome_evento,
             nome_curso=nome_curso,
+            coordenador=coordenador,
         ))
 
     return rows

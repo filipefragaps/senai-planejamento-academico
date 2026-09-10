@@ -196,12 +196,6 @@ export default function CronogramaPage() {
     [professores]
   );
 
-  // Mapa evento_id → coordenador para filtro de aulas
-  const eventoCoordenadorMap = useMemo(() =>
-    new Map((todosEventos as any[]).map((e: any) => [e.id, e.coordenador ?? null])),
-    [todosEventos]
-  );
-
   // Enriquecer aulas com nomes e aplicar filtros de "sem professor" e coordenador
   const aulas = useMemo(() => {
     let list = (rawAulas as any[]).map((a: any) => ({
@@ -213,13 +207,12 @@ export default function CronogramaPage() {
       list = list.filter((a: any) => !a.professor_id);
     }
     if (coordenadorFiltro && !eventoFiltro) {
-      list = list.filter((a: any) => {
-        const coord = eventoCoordenadorMap.get(a.evento_id);
-        return coordenadorFiltro === "__sem__" ? !coord : coord === coordenadorFiltro;
-      });
+      list = list.filter((a: any) =>
+        coordenadorFiltro === "__sem__" ? !a.coordenador : a.coordenador === coordenadorFiltro
+      );
     }
     return list;
-  }, [rawAulas, eventoMap, profMap, semProfessor, coordenadorFiltro, eventoFiltro, eventoCoordenadorMap]);
+  }, [rawAulas, eventoMap, profMap, semProfessor, coordenadorFiltro, eventoFiltro]);
 
   // Mapa de cores por UC
   const ucColorMap = useMemo(() => buildUcColorMap(aulas), [aulas]);
