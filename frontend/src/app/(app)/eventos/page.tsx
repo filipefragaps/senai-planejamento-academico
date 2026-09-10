@@ -39,6 +39,8 @@ interface Evento {
   modalidade: string;
   professores_preferidos?: number[] | null;
   modulo_etapa_inicial?: string | null;
+  turno?: string | null;
+  coordenador?: string | null;
 }
 
 interface Oferta {
@@ -995,6 +997,9 @@ export default function EventosPage() {
 
   const [search, setSearch] = useState("");
   const [statusFiltro, setStatusFiltro] = useState("");
+  const [modalidadeFiltro, setModalidadeFiltro] = useState("");
+  const [turnoFiltro, setTurnoFiltro] = useState("");
+  const [coordenadorFiltro, setCoordenadorFiltro] = useState("");
   const [eventoSelecionado, setEventoSelecionado] = useState<Evento | null>(null);
   const [abaAtiva, setAbaAtiva] = useState<"cronograma" | "ucs" | "regencia">("cronograma");
   const [aulaEditando, setAulaEditando] = useState<AulaRow | null>(null);
@@ -1295,6 +1300,18 @@ export default function EventosPage() {
   // Dentro de cada grupo a ordem original da API é preservada (sem reordenar por nome).
   const STATUS_GROUP: Record<string, number> = { Planejado: 0, Ativo: 0, "Concluído": 1, Cancelado: 1 };
 
+  const modalidades = useMemo(() =>
+    [...new Set((eventos as Evento[]).map((e) => e.modalidade).filter(Boolean))].sort()
+  , [eventos]);
+
+  const turnos = useMemo(() =>
+    [...new Set((eventos as Evento[]).map((e) => e.turno).filter(Boolean) as string[])].sort()
+  , [eventos]);
+
+  const coordenadores = useMemo(() =>
+    [...new Set((eventos as Evento[]).map((e) => e.coordenador).filter(Boolean) as string[])].sort()
+  , [eventos]);
+
   const filtrados = useMemo(() => {
     const q = search.toLowerCase();
     return (eventos as Evento[])
@@ -1303,14 +1320,18 @@ export default function EventosPage() {
           e.nome_turma, e.disciplina, e.nome_curso ?? "",
         ].some((s) => s.toLowerCase().includes(q));
         const matchStatus = !statusFiltro || e.status === statusFiltro;
-        return matchSearch && matchStatus;
+        const matchModalidade = !modalidadeFiltro || e.modalidade === modalidadeFiltro;
+        const matchTurno = !turnoFiltro || e.turno === turnoFiltro;
+        const matchCoordenador = !coordenadorFiltro
+          || (coordenadorFiltro === "__sem__" ? !e.coordenador : e.coordenador === coordenadorFiltro);
+        return matchSearch && matchStatus && matchModalidade && matchTurno && matchCoordenador;
       })
       .sort((a, b) => {
         const ga = STATUS_GROUP[a.status] ?? 0;
         const gb = STATUS_GROUP[b.status] ?? 0;
-        return ga - gb; // só separa ativos/planejados (grupo 0) de concluídos/cancelados (grupo 1)
+        return ga - gb;
       });
-  }, [eventos, search, statusFiltro]);
+  }, [eventos, search, statusFiltro, modalidadeFiltro, turnoFiltro, coordenadorFiltro]);
 
   const ucsParaPlanejar: UCParaPlanejar[] = useMemo(() => {
     if (!modoSuperior) {
@@ -1531,9 +1552,40 @@ export default function EventosPage() {
                 <option key={s}>{s}</option>
               ))}
             </select>
-            {search && (
+            {modalidades.length > 0 && (
+              <select
+                className="input w-full text-sm"
+                value={modalidadeFiltro}
+                onChange={(e) => setModalidadeFiltro(e.target.value)}
+              >
+                <option value="">Todas as modalidades</option>
+                {modalidades.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            )}
+            {turnos.length > 0 && (
+              <select
+                className="input w-full text-sm"
+                value={turnoFiltro}
+                onChange={(e) => setTurnoFiltro(e.target.value)}
+              >
+                <option value="">Todos os turnos</option>
+                {turnos.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            )}
+            {coordenadores.length > 0 && (
+              <select
+                className="input w-full text-sm"
+                value={coordenadorFiltro}
+                onChange={(e) => setCoordenadorFiltro(e.target.value)}
+              >
+                <option value="">Todos os coordenadores</option>
+                <option value="__sem__">Sem coordenador</option>
+                {coordenadores.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            )}
+            {(search || statusFiltro || modalidadeFiltro || turnoFiltro || coordenadorFiltro) && (
               <button
-                onClick={() => setSearch("")}
+                onClick={() => { setSearch(""); setStatusFiltro(""); setModalidadeFiltro(""); setTurnoFiltro(""); setCoordenadorFiltro(""); }}
                 className="text-xs text-blue-600 hover:text-blue-800 text-left"
               >
                 Limpar filtros

@@ -44,7 +44,10 @@ async def listar_eventos(
     oferta_map: dict[int, dict] = {}
     if ids_oferta:
         res = await db.execute(select(OfertaCurso).where(OfertaCurso.id.in_(ids_oferta)))
-        oferta_map = {o.id: {"area": o.area, "modalidade": o.modalidade} for o in res.scalars().all()}
+        oferta_map = {
+            o.id: {"area": o.area, "modalidade": o.modalidade, "turno": o.turno, "coordenador": o.coordenador}
+            for o in res.scalars().all()
+        }
 
     out = []
     for e in eventos_list:
@@ -55,6 +58,8 @@ async def listar_eventos(
         d["area"] = curso_data.get("area") or (oferta_data.get("area") if oferta_data else None)
         # Modalidade vem da oferta (pasta) — fallback para tipo do curso
         d["tipo_curso"] = (oferta_data.get("modalidade") if oferta_data else None) or curso_data.get("tipo")
+        d["turno"] = oferta_data.get("turno") if oferta_data else None
+        d["coordenador"] = oferta_data.get("coordenador") if oferta_data else None
         out.append(d)
     return out
 
