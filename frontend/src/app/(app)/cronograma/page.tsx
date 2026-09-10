@@ -99,6 +99,7 @@ export default function CronogramaPage() {
   const [eventoFiltro, setEventoFiltro] = useState("");
   const [buscaEvento, setBuscaEvento] = useState("");
   const [filtroModalidades, setFiltroModalidades] = useState<string[]>([]);
+  const [coordenadorFiltro, setCoordenadorFiltro] = useState("");
   const [modalidadeOpen, setModalidadeOpen] = useState(false);
   const modalidadeRef = useRef<HTMLDivElement>(null);
   const tabelaRef = useRef<HTMLDivElement>(null);
@@ -169,6 +170,14 @@ export default function CronogramaPage() {
     [filtroModalidades]
   );
 
+  const coordenadores = useMemo(() => {
+    const set = new Set<string>();
+    for (const e of todosEventos as any[]) {
+      if (e.coordenador) set.add(e.coordenador);
+    }
+    return Array.from(set).sort();
+  }, [todosEventos]);
+
   const eventosFiltrados = useMemo(() => {
     const q = buscaEvento.toLowerCase();
     return (todosEventos as any[]).filter((e: any) => {
@@ -176,16 +185,24 @@ export default function CronogramaPage() {
         .some((s: string) => s.toLowerCase().includes(q));
       const matchM = codigosModalidadesFiltro.size === 0 ||
         codigosModalidadesFiltro.has(codigoModalidade(e.tipo_curso));
-      return matchQ && matchM;
+      const matchC = !coordenadorFiltro ||
+        (coordenadorFiltro === "__sem__" ? !e.coordenador : e.coordenador === coordenadorFiltro);
+      return matchQ && matchM && matchC;
     });
-  }, [todosEventos, buscaEvento, codigosModalidadesFiltro]);
+  }, [todosEventos, buscaEvento, codigosModalidadesFiltro, coordenadorFiltro]);
 
   const profMap = useMemo(() =>
     new Map((professores as any[]).map((p: any) => [p.id, p.nome ?? ""])),
     [professores]
   );
 
-  // Enriquecer aulas com nomes e aplicar filtro de "sem professor"
+  // Mapa evento_id → coordenador para filtro de aulas
+  const eventoCoordenadorMap = useMemo(() =>
+    new Map((todosEventos as any[]).map((e: any) => [e.id, e.coordenador ?? null])),
+    [todosEventos]
+  );
+
+  // Enriquecer aulas com nomes e aplicar filtros de "sem professor" e coordenador
   const aulas = useMemo(() => {
     let list = (rawAulas as any[]).map((a: any) => ({
       ...a,
@@ -195,8 +212,14 @@ export default function CronogramaPage() {
     if (semProfessor) {
       list = list.filter((a: any) => !a.professor_id);
     }
+    if (coordenadorFiltro && !eventoFiltro) {
+      list = list.filter((a: any) => {
+        const coord = eventoCoordenadorMap.get(a.evento_id);
+        return coordenadorFiltro === "__sem__" ? !coord : coord === coordenadorFiltro;
+      });
+    }
     return list;
-  }, [rawAulas, eventoMap, profMap, semProfessor]);
+  }, [rawAulas, eventoMap, profMap, semProfessor, coordenadorFiltro, eventoFiltro, eventoCoordenadorMap]);
 
   // Mapa de cores por UC
   const ucColorMap = useMemo(() => buildUcColorMap(aulas), [aulas]);
@@ -485,6 +508,19 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
             <option value="sem_professor">⚠ Sem professor</option>
             {(professores as any[]).map((p: any) => (
               <option key={p.id} value={p.id}>{p.nome}</option>
+            ))}
+          </select>
+
+          {/* Filtro coordenador */}
+          <select
+            className="input w-48 text-sm"
+            value={coordenadorFiltro}
+            onChange={(e) => { setCoordenadorFiltro(e.target.value); setEventoFiltro(""); setDiaSelecionado(null); }}
+          >
+            <option value="">Todos os coordenadores</option>
+            <option value="__sem__">Sem coordenador</option>
+            {coordenadores.map((c) => (
+              <option key={c} value={c}>{c}</option>
             ))}
           </select>
 
