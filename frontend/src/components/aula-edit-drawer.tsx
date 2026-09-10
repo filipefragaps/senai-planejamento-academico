@@ -264,14 +264,10 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
             >
               <option value="">— Sem ambiente —</option>
               {(ambientes as any[]).map((a: any) => {
-                const siglaDistinta = a.sigla && a.sigla.toUpperCase() !== a.nome.toUpperCase();
-                const label = siglaDistinta
-                  ? `${a.nome} — ${a.sigla}`
-                  : a.nome;
-                const value = a.nome;
+                const sigla = a.sigla ?? a.nome;
                 return (
-                  <option key={a.id} value={value}>
-                    {label}
+                  <option key={a.id} value={sigla}>
+                    {sigla}
                   </option>
                 );
               })}
