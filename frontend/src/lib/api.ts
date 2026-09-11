@@ -291,6 +291,8 @@ export const diarioApi = {
   info: () => api.get("/diario/info").then((r) => r.data),
   comparacao: (professorId: number, dataInicio: string, dataFim: string) =>
     api.get(`/diario/comparacao/${professorId}`, { params: { data_inicio: dataInicio, data_fim: dataFim } }).then((r) => r.data),
+  stats: (dataInicio: string, dataFim: string) =>
+    api.get("/diario/stats", { params: { data_inicio: dataInicio, data_fim: dataFim } }).then((r) => r.data),
 };
 
 // Administração / Limpeza de BD

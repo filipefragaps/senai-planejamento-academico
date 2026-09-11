@@ -47,6 +47,43 @@ async def importar_diario(
     }
 
 
+@router.get("/stats")
+async def stats_diario(
+    data_inicio: date,
+    data_fim: date,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """Horas executadas por professor no período, conforme o diário importado."""
+    from collections import defaultdict
+    res = await db.execute(
+        select(
+            DiarioAula.professor_id,
+            DiarioAula.qtde_horas,
+            DiarioAula.hora_inicio,
+            DiarioAula.hora_termino,
+        )
+        .where(
+            DiarioAula.professor_id.isnot(None),
+            DiarioAula.data >= data_inicio,
+            DiarioAula.data <= data_fim,
+        )
+    )
+    horas_por_prof: dict[int, float] = defaultdict(float)
+    for row in res.all():
+        h = 0.0
+        if row.qtde_horas is not None:
+            h = float(row.qtde_horas)
+        elif row.hora_inicio and row.hora_termino:
+            ini = row.hora_inicio.hour * 60 + row.hora_inicio.minute
+            fim = row.hora_termino.hour * 60 + row.hora_termino.minute
+            diff = fim - ini
+            if diff > 0:
+                h = diff / 60.0
+        horas_por_prof[row.professor_id] += h
+    return {str(pid): round(h, 2) for pid, h in horas_por_prof.items()}
+
+
 @router.get("/info")
 async def info_diario(
     db: AsyncSession = Depends(get_db),

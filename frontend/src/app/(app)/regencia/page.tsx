@@ -453,11 +453,21 @@ function DiarioTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, 
   const semMatch = planejadas.filter(a => !a.diario).length;
 
   // Regência executada: soma de horas do diário (planejadas com match + somente diário)
+  // Prioridade: qtde_horas → diff hora_inicio/hora_termino → horas da aula planejada
   const horasExec = useMemo(() => {
     const deMatchadas = planejadas
-      .filter(a => a.diario?.qtde_horas)
-      .reduce((s: number, a: any) => s + (a.diario.qtde_horas ?? 0), 0);
-    const deSomenteDiario = soDiario.reduce((s: number, d: any) => s + (d.qtde_horas ?? 0), 0);
+      .filter((a: any) => a.diario)
+      .reduce((s: number, a: any) => {
+        const d = a.diario;
+        if (d.qtde_horas != null && d.qtde_horas > 0) return s + d.qtde_horas;
+        if (d.hora_inicio && d.hora_termino) return s + horasAula(d.hora_inicio, d.hora_termino);
+        return s + horasAula(a.horario_inicio, a.horario_fim);
+      }, 0);
+    const deSomenteDiario = soDiario.reduce((s: number, d: any) => {
+      if (d.qtde_horas != null && d.qtde_horas > 0) return s + d.qtde_horas;
+      if (d.hora_inicio && d.hora_termino) return s + horasAula(d.hora_inicio, d.hora_termino);
+      return s;
+    }, 0);
     return deMatchadas + deSomenteDiario;
   }, [planejadas, soDiario]);
 
@@ -834,6 +844,30 @@ export default function RegenciaPage() {
     staleTime: 30_000,
   });
 
+  const { data: diarioStats } = useQuery<Record<string, number>>({
+    queryKey: ["diario-stats", regDataInicio, regDataFim],
+    queryFn: () => diarioApi.stats(regDataInicio, regDataFim),
+    staleTime: 60_000,
+    enabled: !!(diarioInfo as any)?.total,
+  });
+
+  const mediaExecutada = useMemo(() => {
+    if (!diarioStats || Object.keys(diarioStats).length === 0) return null;
+    let base = (regencias as any[]).map(p => ({ ...p, status_regencia: p.status ?? p.status_regencia }));
+    if (filtroQuadro === "quadro")      base = base.filter(p => TIPOS_QUADRO.has(p.tipo));
+    if (filtroQuadro === "extraquadro") base = base.filter(p => !TIPOS_QUADRO.has(p.tipo));
+    if (filtroModalidades.length > 0)   base = base.filter(p => (p.modalidades as string[] ?? []).some((m: string) => filtroModalidades.some(fm => m.toLowerCase().includes(fm.toLowerCase()))));
+    const incluidos = base.filter(p => !excluidos.has(p.professor_id));
+    const comDiario = incluidos.filter(p => diarioStats[String(p.professor_id)] != null);
+    if (comDiario.length === 0) return null;
+    const soma = comDiario.reduce((s: number, p: any) => {
+      const h = diarioStats[String(p.professor_id)] ?? 0;
+      const periodo = p.horas_periodo ?? 0;
+      return s + (periodo > 0 ? (h / periodo) * 100 : 0);
+    }, 0);
+    return { media: soma / comDiario.length, count: comDiario.length };
+  }, [diarioStats, regencias, excluidos, filtroQuadro, filtroModalidades]);
+
   const importarDiario = useMutation({
     mutationFn: (file: File) => diarioApi.importar(file),
     onSuccess: (data: any) => {
@@ -897,36 +931,75 @@ export default function RegenciaPage() {
           className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
       </div>
 
-      {/* Card de regência média */}
+      {/* Cards de regência média: planejada + executada */}
       {mediaRegencia && (
-        <div className="card px-5 py-4 flex items-center gap-5">
-          <div className="h-12 w-12 rounded-xl bg-blue-100 flex items-center justify-center shrink-0">
-            <TrendingUp className="h-6 w-6 text-blue-600" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Regência Média</p>
-            <div className="flex items-baseline gap-3 mt-0.5">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Planejada */}
+          <div className="card px-5 py-4 flex items-center gap-4">
+            <div className="h-10 w-10 rounded-xl bg-blue-100 flex items-center justify-center shrink-0">
+              <TrendingUp className="h-5 w-5 text-blue-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Regência Planejada</p>
+              <div className="flex items-baseline gap-2 mt-0.5">
+                <span className={cn(
+                  "text-3xl font-bold",
+                  mediaRegencia.media >= 70 ? "text-green-700" : mediaRegencia.media >= 50 ? "text-yellow-700" : "text-red-700"
+                )}>
+                  {mediaRegencia.media.toFixed(1)}%
+                </span>
+                <span className="text-sm text-gray-400">{mediaRegencia.count} prof.</span>
+              </div>
+            </div>
+            <div className="shrink-0 text-right space-y-1">
+              <p className="text-xs text-gray-400">Meta: 70%</p>
               <span className={cn(
-                "text-3xl font-bold",
-                mediaRegencia.media >= 70 ? "text-green-700" : mediaRegencia.media >= 50 ? "text-yellow-700" : "text-red-700"
+                "text-xs font-semibold px-2 py-0.5 rounded-full",
+                mediaRegencia.media >= 70 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
               )}>
-                {mediaRegencia.media.toFixed(1)}%
+                {mediaRegencia.media >= 70 ? "Atingida" : "Abaixo da meta"}
               </span>
-              <span className="text-sm text-gray-400">{mediaRegencia.count} de {mediaRegencia.total} professor(es)</span>
+              {excluidos.size > 0 && (
+                <p className="text-[10px] text-amber-600 flex items-center gap-1 justify-end">
+                  <EyeOff className="h-3 w-3" />{excluidos.size} excluído(s)
+                </p>
+              )}
             </div>
           </div>
-          <div className="shrink-0 text-right space-y-1">
-            <p className="text-xs text-gray-400">Meta: 70%</p>
-            <span className={cn(
-              "text-xs font-semibold px-2 py-0.5 rounded-full",
-              mediaRegencia.media >= 70 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-            )}>
-              {mediaRegencia.media >= 70 ? "Atingida" : "Abaixo da meta"}
-            </span>
-            {excluidos.size > 0 && (
-              <p className="text-[10px] text-amber-600 flex items-center gap-1 justify-end">
-                <EyeOff className="h-3 w-3" />{excluidos.size} excluído(s)
-              </p>
+
+          {/* Executada */}
+          <div className="card px-5 py-4 flex items-center gap-4">
+            <div className="h-10 w-10 rounded-xl bg-purple-100 flex items-center justify-center shrink-0">
+              <BookOpen className="h-5 w-5 text-purple-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Regência Executada</p>
+              {mediaExecutada ? (
+                <div className="flex items-baseline gap-2 mt-0.5">
+                  <span className={cn(
+                    "text-3xl font-bold",
+                    mediaExecutada.media >= 70 ? "text-green-700" : mediaExecutada.media >= 50 ? "text-yellow-700" : "text-red-700"
+                  )}>
+                    {mediaExecutada.media.toFixed(1)}%
+                  </span>
+                  <span className="text-sm text-gray-400">{mediaExecutada.count} prof. c/ diário</span>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400 mt-1">
+                  {(diarioInfo as any)?.total ? "Calculando..." : "Sem diário importado"}
+                </p>
+              )}
+            </div>
+            {mediaExecutada && (
+              <div className="shrink-0 text-right">
+                <p className="text-xs text-gray-400">Meta: 70%</p>
+                <span className={cn(
+                  "text-xs font-semibold px-2 py-0.5 rounded-full",
+                  mediaExecutada.media >= 70 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                )}>
+                  {mediaExecutada.media >= 70 ? "Atingida" : "Abaixo da meta"}
+                </span>
+              </div>
             )}
           </div>
         </div>
