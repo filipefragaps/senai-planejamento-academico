@@ -39,7 +39,7 @@ const NAV_PRINCIPAL: NavItem[] = [
   { href: "/eventos",     label: "Planejamento",     icon: Calendar,         perfis: ["admin", "coordenador"] },
   { href: "/importacao",  label: "Importar Dados",   icon: Upload,           perfis: ["admin"] },
   { href: "/ambientes",   label: "Salas e Labs",     icon: DoorOpen,         perfis: ["admin", "coordenador"] },
-  { href: "/regencia",    label: "Regência",         icon: TrendingUp,       perfis: ["admin"] },
+  { href: "/regencia",    label: "Regência",         icon: TrendingUp,       perfis: ["admin", "coordenador", "analista"] },
   { href: "/relatorios",  label: "Relatórios",       icon: BarChart3,        perfis: ["admin", "coordenador", "analista", "secretario"] },
   { href: "/historico",   label: "Histórico",        icon: History,          perfis: ["admin"] },
   { href: "/ia",          label: "Análise com IA",   icon: Brain,            perfis: ["admin", "coordenador"] },

@@ -9,7 +9,7 @@ from app.models.aula import Aula
 from app.models.professor import Professor
 from app.models.evento import Evento
 from app.models.oferta import OfertaCurso
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_admin_ou_coordenador
 from app.config import settings
 
 router = APIRouter(prefix="/diario", tags=["Diário de Execução"])
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/diario", tags=["Diário de Execução"])
 async def importar_diario(
     arquivo: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    _=Depends(require_admin_ou_coordenador),
 ):
     """Importa planilha do diário de execução. Substitui todos os registros anteriores."""
     if not arquivo.filename.endswith((".xlsx", ".xls")):

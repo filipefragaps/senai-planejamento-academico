@@ -8,6 +8,7 @@ import { RegenciaBar } from "@/components/regencia-bar";
 import { StatusBadge } from "@/components/status-badge";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { getCurrentUser } from "@/lib/auth";
 import {
   Search, X, TrendingUp, CheckCircle, AlertTriangle, Zap, Download, ArrowUpDown, Info, ChevronDown, EyeOff, Eye,
   Upload, BookOpen, CalendarCheck, FileQuestion,
@@ -147,11 +148,12 @@ function CalendarioMes({ ano, mes, dateMap, turnoFiltro }: {
 
 // ── ProfessorModal ────────────────────────────────────────────────────────────
 
-function ProfessorModal({ prof, defaultInicio, defaultFim, onClose, importarDiario: importarDiaroProp, importando: importandoProp, diarioInfoGlobal }: {
+function ProfessorModal({ prof, defaultInicio, defaultFim, onClose, importarDiario: importarDiaroProp, importando: importandoProp, diarioInfoGlobal, podeComandar }: {
   prof: any; defaultInicio: string; defaultFim: string; onClose: () => void;
   importarDiario: (file: File) => void;
   importando: boolean;
   diarioInfoGlobal: any;
+  podeComandar: boolean;
 }) {
   const [inicio, setInicio] = useState(defaultInicio);
   const [fim, setFim] = useState(defaultFim);
@@ -279,6 +281,7 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose, importarDiar
             importando={importandoProp}
             handleFileDiario={handleFileDiario}
             regencia={regencia}
+            podeComandar={podeComandar}
           />
         ) : (<>
           {/* Período + filtro de turno */}
@@ -439,12 +442,12 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose, importarDiar
 
 // ── DiarioTab ─────────────────────────────────────────────────────────────────
 
-function DiarioTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, diarioInfo, comparacao, loadingComp, importando, handleFileDiario, regencia }: {
+function DiarioTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, diarioInfo, comparacao, loadingComp, importando, handleFileDiario, regencia, podeComandar }: {
   prof: any; dataInicio: string; dataFim: string; inicio: string; fim: string;
   setInicio: (v: string) => void; setFim: (v: string) => void;
   diarioInfo: any; comparacao: any; loadingComp: boolean;
   importando: boolean; handleFileDiario: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  regencia: any;
+  regencia: any; podeComandar: boolean;
 }) {
   const planejadas: any[] = comparacao?.planejadas ?? [];
   const soDiario: any[] = comparacao?.somente_diario ?? [];
@@ -493,16 +496,18 @@ function DiarioTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, 
               Importado em {new Date(diarioInfo.importado_em).toLocaleDateString("pt-BR")} · {diarioInfo.total} registros
             </span>
           )}
-          <label className={cn(
-            "flex items-center gap-1.5 cursor-pointer px-3 py-2 rounded-lg border text-sm font-medium transition-colors",
-            importando
-              ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-              : "bg-white border-blue-200 text-blue-700 hover:bg-blue-50"
-          )}>
-            <Upload className="h-4 w-4" />
-            {importando ? "Importando..." : "Importar Excel do Diário"}
-            <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileDiario} disabled={importando} />
-          </label>
+          {podeComandar && (
+            <label className={cn(
+              "flex items-center gap-1.5 cursor-pointer px-3 py-2 rounded-lg border text-sm font-medium transition-colors",
+              importando
+                ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                : "bg-white border-blue-200 text-blue-700 hover:bg-blue-50"
+            )}>
+              <Upload className="h-4 w-4" />
+              {importando ? "Importando..." : "Importar Excel do Diário"}
+              <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileDiario} disabled={importando} />
+            </label>
+          )}
         </div>
       </div>
 
@@ -724,6 +729,9 @@ const STATUS_CARD_STYLE: Record<string, { bg: string; text: string; border: stri
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export default function RegenciaPage() {
+  const me = getCurrentUser();
+  const podeComandar = me?.perfil === "admin" || me?.perfil === "coordenador";
+
   const hoje = new Date();
   const mesAtual = yyyyMM(hoje.getFullYear(), hoje.getMonth() + 1);
 
@@ -899,21 +907,29 @@ export default function RegenciaPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Regência Docente" description="Mensalistas: meta 70% da CH contratada · Horistas: meta 100% da CH mínima contratada">
-        <label className={cn(
-          "flex items-center gap-1.5 cursor-pointer rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
-          importarDiario.isPending
-            ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-            : "bg-white border-purple-200 text-purple-700 hover:bg-purple-50"
-        )}>
-          <Upload className="h-4 w-4" />
-          {importarDiario.isPending ? "Importando..." : "Importar Diário"}
-          {diarioInfo?.importado_em && !importarDiario.isPending && (
-            <span className="text-[10px] text-gray-400 ml-1 hidden lg:inline">
-              · {new Date(diarioInfo.importado_em).toLocaleDateString("pt-BR")} · {diarioInfo.total}reg
-            </span>
-          )}
-          <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileDiarioGlobal} disabled={importarDiario.isPending} />
-        </label>
+        {podeComandar && (
+          <label className={cn(
+            "flex items-center gap-1.5 cursor-pointer rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+            importarDiario.isPending
+              ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+              : "bg-white border-purple-200 text-purple-700 hover:bg-purple-50"
+          )}>
+            <Upload className="h-4 w-4" />
+            {importarDiario.isPending ? "Importando..." : "Importar Diário"}
+            {(diarioInfo as any)?.importado_em && !importarDiario.isPending && (
+              <span className="text-[10px] text-gray-400 ml-1 hidden lg:inline">
+                · {new Date((diarioInfo as any).importado_em).toLocaleDateString("pt-BR")} · {(diarioInfo as any).total}reg
+              </span>
+            )}
+            <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileDiarioGlobal} disabled={importarDiario.isPending} />
+          </label>
+        )}
+        {!podeComandar && (diarioInfo as any)?.importado_em && (
+          <span className="text-xs text-gray-400 flex items-center gap-1">
+            <BookOpen className="h-3.5 w-3.5" />
+            Diário: {new Date((diarioInfo as any).importado_em).toLocaleDateString("pt-BR")} · {(diarioInfo as any).total} reg.
+          </span>
+        )}
         <button onClick={exportarExcel}
           className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600 hover:bg-green-50 hover:border-green-300 hover:text-green-700 transition-colors">
           <Download className="h-4 w-4" /> Exportar Excel
@@ -1257,6 +1273,7 @@ export default function RegenciaPage() {
           importarDiario={(file) => importarDiario.mutate(file)}
           importando={importarDiario.isPending}
           diarioInfoGlobal={diarioInfo}
+          podeComandar={podeComandar}
         />
       )}
     </div>
