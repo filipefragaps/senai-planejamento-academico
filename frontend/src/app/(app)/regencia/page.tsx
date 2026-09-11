@@ -147,8 +147,11 @@ function CalendarioMes({ ano, mes, dateMap, turnoFiltro }: {
 
 // ── ProfessorModal ────────────────────────────────────────────────────────────
 
-function ProfessorModal({ prof, defaultInicio, defaultFim, onClose }: {
+function ProfessorModal({ prof, defaultInicio, defaultFim, onClose, importarDiario: importarDiaroProp, importando: importandoProp, diarioInfoGlobal }: {
   prof: any; defaultInicio: string; defaultFim: string; onClose: () => void;
+  importarDiario: (file: File) => void;
+  importando: boolean;
+  diarioInfoGlobal: any;
 }) {
   const [inicio, setInicio] = useState(defaultInicio);
   const [fim, setFim] = useState(defaultFim);
@@ -156,7 +159,6 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose }: {
   const [aba, setAba] = useState<"planejado" | "diario">("planejado");
   const dataInicio = `${inicio}-01`;
   const dataFim = ultimoDiaMes(fim);
-  const qc = useQueryClient();
 
   const { data: aulasRaw = [], isLoading } = useQuery({
     queryKey: ["prof-aulas-reg", prof.professor_id, inicio, fim],
@@ -169,12 +171,6 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose }: {
     staleTime: 60_000,
   });
 
-  const { data: diarioInfo } = useQuery({
-    queryKey: ["diario-info"],
-    queryFn: () => diarioApi.info(),
-    staleTime: 30_000,
-  });
-
   const { data: comparacao, isLoading: loadingComp } = useQuery({
     queryKey: ["diario-comp", prof.professor_id, inicio, fim],
     queryFn: () => diarioApi.comparacao(prof.professor_id, dataInicio, dataFim),
@@ -182,22 +178,9 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose }: {
     staleTime: 60_000,
   });
 
-  const importarDiario = useMutation({
-    mutationFn: (file: File) => diarioApi.importar(file),
-    onSuccess: (data) => {
-      toast.success(data.mensagem);
-      qc.invalidateQueries({ queryKey: ["diario-info"] });
-      qc.invalidateQueries({ queryKey: ["diario-comp"] });
-    },
-    onError: (err: any) => {
-      const raw = err?.response?.data?.detail;
-      toast.error(typeof raw === "string" ? raw : "Erro ao importar diário");
-    },
-  });
-
   function handleFileDiario(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (file) importarDiario.mutate(file);
+    if (file) importarDiaroProp(file);
     e.target.value = "";
   }
 
@@ -290,11 +273,12 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose }: {
             fim={fim}
             setInicio={setInicio}
             setFim={setFim}
-            diarioInfo={diarioInfo}
+            diarioInfo={diarioInfoGlobal}
             comparacao={comparacao}
             loadingComp={loadingComp}
-            importando={importarDiario.isPending}
+            importando={importandoProp}
             handleFileDiario={handleFileDiario}
+            regencia={regencia}
           />
         ) : (<>
           {/* Período + filtro de turno */}
@@ -455,18 +439,30 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose }: {
 
 // ── DiarioTab ─────────────────────────────────────────────────────────────────
 
-function DiarioTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, diarioInfo, comparacao, loadingComp, importando, handleFileDiario }: {
+function DiarioTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, diarioInfo, comparacao, loadingComp, importando, handleFileDiario, regencia }: {
   prof: any; dataInicio: string; dataFim: string; inicio: string; fim: string;
   setInicio: (v: string) => void; setFim: (v: string) => void;
   diarioInfo: any; comparacao: any; loadingComp: boolean;
   importando: boolean; handleFileDiario: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  regencia: any;
 }) {
   const planejadas: any[] = comparacao?.planejadas ?? [];
   const soDiario: any[] = comparacao?.somente_diario ?? [];
 
-  const comMatch    = planejadas.filter(a => a.diario).length;
-  const semMatch    = planejadas.filter(a => !a.diario).length;
-  const divergentes = planejadas.filter(a => a.diario && a.ambiente_planejado && a.diario.ambiente && a.ambiente_planejado !== a.diario.ambiente).length;
+  const comMatch = planejadas.filter(a => a.diario).length;
+  const semMatch = planejadas.filter(a => !a.diario).length;
+
+  // Regência executada: soma de horas do diário (planejadas com match + somente diário)
+  const horasExec = useMemo(() => {
+    const deMatchadas = planejadas
+      .filter(a => a.diario?.qtde_horas)
+      .reduce((s: number, a: any) => s + (a.diario.qtde_horas ?? 0), 0);
+    const deSomenteDiario = soDiario.reduce((s: number, d: any) => s + (d.qtde_horas ?? 0), 0);
+    return deMatchadas + deSomenteDiario;
+  }, [planejadas, soDiario]);
+
+  const horasPeriodo = (regencia as any)?.horas_periodo ?? 0;
+  const percentualExec = horasPeriodo > 0 ? (horasExec / horasPeriodo) * 100 : null;
 
   return (
     <div className="space-y-5">
@@ -501,8 +497,8 @@ function DiarioTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, 
       </div>
 
       {/* Stats de conciliação */}
-      {planejadas.length > 0 && (
-        <div className="grid grid-cols-4 gap-3">
+      {(planejadas.length > 0 || soDiario.length > 0) && (
+        <div className="grid grid-cols-5 gap-3">
           <div className="rounded-lg bg-gray-50 border p-3 text-center">
             <p className="text-xs text-gray-500">Aulas Planejadas</p>
             <p className="text-xl font-bold text-gray-800">{planejadas.length}</p>
@@ -518,6 +514,28 @@ function DiarioTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, 
           <div className="rounded-lg bg-amber-50 border border-amber-100 p-3 text-center">
             <p className="text-xs text-amber-600">Só no Diário</p>
             <p className="text-xl font-bold text-amber-700">{soDiario.length}</p>
+          </div>
+          <div className={cn(
+            "rounded-lg border p-3 text-center",
+            percentualExec === null ? "bg-gray-50" :
+            percentualExec >= 70 ? "bg-indigo-50 border-indigo-100" :
+            percentualExec >= 50 ? "bg-yellow-50 border-yellow-100" : "bg-red-50 border-red-100"
+          )}>
+            <p className={cn("text-xs font-medium",
+              percentualExec === null ? "text-gray-500" :
+              percentualExec >= 70 ? "text-indigo-600" :
+              percentualExec >= 50 ? "text-yellow-600" : "text-red-600"
+            )}>Regência Executada</p>
+            <p className={cn("text-xl font-bold",
+              percentualExec === null ? "text-gray-400" :
+              percentualExec >= 70 ? "text-indigo-700" :
+              percentualExec >= 50 ? "text-yellow-700" : "text-red-700"
+            )}>
+              {percentualExec !== null ? `${percentualExec.toFixed(1)}%` : "—"}
+            </p>
+            {horasExec > 0 && (
+              <p className="text-[10px] text-gray-400 mt-0.5">{horasExec.toFixed(1)}h executadas</p>
+            )}
           </div>
         </div>
       )}
@@ -769,6 +787,33 @@ export default function RegenciaPage() {
     return { media: soma / incluidos.length, count: incluidos.length, total };
   }, [regencias, excluidos, filtroQuadro, filtroModalidades]);
 
+  const qc = useQueryClient();
+
+  const { data: diarioInfo } = useQuery({
+    queryKey: ["diario-info"],
+    queryFn: () => diarioApi.info(),
+    staleTime: 30_000,
+  });
+
+  const importarDiario = useMutation({
+    mutationFn: (file: File) => diarioApi.importar(file),
+    onSuccess: (data: any) => {
+      toast.success(data.mensagem);
+      qc.invalidateQueries({ queryKey: ["diario-info"] });
+      qc.invalidateQueries({ queryKey: ["diario-comp"] });
+    },
+    onError: (err: any) => {
+      const raw = err?.response?.data?.detail;
+      toast.error(typeof raw === "string" ? raw : "Erro ao importar diário");
+    },
+  });
+
+  function handleFileDiarioGlobal(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) importarDiario.mutate(file);
+    e.target.value = "";
+  }
+
   async function exportarExcel() {
     try {
       const res = await relatoriosApi.regencia();
@@ -781,6 +826,21 @@ export default function RegenciaPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Regência Docente" description="Mensalistas: meta 70% da CH contratada · Horistas: meta 100% da CH mínima contratada">
+        <label className={cn(
+          "flex items-center gap-1.5 cursor-pointer rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+          importarDiario.isPending
+            ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+            : "bg-white border-purple-200 text-purple-700 hover:bg-purple-50"
+        )}>
+          <Upload className="h-4 w-4" />
+          {importarDiario.isPending ? "Importando..." : "Importar Diário"}
+          {diarioInfo?.importado_em && !importarDiario.isPending && (
+            <span className="text-[10px] text-gray-400 ml-1 hidden lg:inline">
+              · {new Date(diarioInfo.importado_em).toLocaleDateString("pt-BR")} · {diarioInfo.total}reg
+            </span>
+          )}
+          <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileDiarioGlobal} disabled={importarDiario.isPending} />
+        </label>
         <button onClick={exportarExcel}
           className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600 hover:bg-green-50 hover:border-green-300 hover:text-green-700 transition-colors">
           <Download className="h-4 w-4" /> Exportar Excel
@@ -1082,6 +1142,9 @@ export default function RegenciaPage() {
           defaultInicio={regInicio}
           defaultFim={regFim}
           onClose={() => setProfSelecionado(null)}
+          importarDiario={(file) => importarDiario.mutate(file)}
+          importando={importarDiario.isPending}
+          diarioInfoGlobal={diarioInfo}
         />
       )}
     </div>
