@@ -102,6 +102,7 @@ async def comparacao(
         )
         ev_rows = {row.id: row for row in res_ev.all()}
 
+        # Path 1: lookup by oferta_id
         oferta_ids = {row.oferta_id for row in ev_rows.values() if row.oferta_id}
         oferta_map: dict[int, dict] = {}
         if oferta_ids:
@@ -112,14 +113,36 @@ async def comparacao(
             for row in res_of.all():
                 oferta_map[row.id] = {"codigo": row.codigo_evento, "nome_curso": row.nome_curso}
 
+        # Path 2: fallback lookup by codigo_evento for eventos without oferta_id
+        codigos_sem_oferta: dict[str, int] = {}  # codigo → ev_id
+        for ev_id, ev_row in ev_rows.items():
+            if not ev_row.oferta_id:
+                nm = (ev_row.nome_turma or "").strip()
+                codigo = nm.split()[0] if nm else None
+                if codigo:
+                    codigos_sem_oferta[codigo] = ev_id
+
+        oferta_by_codigo: dict[str, dict] = {}
+        if codigos_sem_oferta:
+            res_of2 = await db.execute(
+                select(OfertaCurso.codigo_evento, OfertaCurso.nome_curso)
+                .where(OfertaCurso.codigo_evento.in_(codigos_sem_oferta.keys()))
+            )
+            for row in res_of2.all():
+                oferta_by_codigo[row.codigo_evento] = {"codigo": row.codigo_evento, "nome_curso": row.nome_curso}
+
         for ev_id, ev_row in ev_rows.items():
             if ev_row.oferta_id and ev_row.oferta_id in oferta_map:
                 of = oferta_map[ev_row.oferta_id]
                 evento_info[ev_id] = {"codigo": of["codigo"], "nome_curso": of["nome_curso"]}
             else:
-                # Fallback: extract code from nome_turma (first token)
                 nm = (ev_row.nome_turma or "").strip()
-                evento_info[ev_id] = {"codigo": nm.split()[0] if nm else None, "nome_curso": None}
+                codigo = nm.split()[0] if nm else None
+                of2 = oferta_by_codigo.get(codigo) if codigo else None
+                evento_info[ev_id] = {
+                    "codigo": codigo,
+                    "nome_curso": of2["nome_curso"] if of2 else None,
+                }
 
     # Registros do diário para este professor no período
     res_diario = await db.execute(
