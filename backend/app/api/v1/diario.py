@@ -7,6 +7,8 @@ from app.database import get_db
 from app.models.diario import DiarioAula
 from app.models.aula import Aula
 from app.models.professor import Professor
+from app.models.evento import Evento
+from app.models.oferta import OfertaCurso
 from app.core.deps import get_current_user
 from app.config import settings
 
@@ -91,6 +93,34 @@ async def comparacao(
     )
     aulas_planejadas = res_aulas.scalars().all()
 
+    # Batch-fetch event info (codigo + nome_curso) for all planned aulas
+    evento_ids = {a.evento_id for a in aulas_planejadas if a.evento_id}
+    evento_info: dict[int, dict] = {}
+    if evento_ids:
+        res_ev = await db.execute(
+            select(Evento.id, Evento.nome_turma, Evento.oferta_id).where(Evento.id.in_(evento_ids))
+        )
+        ev_rows = {row.id: row for row in res_ev.all()}
+
+        oferta_ids = {row.oferta_id for row in ev_rows.values() if row.oferta_id}
+        oferta_map: dict[int, dict] = {}
+        if oferta_ids:
+            res_of = await db.execute(
+                select(OfertaCurso.id, OfertaCurso.codigo_evento, OfertaCurso.nome_curso)
+                .where(OfertaCurso.id.in_(oferta_ids))
+            )
+            for row in res_of.all():
+                oferta_map[row.id] = {"codigo": row.codigo_evento, "nome_curso": row.nome_curso}
+
+        for ev_id, ev_row in ev_rows.items():
+            if ev_row.oferta_id and ev_row.oferta_id in oferta_map:
+                of = oferta_map[ev_row.oferta_id]
+                evento_info[ev_id] = {"codigo": of["codigo"], "nome_curso": of["nome_curso"]}
+            else:
+                # Fallback: extract code from nome_turma (first token)
+                nm = (ev_row.nome_turma or "").strip()
+                evento_info[ev_id] = {"codigo": nm.split()[0] if nm else None, "nome_curso": None}
+
     # Registros do diário para este professor no período
     res_diario = await db.execute(
         select(DiarioAula).where(
@@ -107,16 +137,13 @@ async def comparacao(
         chave = (d.data, d.hora_inicio)
         diario_idx.setdefault(chave, []).append(d)
 
-    aula_ids_com_match: set[int] = set()
-
     planejadas_out = []
     for a in aulas_planejadas:
         chave = (a.data, a.horario_inicio)
         matches = diario_idx.get(chave, [])
         diario_match = matches[0] if matches else None
 
-        if diario_match:
-            aula_ids_com_match.add(a.id)
+        ev = evento_info.get(a.evento_id, {}) if a.evento_id else {}
 
         planejadas_out.append({
             "aula_id": a.id,
@@ -124,10 +151,10 @@ async def comparacao(
             "horario_inicio": str(a.horario_inicio)[:5] if a.horario_inicio else None,
             "horario_fim": str(a.horario_fim)[:5] if a.horario_fim else None,
             "evento_id": a.evento_id,
+            "evento_codigo": ev.get("codigo"),
+            "evento_nome": ev.get("nome_curso"),
             "uc_nome": a.uc_nome_original,
-            "ambiente_planejado": a.ambiente or a.sala,
             "status": a.status,
-            # Match do diário
             "diario": _serializar_diario(diario_match) if diario_match else None,
         })
 

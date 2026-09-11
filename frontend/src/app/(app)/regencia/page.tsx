@@ -547,7 +547,7 @@ function DiarioTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, 
         <div className="flex flex-col items-center gap-3 py-12 text-center text-gray-400 border rounded-lg">
           <FileQuestion className="h-10 w-10 text-gray-300" />
           <p className="text-sm font-medium">Nenhum dado do diário importado ainda.</p>
-          <p className="text-xs">Use o botão "Importar Excel do Diário" para carregar a planilha.</p>
+          <p className="text-xs">Use o botão "Importar Diário" no topo da página para carregar a planilha (uma importação vale para todos os docentes).</p>
         </div>
       ) : planejadas.length === 0 ? (
         <div className="text-center text-gray-400 py-8 text-sm border rounded-lg">
@@ -555,42 +555,74 @@ function DiarioTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, 
         </div>
       ) : (
         <div className="space-y-4">
+          {/* Tabela principal: Planejado × Diário */}
           <div>
             <h3 className="text-sm font-semibold text-gray-700 mb-2">Aulas Planejadas × Diário</h3>
             <div className="overflow-x-auto rounded-lg border">
               <table className="w-full text-xs border-collapse">
                 <thead>
                   <tr className="bg-gray-50 border-b">
-                    {["Data","Horário","UC / Disciplina","Amb. Planejado","Status","Diário — Componente","Amb. Executado","Situação"].map(h => (
-                      <th key={h} className="px-3 py-2 text-left font-semibold text-gray-600 whitespace-nowrap">{h}</th>
-                    ))}
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600 whitespace-nowrap">Data</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600 whitespace-nowrap">Horário</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600 whitespace-nowrap">Evento</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Curso</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Disciplina</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600 whitespace-nowrap">Status</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600 whitespace-nowrap">Situação</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Diário — Evento</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Diário — Componente</th>
                   </tr>
                 </thead>
                 <tbody>
                   {planejadas.map((a: any, i: number) => {
                     const d = a.diario;
-                    const ambDiv = d && a.ambiente_planejado && d.ambiente && a.ambiente_planejado !== d.ambiente;
+                    // Situação: compara evento do diário com evento planejado
+                    const semEvento = !a.evento_codigo;
+                    const eventoDiv = d && a.evento_codigo && d.evento_codigo && a.evento_codigo !== d.evento_codigo;
                     let situacao: { label: string; cls: string };
                     if (!d) situacao = { label: "Não registrado", cls: "bg-red-100 text-red-700" };
-                    else if (ambDiv) situacao = { label: "Divergência de sala", cls: "bg-amber-100 text-amber-700" };
-                    else situacao = { label: "Conforme", cls: "bg-green-100 text-green-700" };
+                    else if (eventoDiv) situacao = { label: "Evento divergente", cls: "bg-orange-100 text-orange-700" };
+                    else situacao = { label: "OK", cls: "bg-green-100 text-green-700" };
+
                     return (
                       <tr key={a.aula_id ?? i} className={cn("border-b last:border-0", i % 2 === 0 ? "bg-white" : "bg-gray-50/60")}>
                         <td className="px-3 py-2 whitespace-nowrap">{fmtData(a.data)}</td>
                         <td className="px-3 py-2 whitespace-nowrap text-gray-500 font-mono">{a.horario_inicio} – {a.horario_fim}</td>
-                        <td className="px-3 py-2 max-w-[140px] truncate">{a.uc_nome || "—"}</td>
-                        <td className="px-3 py-2 whitespace-nowrap text-gray-500">{a.ambiente_planejado || "—"}</td>
+                        {/* Evento planejado */}
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          {a.evento_codigo ? (
+                            <span className="font-mono font-semibold text-gray-700">{a.evento_codigo}</span>
+                          ) : (
+                            <span className="text-amber-500 flex items-center gap-1" title="Evento não vinculado ao planejamento">
+                              <AlertTriangle className="h-3 w-3 inline" />
+                              sem vínculo
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 min-w-[160px]">
+                          <span className="text-gray-700">{a.evento_nome || (semEvento ? "—" : "—")}</span>
+                        </td>
+                        <td className="px-3 py-2 min-w-[180px]">
+                          <span className="text-gray-800">{a.uc_nome || "—"}</span>
+                        </td>
                         <td className="px-3 py-2 whitespace-nowrap">
                           <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-semibold", STATUS_CHIP[a.status] ?? "bg-gray-100 text-gray-600")}>
                             {a.status}
                           </span>
                         </td>
-                        <td className="px-3 py-2 max-w-[160px] truncate text-gray-600">{d?.componente_nome || <span className="text-gray-300">—</span>}</td>
-                        <td className={cn("px-3 py-2 whitespace-nowrap", ambDiv ? "text-amber-600 font-semibold" : "text-gray-500")}>
-                          {d?.ambiente || "—"}
-                        </td>
                         <td className="px-3 py-2 whitespace-nowrap">
                           <span className={cn("px-2 py-0.5 rounded text-[10px] font-semibold", situacao.cls)}>{situacao.label}</span>
+                        </td>
+                        {/* Diário */}
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          {d?.evento_codigo ? (
+                            <span className={cn("font-mono font-semibold", eventoDiv ? "text-orange-600" : "text-gray-500")}>
+                              {d.evento_codigo}
+                            </span>
+                          ) : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-3 py-2 min-w-[160px] text-gray-500">
+                          {d?.componente_nome || <span className="text-gray-300">—</span>}
                         </td>
                       </tr>
                     );
@@ -600,6 +632,7 @@ function DiarioTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, 
             </div>
           </div>
 
+          {/* Somente no diário */}
           {soDiario.length > 0 && (
             <div>
               <h3 className="text-sm font-semibold text-amber-700 mb-2 flex items-center gap-1.5">
@@ -610,9 +643,11 @@ function DiarioTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, 
                 <table className="w-full text-xs border-collapse">
                   <thead>
                     <tr className="bg-amber-50 border-b">
-                      {["Data","Horário","Evento","Componente","Ambiente"].map(h => (
-                        <th key={h} className="px-3 py-2 text-left font-semibold text-amber-700 whitespace-nowrap">{h}</th>
-                      ))}
+                      <th className="px-3 py-2 text-left font-semibold text-amber-700 whitespace-nowrap">Data</th>
+                      <th className="px-3 py-2 text-left font-semibold text-amber-700 whitespace-nowrap">Horário</th>
+                      <th className="px-3 py-2 text-left font-semibold text-amber-700 whitespace-nowrap">Evento</th>
+                      <th className="px-3 py-2 text-left font-semibold text-amber-700">Curso (Diário)</th>
+                      <th className="px-3 py-2 text-left font-semibold text-amber-700">Componente</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -620,9 +655,13 @@ function DiarioTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, 
                       <tr key={d.id ?? i} className={cn("border-b last:border-0", i % 2 === 0 ? "bg-white" : "bg-amber-50/30")}>
                         <td className="px-3 py-2 whitespace-nowrap">{fmtData(d.data)}</td>
                         <td className="px-3 py-2 whitespace-nowrap text-gray-500 font-mono">{d.hora_inicio} – {d.hora_termino}</td>
-                        <td className="px-3 py-2 max-w-[160px] truncate">{d.evento_codigo ? `${d.evento_codigo} – ${d.evento_nome}` : d.evento_nome || "—"}</td>
-                        <td className="px-3 py-2 max-w-[160px] truncate text-gray-500">{d.componente_nome || "—"}</td>
-                        <td className="px-3 py-2 whitespace-nowrap text-gray-500">{d.ambiente || "—"}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          {d.evento_codigo
+                            ? <span className="font-mono font-semibold text-amber-700">{d.evento_codigo}</span>
+                            : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-3 py-2 min-w-[180px] text-gray-700">{d.evento_nome || "—"}</td>
+                        <td className="px-3 py-2 min-w-[160px] text-gray-500">{d.componente_nome || "—"}</td>
                       </tr>
                     ))}
                   </tbody>
