@@ -1,14 +1,16 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { professoresApi, planejamentoApi, relatoriosApi, downloadBlob } from "@/lib/api";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { professoresApi, planejamentoApi, relatoriosApi, diarioApi, downloadBlob } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { RegenciaBar } from "@/components/regencia-bar";
 import { StatusBadge } from "@/components/status-badge";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import {
   Search, X, TrendingUp, CheckCircle, AlertTriangle, Zap, Download, ArrowUpDown, Info, ChevronDown, EyeOff, Eye,
+  Upload, BookOpen, CalendarCheck, FileQuestion,
 } from "lucide-react";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -151,8 +153,10 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose }: {
   const [inicio, setInicio] = useState(defaultInicio);
   const [fim, setFim] = useState(defaultFim);
   const [turnoFiltro, setTurnoFiltro] = useState("todos");
+  const [aba, setAba] = useState<"planejado" | "diario">("planejado");
   const dataInicio = `${inicio}-01`;
   const dataFim = ultimoDiaMes(fim);
+  const qc = useQueryClient();
 
   const { data: aulasRaw = [], isLoading } = useQuery({
     queryKey: ["prof-aulas-reg", prof.professor_id, inicio, fim],
@@ -164,6 +168,38 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose }: {
     queryFn: () => professoresApi.regencia(prof.professor_id, { data_inicio: dataInicio, data_fim: dataFim }),
     staleTime: 60_000,
   });
+
+  const { data: diarioInfo } = useQuery({
+    queryKey: ["diario-info"],
+    queryFn: () => diarioApi.info(),
+    staleTime: 30_000,
+  });
+
+  const { data: comparacao, isLoading: loadingComp } = useQuery({
+    queryKey: ["diario-comp", prof.professor_id, inicio, fim],
+    queryFn: () => diarioApi.comparacao(prof.professor_id, dataInicio, dataFim),
+    enabled: aba === "diario",
+    staleTime: 60_000,
+  });
+
+  const importarDiario = useMutation({
+    mutationFn: (file: File) => diarioApi.importar(file),
+    onSuccess: (data) => {
+      toast.success(data.mensagem);
+      qc.invalidateQueries({ queryKey: ["diario-info"] });
+      qc.invalidateQueries({ queryKey: ["diario-comp"] });
+    },
+    onError: (err: any) => {
+      const raw = err?.response?.data?.detail;
+      toast.error(typeof raw === "string" ? raw : "Erro ao importar diário");
+    },
+  });
+
+  function handleFileDiario(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) importarDiario.mutate(file);
+    e.target.value = "";
+  }
 
   const meses = useMemo(() => mesesNaJanela(inicio, fim), [inicio, fim]);
   const dateMap = useMemo(() => {
@@ -221,7 +257,46 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose }: {
           </div>
           <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 text-gray-500"><X className="h-5 w-5" /></button>
         </div>
+
+        {/* Abas */}
+        <div className="flex border-b px-6 shrink-0">
+          {([
+            { key: "planejado", label: "Planejado", icon: CalendarCheck },
+            { key: "diario",    label: "Diário / Executado", icon: BookOpen },
+          ] as const).map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              onClick={() => setAba(key)}
+              className={cn(
+                "flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors",
+                aba === key
+                  ? "border-blue-600 text-blue-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              )}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </button>
+          ))}
+        </div>
+
         <div className="overflow-y-auto flex-1 p-6 space-y-5">
+        {aba === "diario" ? (
+          <DiarioTab
+            prof={prof}
+            dataInicio={dataInicio}
+            dataFim={dataFim}
+            inicio={inicio}
+            fim={fim}
+            setInicio={setInicio}
+            setFim={setFim}
+            diarioInfo={diarioInfo}
+            comparacao={comparacao}
+            loadingComp={loadingComp}
+            importando={importarDiario.isPending}
+            handleFileDiario={handleFileDiario}
+          />
+        ) : (<>
           {/* Período + filtro de turno */}
           <div className="flex items-center gap-4 flex-wrap">
             <span className="text-sm text-gray-600 font-medium">Período:</span>
@@ -371,8 +446,174 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose }: {
               </div>
             )}
           </div>
+        </>)}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── DiarioTab ─────────────────────────────────────────────────────────────────
+
+function DiarioTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, diarioInfo, comparacao, loadingComp, importando, handleFileDiario }: {
+  prof: any; dataInicio: string; dataFim: string; inicio: string; fim: string;
+  setInicio: (v: string) => void; setFim: (v: string) => void;
+  diarioInfo: any; comparacao: any; loadingComp: boolean;
+  importando: boolean; handleFileDiario: (e: React.ChangeEvent<HTMLInputElement>) => void;
+}) {
+  const planejadas: any[] = comparacao?.planejadas ?? [];
+  const soDiario: any[] = comparacao?.somente_diario ?? [];
+
+  const comMatch    = planejadas.filter(a => a.diario).length;
+  const semMatch    = planejadas.filter(a => !a.diario).length;
+  const divergentes = planejadas.filter(a => a.diario && a.ambiente_planejado && a.diario.ambiente && a.ambiente_planejado !== a.diario.ambiente).length;
+
+  return (
+    <div className="space-y-5">
+      {/* Controles de período + import */}
+      <div className="flex items-center gap-4 flex-wrap">
+        <span className="text-sm text-gray-600 font-medium">Período:</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500">De</span>
+          <input type="month" value={inicio} onChange={e => setInicio(e.target.value)} className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500">Até</span>
+          <input type="month" value={fim} onChange={e => setFim(e.target.value)} className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          {diarioInfo?.importado_em && (
+            <span className="text-xs text-gray-400">
+              Importado em {new Date(diarioInfo.importado_em).toLocaleDateString("pt-BR")} · {diarioInfo.total} registros
+            </span>
+          )}
+          <label className={cn(
+            "flex items-center gap-1.5 cursor-pointer px-3 py-2 rounded-lg border text-sm font-medium transition-colors",
+            importando
+              ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+              : "bg-white border-blue-200 text-blue-700 hover:bg-blue-50"
+          )}>
+            <Upload className="h-4 w-4" />
+            {importando ? "Importando..." : "Importar Excel do Diário"}
+            <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileDiario} disabled={importando} />
+          </label>
+        </div>
+      </div>
+
+      {/* Stats de conciliação */}
+      {planejadas.length > 0 && (
+        <div className="grid grid-cols-4 gap-3">
+          <div className="rounded-lg bg-gray-50 border p-3 text-center">
+            <p className="text-xs text-gray-500">Aulas Planejadas</p>
+            <p className="text-xl font-bold text-gray-800">{planejadas.length}</p>
+          </div>
+          <div className="rounded-lg bg-green-50 border border-green-100 p-3 text-center">
+            <p className="text-xs text-green-600">Com Registro</p>
+            <p className="text-xl font-bold text-green-700">{comMatch}</p>
+          </div>
+          <div className="rounded-lg bg-red-50 border border-red-100 p-3 text-center">
+            <p className="text-xs text-red-600">Sem Registro</p>
+            <p className="text-xl font-bold text-red-700">{semMatch}</p>
+          </div>
+          <div className="rounded-lg bg-amber-50 border border-amber-100 p-3 text-center">
+            <p className="text-xs text-amber-600">Só no Diário</p>
+            <p className="text-xl font-bold text-amber-700">{soDiario.length}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Tabela de comparação */}
+      {loadingComp ? (
+        <div className="text-center text-gray-400 py-10 text-sm">Carregando comparação...</div>
+      ) : !diarioInfo?.total ? (
+        <div className="flex flex-col items-center gap-3 py-12 text-center text-gray-400 border rounded-lg">
+          <FileQuestion className="h-10 w-10 text-gray-300" />
+          <p className="text-sm font-medium">Nenhum dado do diário importado ainda.</p>
+          <p className="text-xs">Use o botão "Importar Excel do Diário" para carregar a planilha.</p>
+        </div>
+      ) : planejadas.length === 0 ? (
+        <div className="text-center text-gray-400 py-8 text-sm border rounded-lg">
+          Nenhuma aula planejada para este professor no período.
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700 mb-2">Aulas Planejadas × Diário</h3>
+            <div className="overflow-x-auto rounded-lg border">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="bg-gray-50 border-b">
+                    {["Data","Horário","UC / Disciplina","Amb. Planejado","Status","Diário — Componente","Amb. Executado","Situação"].map(h => (
+                      <th key={h} className="px-3 py-2 text-left font-semibold text-gray-600 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {planejadas.map((a: any, i: number) => {
+                    const d = a.diario;
+                    const ambDiv = d && a.ambiente_planejado && d.ambiente && a.ambiente_planejado !== d.ambiente;
+                    let situacao: { label: string; cls: string };
+                    if (!d) situacao = { label: "Não registrado", cls: "bg-red-100 text-red-700" };
+                    else if (ambDiv) situacao = { label: "Divergência de sala", cls: "bg-amber-100 text-amber-700" };
+                    else situacao = { label: "Conforme", cls: "bg-green-100 text-green-700" };
+                    return (
+                      <tr key={a.aula_id ?? i} className={cn("border-b last:border-0", i % 2 === 0 ? "bg-white" : "bg-gray-50/60")}>
+                        <td className="px-3 py-2 whitespace-nowrap">{fmtData(a.data)}</td>
+                        <td className="px-3 py-2 whitespace-nowrap text-gray-500 font-mono">{a.horario_inicio} – {a.horario_fim}</td>
+                        <td className="px-3 py-2 max-w-[140px] truncate">{a.uc_nome || "—"}</td>
+                        <td className="px-3 py-2 whitespace-nowrap text-gray-500">{a.ambiente_planejado || "—"}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-semibold", STATUS_CHIP[a.status] ?? "bg-gray-100 text-gray-600")}>
+                            {a.status}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 max-w-[160px] truncate text-gray-600">{d?.componente_nome || <span className="text-gray-300">—</span>}</td>
+                        <td className={cn("px-3 py-2 whitespace-nowrap", ambDiv ? "text-amber-600 font-semibold" : "text-gray-500")}>
+                          {d?.ambiente || "—"}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <span className={cn("px-2 py-0.5 rounded text-[10px] font-semibold", situacao.cls)}>{situacao.label}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {soDiario.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-amber-700 mb-2 flex items-center gap-1.5">
+                <AlertTriangle className="h-4 w-4" />
+                Somente no Diário ({soDiario.length}) — sem correspondência no planejado
+              </h3>
+              <div className="overflow-x-auto rounded-lg border border-amber-100">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-amber-50 border-b">
+                      {["Data","Horário","Evento","Componente","Ambiente"].map(h => (
+                        <th key={h} className="px-3 py-2 text-left font-semibold text-amber-700 whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {soDiario.map((d: any, i: number) => (
+                      <tr key={d.id ?? i} className={cn("border-b last:border-0", i % 2 === 0 ? "bg-white" : "bg-amber-50/30")}>
+                        <td className="px-3 py-2 whitespace-nowrap">{fmtData(d.data)}</td>
+                        <td className="px-3 py-2 whitespace-nowrap text-gray-500 font-mono">{d.hora_inicio} – {d.hora_termino}</td>
+                        <td className="px-3 py-2 max-w-[160px] truncate">{d.evento_codigo ? `${d.evento_codigo} – ${d.evento_nome}` : d.evento_nome || "—"}</td>
+                        <td className="px-3 py-2 max-w-[160px] truncate text-gray-500">{d.componente_nome || "—"}</td>
+                        <td className="px-3 py-2 whitespace-nowrap text-gray-500">{d.ambiente || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

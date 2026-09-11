@@ -279,6 +279,20 @@ export const relatoriosApi = {
     api.get(`/relatorios/ucs-evento/${eventoId}/excel`, { responseType: "blob" }),
 };
 
+// Diário de Execução
+export const diarioApi = {
+  importar: (file: File) => {
+    const form = new FormData();
+    form.append("arquivo", file);
+    return api.post("/diario/importar", form, {
+      transformRequest: (data, headers) => { if (headers) delete headers["Content-Type"]; return data; },
+    }).then((r) => r.data);
+  },
+  info: () => api.get("/diario/info").then((r) => r.data),
+  comparacao: (professorId: number, dataInicio: string, dataFim: string) =>
+    api.get(`/diario/comparacao/${professorId}`, { params: { data_inicio: dataInicio, data_fim: dataFim } }).then((r) => r.data),
+};
+
 // Administração / Limpeza de BD
 export const adminApi = {
   limpar: (tipo: "aulas" | "planejamento" | "ofertas" | "importacao" | "tudo") =>

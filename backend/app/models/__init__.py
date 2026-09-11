@@ -12,6 +12,7 @@ from app.models.oferta import OfertaCurso
 from app.models.ambiente import Ambiente
 from app.models.contrato import ContratoDocente
 from app.models.pagamento import PagamentoAula, HistoricoPagamento
+from app.models.diario import DiarioAula
 
 __all__ = [
     "Usuario",
@@ -29,4 +30,5 @@ __all__ = [
     "ContratoDocente",
     "PagamentoAula",
     "HistoricoPagamento",
+    "DiarioAula",
 ]
