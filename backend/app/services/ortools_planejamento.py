@@ -18,7 +18,7 @@ Restrições SOFT (via função objetivo):
 import math
 from datetime import date
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 
 from app.models.aula import Aula
 from app.models.professor import Professor
@@ -305,12 +305,102 @@ async def calcular_impacto(
             "direcao":        "sobe" if delta > 0 else "desce",
         })
 
+    # ── Carga global dos professores alocados (TODOS os eventos, não só este) ──
+    prof_ids_alocados = [v for v in proposta.values() if v is not None]
+    carga_global: list[dict] = []
+
+    if prof_ids_alocados:
+        # Aulas em OUTROS eventos agrupadas por professor → evento → UC
+        res_cross = await db.execute(
+            select(
+                Aula.professor_id,
+                Aula.evento_id,
+                Evento.nome_turma,
+                Aula.unidade_curricular_id,
+                UnidadeCurricular.nome.label("uc_nome"),
+                func.count(Aula.id).label("num_aulas"),
+                func.min(Aula.data).label("data_inicio"),
+                func.max(Aula.data).label("data_fim"),
+            )
+            .join(Evento, Aula.evento_id == Evento.id)
+            .outerjoin(UnidadeCurricular, Aula.unidade_curricular_id == UnidadeCurricular.id)
+            .where(
+                and_(
+                    Aula.professor_id.in_(prof_ids_alocados),
+                    Aula.evento_id != evento_id,
+                    Aula.status != "Cancelada",
+                )
+            )
+            .group_by(
+                Aula.professor_id,
+                Aula.evento_id,
+                Evento.nome_turma,
+                Aula.unidade_curricular_id,
+                UnidadeCurricular.nome,
+            )
+            .order_by(Aula.professor_id, func.min(Aula.data))
+        )
+        cross_rows = res_cross.all()
+
+        # Datas individuais para o calendário (máx. 500 por professor para evitar payload gigante)
+        res_datas = await db.execute(
+            select(Aula.professor_id, Aula.data, Evento.nome_turma)
+            .join(Evento, Aula.evento_id == Evento.id)
+            .where(
+                and_(
+                    Aula.professor_id.in_(prof_ids_alocados),
+                    Aula.evento_id != evento_id,
+                    Aula.status != "Cancelada",
+                )
+            )
+            .order_by(Aula.professor_id, Aula.data)
+            .limit(2000)  # segurança: 188 eventos × max ~10 por prof
+        )
+        datas_por_prof: dict[int, list[dict]] = {}
+        for prof_id, data_aula, evt_nome in res_datas.all():
+            if prof_id not in datas_por_prof:
+                datas_por_prof[prof_id] = []
+            datas_por_prof[prof_id].append({
+                "data": data_aula.isoformat() if data_aula else None,
+                "evento_nome": evt_nome or "",
+            })
+
+        # Agrupa por professor
+        from collections import defaultdict
+        por_prof: dict[int, list] = defaultdict(list)
+        for row in cross_rows:
+            por_prof[row.professor_id].append({
+                "evento_id":   row.evento_id,
+                "evento_nome": row.nome_turma or f"Evento {row.evento_id}",
+                "uc_nome":     row.uc_nome or "—",
+                "num_aulas":   row.num_aulas,
+                "data_inicio": row.data_inicio.isoformat() if row.data_inicio else None,
+                "data_fim":    row.data_fim.isoformat() if row.data_fim else None,
+            })
+
+        for prof_id in prof_ids_alocados:
+            prof = prof_map.get(prof_id)
+            if not prof:
+                continue
+            carga_global.append({
+                "professor_id":   prof_id,
+                "professor_nome": prof.nome,
+                "tipo":           prof.tipo,
+                "outros_eventos": por_prof.get(prof_id, []),
+                "total_aulas_outros_eventos": sum(
+                    e["num_aulas"] for e in por_prof.get(prof_id, [])
+                ),
+                # Datas individuais para o calendário do relatório
+                "datas_outros_eventos": datas_por_prof.get(prof_id, []),
+            })
+
     return {
         "mudancas":         mudancas,
         "mantidos_count":   len(mantidos),
         "novos":            novos,
         "sem_professor":    sem_professor,
         "regencia_projecao": sorted(regencia_projecao, key=lambda x: abs(x["horas_delta"]), reverse=True),
+        "carga_global":     carga_global,
         "resumo": {
             "total_ucs":     len(proposta),
             "com_professor": sum(1 for v in proposta.values() if v is not None),

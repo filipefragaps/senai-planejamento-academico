@@ -56,6 +56,22 @@ interface RegenciaProjecaoItem {
   direcao: "sobe" | "desce";
 }
 
+interface CargaGlobalProfessor {
+  professor_id: number;
+  professor_nome: string;
+  tipo: string;
+  total_aulas_outros_eventos: number;
+  outros_eventos: {
+    evento_id: number;
+    evento_nome: string;
+    uc_nome: string;
+    num_aulas: number;
+    data_inicio: string | null;
+    data_fim: string | null;
+  }[];
+  datas_outros_eventos: { data: string; evento_nome: string }[];
+}
+
 interface ImpactoData {
   mudancas: {
     uc_id: number;
@@ -72,6 +88,7 @@ interface ImpactoData {
   }[];
   sem_professor: number[];
   regencia_projecao: RegenciaProjecaoItem[];
+  carga_global?: CargaGlobalProfessor[];
   resumo: {
     total_ucs: number;
     com_professor: number;
@@ -213,8 +230,9 @@ function AlocacaoCard({ a }: { a: AlocacaoResult }) {
 // ── Relatório de Impressão ────────────────────────────────────────────────────
 
 function imprimirRelatorio(resultado: ResultadoGerado, nomeEvento: string, modoOtimizado: boolean) {
-  // Build date → aulas map
-  const dateMap: Record<string, { uc_nome: string; professor_nome: string | null; alerta: string | null }[]> = {};
+  // ── Date map para este evento (aulas propostas) ───────────────────────────
+  type DayEntry = { uc_nome: string; professor_nome: string | null; alerta: string | null; outro_evento?: string };
+  const dateMap: Record<string, DayEntry[]> = {};
   for (const aloc of resultado.alocacoes) {
     for (const d of aloc.datas_aulas) {
       if (!dateMap[d]) dateMap[d] = [];
@@ -222,13 +240,33 @@ function imprimirRelatorio(resultado: ResultadoGerado, nomeEvento: string, modoO
     }
   }
 
-  const allDates = Object.keys(dateMap).sort();
-  if (allDates.length === 0 && resultado.alocacoes.length === 0) {
+  // ── Date map para outros eventos (compromissos existentes dos professores) ─
+  const outrosDateMap: Record<string, { professor_nome: string; evento_nome: string }[]> = {};
+  if (resultado.impacto?.carga_global) {
+    for (const cg of resultado.impacto.carga_global) {
+      for (const entry of cg.datas_outros_eventos) {
+        if (!entry.data) continue;
+        if (!outrosDateMap[entry.data]) outrosDateMap[entry.data] = [];
+        outrosDateMap[entry.data].push({
+          professor_nome: cg.professor_nome.split(" ").slice(0, 2).join(" "),
+          evento_nome: entry.evento_nome,
+        });
+      }
+    }
+  }
+
+  const allDates = [
+    ...Object.keys(dateMap),
+    ...Object.keys(outrosDateMap),
+  ].sort();
+  const uniqueDates = [...new Set(allDates)].sort();
+
+  if (uniqueDates.length === 0 && resultado.alocacoes.length === 0) {
     alert("Nenhuma aula gerada para imprimir.");
     return;
   }
 
-  // Color palette per UC
+  // Color palette per UC (este evento)
   const palette = ["#dbeafe","#d1fae5","#fef9c3","#fce7f3","#e0e7ff","#f3e8ff","#ffedd5","#cffafe","#dcfce7","#fef3c7"];
   const ucColors: Record<string, string> = {};
   let ci = 0;
@@ -236,11 +274,11 @@ function imprimirRelatorio(resultado: ResultadoGerado, nomeEvento: string, modoO
     if (!ucColors[aloc.uc_nome]) { ucColors[aloc.uc_nome] = palette[ci++ % palette.length]; }
   }
 
-  // Build months range
+  // Build months range — inclui meses dos outros eventos também
   const months: { year: number; month: number }[] = [];
-  if (allDates.length > 0) {
-    const minD = new Date(allDates[0] + "T00:00:00");
-    const maxD = new Date(allDates[allDates.length - 1] + "T00:00:00");
+  if (uniqueDates.length > 0) {
+    const minD = new Date(uniqueDates[0] + "T00:00:00");
+    const maxD = new Date(uniqueDates[uniqueDates.length - 1] + "T00:00:00");
     let cur = new Date(minD.getFullYear(), minD.getMonth(), 1);
     const end = new Date(maxD.getFullYear(), maxD.getMonth(), 1);
     while (cur <= end) {
@@ -255,16 +293,18 @@ function imprimirRelatorio(resultado: ResultadoGerado, nomeEvento: string, modoO
   const calendarHTML = months.map(({ year, month }) => {
     const firstWeekday = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-
     const emptyCells = Array.from({ length: firstWeekday }).map(() => `<div class="day empty"></div>`).join("");
 
     const dayCells = Array.from({ length: daysInMonth }, (_, i) => {
       const d = i + 1;
       const ds = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
       const aulas = dateMap[ds] || [];
+      const outros = outrosDateMap[ds] || [];
       const wd = new Date(year, month, d).getDay();
       const isWe = wd === 0 || wd === 6;
-      const chips = aulas.map(a =>
+
+      // Chips deste evento (coloridos)
+      const chipsEste = aulas.map(a =>
         `<div class="chip" style="background:${ucColors[a.uc_nome] || "#f3f4f6"}">
           <div class="chip-uc">${a.uc_nome.length > 22 ? a.uc_nome.substring(0, 22) + "…" : a.uc_nome}</div>
           ${a.professor_nome
@@ -272,8 +312,24 @@ function imprimirRelatorio(resultado: ResultadoGerado, nomeEvento: string, modoO
             : `<div class="chip-sem">Sem professor</div>`}
          </div>`
       ).join("");
-      return `<div class="day${isWe ? " we" : ""}${aulas.length ? " has-aula" : ""}">
-        <span class="dn">${d}</span>${chips}</div>`;
+
+      // Chips de outros eventos (cinza tracejado) — agrupados por evento_nome
+      const outrosAgrupados: Record<string, string[]> = {};
+      for (const o of outros) {
+        if (!outrosAgrupados[o.evento_nome]) outrosAgrupados[o.evento_nome] = [];
+        if (!outrosAgrupados[o.evento_nome].includes(o.professor_nome))
+          outrosAgrupados[o.evento_nome].push(o.professor_nome);
+      }
+      const chipsOutros = Object.entries(outrosAgrupados).map(([evtNome, profs]) => {
+        const evtShort = evtNome.length > 18 ? evtNome.substring(0, 18) + "…" : evtNome;
+        return `<div class="chip-outro">
+          <div class="chip-outro-nome">${evtShort}</div>
+          <div class="chip-outro-prof">${profs.join(", ")}</div>
+        </div>`;
+      }).join("");
+
+      return `<div class="day${isWe ? " we" : ""}${(aulas.length || outros.length) ? " has-aula" : ""}">
+        <span class="dn">${d}</span>${chipsEste}${chipsOutros}</div>`;
     }).join("");
 
     return `<div class="month-block">
@@ -298,7 +354,34 @@ function imprimirRelatorio(resultado: ResultadoGerado, nomeEvento: string, modoO
   // Impact section (OR-Tools)
   let impactoHTML = "";
   if (modoOtimizado && resultado.impacto) {
-    const { resumo, mudancas, regencia_projecao } = resultado.impacto;
+    const { resumo, mudancas, regencia_projecao, carga_global } = resultado.impacto;
+
+    // Seção de carga global dos professores nos demais eventos
+    let cargaGlobalHTML = "";
+    if (carga_global && carga_global.length > 0) {
+      const rows = carga_global.map(cg => {
+        const detalheEvts = cg.outros_eventos
+          .slice(0, 8)
+          .map(e => `<div class="evt-item"><span class="evt-nome">${e.evento_nome.length > 35 ? e.evento_nome.substring(0,35)+"…" : e.evento_nome}</span> — ${e.uc_nome} (${e.num_aulas} aulas)</div>`)
+          .join("");
+        const mais = cg.outros_eventos.length > 8 ? `<div class="evt-mais">+ ${cg.outros_eventos.length - 8} outros eventos…</div>` : "";
+        return `<tr>
+          <td class="bold">${cg.professor_nome}</td>
+          <td>${cg.tipo}</td>
+          <td class="${cg.total_aulas_outros_eventos > 100 ? "laranja" : ""}">${cg.total_aulas_outros_eventos}</td>
+          <td>${cg.outros_eventos.length}</td>
+          <td class="detalhe-cell">${detalheEvts}${mais}</td>
+        </tr>`;
+      }).join("");
+      cargaGlobalHTML = `
+      <section>
+        <h2>Carga dos Professores nos Demais Eventos (${resultado.impacto.resumo.total_ucs} UCs neste evento)</h2>
+        <p class="nota">Compromissos existentes antes deste planejamento. Cinza no calendário = outro evento.</p>
+        <table><thead><tr><th>Professor</th><th>Tipo</th><th>Aulas em outros eventos</th><th>Nº de eventos</th><th>Detalhamento</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+      </section>`;
+    }
+
     impactoHTML = `
       <section>
         <h2>Impacto da Otimização</h2>
@@ -328,12 +411,15 @@ function imprimirRelatorio(resultado: ResultadoGerado, nomeEvento: string, modoO
           <td>${r.regencia_antes.toFixed(1)}%</td>
           <td class="${r.direcao === "sobe" ? "verde" : "laranja"}">${r.horas_delta > 0 ? "+" : ""}${r.horas_delta}h</td></tr>`).join("")}
         </tbody></table>
-      </section>` : ""}`;
+      </section>` : ""}
+      ${cargaGlobalHTML}`;
   }
 
   const solverBadge = modoOtimizado
     ? `· Otimização CP-SAT${resultado.solver_status ? ` (${resultado.solver_status})` : ""}`
     : "· Modo Rápido (Greedy)";
+
+  const hasOutros = Object.keys(outrosDateMap).length > 0;
 
   const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
 <title>Planejamento – ${nomeEvento}</title>
@@ -342,11 +428,16 @@ function imprimirRelatorio(resultado: ResultadoGerado, nomeEvento: string, modoO
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:11px;color:#111;padding:16px}
 h1{font-size:15px;font-weight:700;margin-bottom:2px}
 .sub{font-size:10px;color:#6b7280;margin-bottom:18px}
+.nota{font-size:9px;color:#6b7280;margin-bottom:6px;font-style:italic}
 section{margin-bottom:22px}
 h2{font-size:12px;font-weight:600;color:#374151;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #e5e7eb}
 table{width:100%;border-collapse:collapse;font-size:10px;margin-top:4px}
 th{background:#f9fafb;padding:4px 7px;text-align:left;font-weight:600;border:1px solid #e5e7eb}
 td{padding:3px 7px;border:1px solid #e5e7eb;vertical-align:top}
+.detalhe-cell{max-width:260px}
+.evt-item{font-size:8.5px;color:#374151;margin-bottom:2px}
+.evt-nome{font-weight:600}
+.evt-mais{font-size:8px;color:#9ca3af;font-style:italic}
 .strike{text-decoration:line-through;color:#9ca3af}
 .bold{font-weight:600}.green{color:#15803d}.verde{color:#16a34a;font-weight:600}.laranja{color:#d97706;font-weight:600}
 .warn-row td{background:#fffbeb}
@@ -369,9 +460,16 @@ td{padding:3px 7px;border:1px solid #e5e7eb;vertical-align:top}
 .chip-uc{font-size:8px;font-weight:600;color:#1f2937;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:100%}
 .chip-prof{font-size:7px;color:#4b5563;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .chip-sem{font-size:7px;color:#dc2626;font-style:italic}
-.legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+/* Chips de outros eventos — cinza tracejado */
+.chip-outro{border:1px dashed #d1d5db;border-radius:3px;padding:1px 3px;margin-bottom:2px;background:#f9fafb}
+.chip-outro-nome{font-size:7px;font-weight:600;color:#6b7280;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:100%}
+.chip-outro-prof{font-size:7px;color:#9ca3af;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;align-items:center}
 .leg-item{display:flex;align-items:center;gap:3px;font-size:9px;color:#374151}
 .leg-swatch{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+.leg-sep{color:#d1d5db;margin:0 4px}
+.leg-outro{display:flex;align-items:center;gap:3px;font-size:9px;color:#9ca3af}
+.leg-outro-swatch{width:10px;height:10px;border:1px dashed #d1d5db;border-radius:2px;background:#f9fafb;flex-shrink:0}
 @media print{body{padding:8px}.month-block{page-break-inside:avoid}section{page-break-inside:avoid}}
 </style></head><body>
 <h1>${nomeEvento}</h1>
@@ -385,17 +483,20 @@ ${impactoHTML}
   <tbody>${alocsRows}</tbody></table>
 </section>
 
-${allDates.length > 0 ? `<section>
+${uniqueDates.length > 0 ? `<section>
   <h2>Calendário Proposto</h2>
-  <div class="legend">${Object.entries(ucColors).map(([name, color]) =>
-    `<div class="leg-item"><div class="leg-swatch" style="background:${color}"></div>${name.length > 30 ? name.substring(0,30)+"…" : name}</div>`
-  ).join("")}</div>
+  <div class="legend">
+    ${Object.entries(ucColors).map(([name, color]) =>
+      `<div class="leg-item"><div class="leg-swatch" style="background:${color}"></div>${name.length > 28 ? name.substring(0,28)+"…" : name}</div>`
+    ).join("")}
+    ${hasOutros ? `<span class="leg-sep">|</span><div class="leg-outro"><div class="leg-outro-swatch"></div>Compromisso em outro evento</div>` : ""}
+  </div>
   <div style="margin-top:12px">${calendarHTML}</div>
 </section>` : ""}
 
 </body></html>`;
 
-  const win = window.open("", "_blank", "width=1100,height=800");
+  const win = window.open("", "_blank", "width=1200,height=800");
   if (win) {
     win.document.write(html);
     win.document.close();
@@ -516,6 +617,45 @@ function ImpactoTab({ impacto, solverStatus }: { impacto: ImpactoData; solverSta
           <p className="text-xs text-red-600">
             O solver não encontrou professor disponível e habilitado. Atribua manualmente após confirmar.
           </p>
+        </div>
+      )}
+
+      {/* Carga global dos professores nos demais eventos */}
+      {impacto.carga_global && impacto.carga_global.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            Carga nos demais eventos
+          </p>
+          <p className="text-[10px] text-gray-400 mb-2">
+            Compromissos existentes dos professores alocados em outros eventos ativos.
+          </p>
+          <div className="space-y-2">
+            {impacto.carga_global.map((cg) => (
+              <div key={cg.professor_id} className="border rounded-lg px-3 py-2">
+                <div className="flex items-center justify-between mb-1.5">
+                  <div>
+                    <p className="text-xs font-medium text-gray-800">{cg.professor_nome}</p>
+                    <p className="text-[10px] text-gray-400">{cg.tipo}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className={cn("text-sm font-bold", cg.total_aulas_outros_eventos > 150 ? "text-amber-600" : "text-gray-700")}>
+                      {cg.total_aulas_outros_eventos}
+                    </p>
+                    <p className="text-[10px] text-gray-400">aulas em {cg.outros_eventos.length} evento(s)</p>
+                  </div>
+                </div>
+                {cg.outros_eventos.slice(0, 4).map((e) => (
+                  <div key={e.evento_id} className="text-[10px] text-gray-500 border-t pt-1 mt-1 flex justify-between">
+                    <span className="truncate max-w-[200px]">{e.evento_nome}</span>
+                    <span className="shrink-0 ml-2 text-gray-400">{e.uc_nome.length > 25 ? e.uc_nome.substring(0,25)+"…" : e.uc_nome} · {e.num_aulas} aulas</span>
+                  </div>
+                ))}
+                {cg.outros_eventos.length > 4 && (
+                  <p className="text-[10px] text-gray-400 mt-1">+ {cg.outros_eventos.length - 4} outros eventos</p>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
