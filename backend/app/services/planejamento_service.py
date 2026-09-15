@@ -96,29 +96,37 @@ async def _candidatos_uc(
 
     candidatos = []
     for prof in todos:
-        # 1. Verifica habilitação: atuacao vinculada ao mesmo curso da UC
-        res_at = await db.execute(
-            select(Atuacao).where(
-                and_(
-                    Atuacao.professor_id == prof.id,
-                    Atuacao.curso_id == uc.curso_id,
+        # Habilitação: busca atuações do professor para o mesmo curso,
+        # depois filtra em Python por similaridade de nome (bidirecional).
+        # Isso garante que o professor é candidato apenas para as UCs específicas
+        # que ele pode ministrar, não para todas as UCs do curso.
+        if uc.curso_id is not None:
+            res_at = await db.execute(
+                select(Atuacao).where(
+                    and_(
+                        Atuacao.professor_id == prof.id,
+                        Atuacao.curso_id == uc.curso_id,
+                    )
                 )
             )
-        )
-        atuacoes_curso = res_at.scalars().all()
+            uc_nome_lower = uc.nome.lower()
+            todas_atuacoes = [
+                a for a in res_at.scalars().all()
+                if uc_nome_lower in a.disciplina.lower()
+                or a.disciplina.lower() in uc_nome_lower
+            ]
+        else:
+            # UC sem curso definido: aceita match por nome em qualquer curso
+            res_at = await db.execute(
+                select(Atuacao).where(
+                    and_(
+                        Atuacao.professor_id == prof.id,
+                        Atuacao.disciplina.ilike(f"%{uc.nome[:30]}%"),
+                    )
+                )
+            )
+            todas_atuacoes = list(res_at.scalars().all())
 
-        # Fallback por nome da disciplina — restrito ao mesmo curso quando a UC tem curso_id
-        # (sem esse filtro, professores de elétrica aparecem para UCs de mecânica com nome similar)
-        name_conds = [
-            Atuacao.professor_id == prof.id,
-            Atuacao.disciplina.ilike(f"%{uc.nome[:30]}%"),
-        ]
-        if uc.curso_id is not None:
-            name_conds.append(Atuacao.curso_id == uc.curso_id)
-        res_at2 = await db.execute(select(Atuacao).where(and_(*name_conds)))
-        atuacoes_uc = res_at2.scalars().all()
-
-        todas_atuacoes = list(atuacoes_curso) + list(atuacoes_uc)
         if not todas_atuacoes:
             continue
 
