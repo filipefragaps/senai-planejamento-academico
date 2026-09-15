@@ -46,17 +46,43 @@ interface SemCandidato {
   motivo: string;
 }
 
+interface PropostaAjuste {
+  tipo: "shift_b" | "shift_a";
+  evento_id: number;
+  uc_id: number;
+  nova_data_inicio: string;
+  descricao: string;
+}
+
+interface ConflitoDatas {
+  professor_id: number;
+  professor_nome: string;
+  evento_a_id: number;
+  evento_a_nome: string;
+  uc_a_id: number;
+  uc_a_nome: string;
+  evento_b_id: number;
+  evento_b_nome: string;
+  uc_b_id: number;
+  uc_b_nome: string;
+  datas_conflito: string[];
+  propostas: PropostaAjuste[];
+}
+
 interface ResultadoOtimizacao {
   status: "ok" | "sem_resultado";
   mensagem: string | null;
   remanejamentos: Remanejamento[];
   sem_candidatos: SemCandidato[];
   impacto_professores: ImpactoProfessor[];
+  conflitos_datas: ConflitoDatas[];
   resumo: {
     total_ucs_livres: number;
     total_remanejamentos: number;
     mensalistas_na_meta_antes: number;
     mensalistas_na_meta_depois: number;
+    total_conflitos_datas?: number;
+    conflitos_com_proposta?: number;
   };
 }
 
@@ -107,7 +133,9 @@ export function OtimizacaoGlobalModal({ onClose, onConfirmado }: OtimizacaoGloba
   const [resultado, setResultado] = useState<ResultadoOtimizacao | null>(null);
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [incluirRpaPj, setIncluirRpaPj] = useState(false);
-  const [aba, setAba] = useState<"remanejamentos" | "impacto" | "semCandidatos">("remanejamentos");
+  const [aba, setAba] = useState<"remanejamentos" | "impacto" | "semCandidatos" | "conflitos">("remanejamentos");
+  // conflito key → proposta selecionada (undefined = nenhuma ação, null = manter conflito)
+  const [ajustesSelecionados, setAjustesSelecionados] = useState<Map<string, PropostaAjuste | null>>(new Map());
 
   // Chave única por remanejamento
   const remKey = (r: Remanejamento) => `${r.evento_id}_${r.uc_id}`;
@@ -125,10 +153,13 @@ export function OtimizacaoGlobalModal({ onClose, onConfirmado }: OtimizacaoGloba
     },
   });
 
+  const conflitKey = (c: ConflitoDatas) => `${c.professor_id}_${c.uc_a_id}_${c.uc_b_id}`;
+
   const confirmarMutation = useMutation({
     mutationFn: () => {
       const aprovados = resultado!.remanejamentos.filter((r) => selecionados.has(remKey(r)));
-      return planejamentoApi.confirmarOtimizacaoGlobal(aprovados);
+      const ajustes = Array.from(ajustesSelecionados.values()).filter((v): v is PropostaAjuste => v !== null);
+      return planejamentoApi.confirmarOtimizacaoGlobal(aprovados, ajustes);
     },
     onSuccess: (data) => {
       toast.success(
@@ -254,7 +285,7 @@ export function OtimizacaoGlobalModal({ onClose, onConfirmado }: OtimizacaoGloba
             <div className="flex flex-col">
 
               {/* Resumo */}
-              <div className="px-6 py-4 bg-gray-50 border-b grid grid-cols-4 gap-4">
+              <div className={cn("px-6 py-4 bg-gray-50 border-b grid gap-4", resultado!.resumo.total_conflitos_datas ? "grid-cols-5" : "grid-cols-4")}>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-gray-800">{resultado!.resumo.total_ucs_livres}</div>
                   <div className="text-xs text-gray-500 mt-0.5">UCs analisadas</div>
@@ -271,14 +302,23 @@ export function OtimizacaoGlobalModal({ onClose, onConfirmado }: OtimizacaoGloba
                   <div className="text-2xl font-bold text-emerald-600">{resultado!.resumo.mensalistas_na_meta_depois}</div>
                   <div className="text-xs text-gray-500 mt-0.5">Na meta depois</div>
                 </div>
+                {!!resultado!.resumo.total_conflitos_datas && (
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-orange-500">{resultado!.resumo.total_conflitos_datas}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">Conflitos de data</div>
+                  </div>
+                )}
               </div>
 
               {/* Abas */}
-              <div className="flex border-b px-6">
+              <div className="flex border-b px-6 overflow-x-auto">
                 {[
                   { id: "remanejamentos", label: `Remanejamentos (${resultado!.remanejamentos.length})` },
                   { id: "impacto", label: `Impacto (${resultado!.impacto_professores.length})` },
                   { id: "semCandidatos", label: `Sem candidatos (${resultado!.sem_candidatos.length})` },
+                  ...(resultado!.conflitos_datas?.length
+                    ? [{ id: "conflitos", label: `Conflitos de data (${resultado!.conflitos_datas.length})` }]
+                    : []),
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -420,6 +460,112 @@ export function OtimizacaoGlobalModal({ onClose, onConfirmado }: OtimizacaoGloba
                   )}
                 </div>
               )}
+
+              {/* Aba: Conflitos de data */}
+              {aba === "conflitos" && (
+                <div className="p-4 flex flex-col gap-3">
+                  {!resultado!.conflitos_datas?.length ? (
+                    <p className="text-sm text-gray-500 text-center py-6">
+                      Nenhum conflito de datas detectado entre os eventos.
+                    </p>
+                  ) : (
+                    <>
+                      <p className="text-xs text-gray-500 px-1">
+                        Os conflitos abaixo ocorrem quando o mesmo professor está alocado em dois eventos com aulas no mesmo dia.
+                        Selecione uma proposta para ajustar automaticamente o cronograma.
+                      </p>
+                      {resultado!.conflitos_datas.map((c) => {
+                        const key = conflitKey(c);
+                        const selecionado = ajustesSelecionados.get(key);
+                        const escolhida = ajustesSelecionados.has(key) ? selecionado : undefined;
+                        return (
+                          <div key={key} className="border rounded-lg overflow-hidden">
+                            {/* Cabeçalho do conflito */}
+                            <div className="px-3 py-2 bg-orange-50 border-b border-orange-100 flex items-start gap-2">
+                              <AlertTriangle className="w-4 h-4 text-orange-500 mt-0.5 shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium text-gray-800">{c.professor_nome}</div>
+                                <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-0.5">
+                                  <span className="text-xs text-gray-500">
+                                    <span className="font-medium text-gray-700">{c.uc_a_nome}</span>
+                                    <span className="text-gray-400"> · {c.evento_a_nome}</span>
+                                  </span>
+                                  <ChevronRight className="w-3 h-3 text-gray-300 self-center" />
+                                  <span className="text-xs text-gray-500">
+                                    <span className="font-medium text-gray-700">{c.uc_b_nome}</span>
+                                    <span className="text-gray-400"> · {c.evento_b_nome}</span>
+                                  </span>
+                                </div>
+                                <div className="text-xs text-orange-600 mt-0.5">
+                                  {c.datas_conflito.length} data(s) em conflito
+                                  {c.datas_conflito.length > 0 && `: ${c.datas_conflito.slice(0, 3).join(", ")}${c.datas_conflito.length > 3 ? ` +${c.datas_conflito.length - 3}` : ""}`}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Propostas */}
+                            <div className="p-3 flex flex-col gap-1.5">
+                              {c.propostas.length === 0 ? (
+                                <p className="text-xs text-gray-400 italic">Sem proposta automática disponível (verifique manualmente).</p>
+                              ) : (
+                                c.propostas.map((p, pi) => {
+                                  const isChosen = escolhida !== undefined && escolhida?.tipo === p.tipo && escolhida?.uc_id === p.uc_id;
+                                  return (
+                                    <label
+                                      key={pi}
+                                      className={cn(
+                                        "flex items-start gap-2 p-2 rounded-lg border cursor-pointer text-xs transition-all",
+                                        isChosen ? "border-indigo-300 bg-indigo-50" : "border-gray-200 hover:border-gray-300"
+                                      )}
+                                    >
+                                      <input
+                                        type="radio"
+                                        name={`conflito_${key}`}
+                                        checked={isChosen}
+                                        onChange={() =>
+                                          setAjustesSelecionados((prev) => {
+                                            const next = new Map(prev);
+                                            next.set(key, p);
+                                            return next;
+                                          })
+                                        }
+                                        className="mt-0.5 accent-indigo-600"
+                                      />
+                                      <span className="text-gray-700">{p.descricao}</span>
+                                    </label>
+                                  );
+                                })
+                              )}
+                              {/* Opção: manter conflito */}
+                              <label
+                                className={cn(
+                                  "flex items-start gap-2 p-2 rounded-lg border cursor-pointer text-xs transition-all",
+                                  escolhida === null ? "border-gray-400 bg-gray-50" : "border-gray-200 hover:border-gray-300"
+                                )}
+                              >
+                                <input
+                                  type="radio"
+                                  name={`conflito_${key}`}
+                                  checked={escolhida === null}
+                                  onChange={() =>
+                                    setAjustesSelecionados((prev) => {
+                                      const next = new Map(prev);
+                                      next.set(key, null);
+                                      return next;
+                                    })
+                                  }
+                                  className="mt-0.5 accent-gray-500"
+                                />
+                                <span className="text-gray-500">Manter conflito (ajustar manualmente depois)</span>
+                              </label>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -445,14 +591,17 @@ export function OtimizacaoGlobalModal({ onClose, onConfirmado }: OtimizacaoGloba
             >
               Cancelar
             </button>
-            {temResultado && totalSelecionados > 0 && (
+            {temResultado && (totalSelecionados > 0 || ajustesSelecionados.size > 0) && (
               <button
                 onClick={() => confirmarMutation.mutate()}
                 disabled={isConfirming}
                 className="flex items-center gap-2 px-5 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
               >
                 {isConfirming ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                Confirmar {totalSelecionados} remanejamento{totalSelecionados !== 1 ? "s" : ""}
+                Confirmar
+                {totalSelecionados > 0 && ` ${totalSelecionados} remanejamento${totalSelecionados !== 1 ? "s" : ""}`}
+                {totalSelecionados > 0 && ajustesSelecionados.size > 0 && " +"}
+                {ajustesSelecionados.size > 0 && ` ${ajustesSelecionados.size} ajuste${ajustesSelecionados.size !== 1 ? "s" : ""}`}
               </button>
             )}
           </div>

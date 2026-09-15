@@ -6,6 +6,11 @@ Premissas:
 - Prioridade de professor: Mensalista > Horista > RPA/PJ
 - RPA/PJ só entram se incluir_rpa_pj=True (ou sem outros candidatos)
 - Objetivo: minimizar déficit de regência dos Mensalistas em relação à meta de 70%
+
+Detecção e resolução de conflitos:
+- Após atribuição de professores, detecta conflitos reais por data
+  (mesmo professor, mesma data, horário sobreposto em eventos distintos)
+- Para cada conflito propõe: ajuste de data de início da UC OU troca de professor
 """
 
 import unicodedata
@@ -427,15 +432,39 @@ async def analisar_otimizacao_global(
 
     impacto.sort(key=lambda r: r["pct_depois"] - r["pct_antes"], reverse=True)
 
+    # ── 12b. Detectar conflitos reais de data após atribuição do solver ────────
+    # Constrói mapa de atribuição final: (ev_id, uc_id) → prof_id
+    atribuicao_final: dict[tuple[int, int], int | None] = {}
+    for item in ucs_livres:
+        ev_id, uc_id = item["evento_id"], item["uc_id"]
+        prof_id_final: int | None = None
+        for p in profs:
+            if _val((p.id, ev_id, uc_id)) > 0.5:
+                prof_id_final = p.id
+                break
+        atribuicao_final[(ev_id, uc_id)] = prof_id_final
+
+    conflitos_datas = _detectar_conflitos_reais(
+        atribuicao=atribuicao_final,
+        uc_aulas=uc_aulas,
+        todos_eventos=todos_eventos,
+        ucs_map=ucs_map,
+        profs_map=profs_map,
+        hoje=hoje,
+    )
+
     return {
         "status": "ok",
         "mensagem": None,
         "remanejamentos": remanejamentos,
+        "conflitos_datas": conflitos_datas,
         "sem_candidatos": sem_candidatos,
         "impacto_professores": impacto,
         "resumo": {
             "total_ucs_livres": len(ucs_livres),
             "total_remanejamentos": len(remanejamentos),
+            "total_conflitos_datas": len(conflitos_datas),
+            "conflitos_com_proposta": sum(1 for c in conflitos_datas if c["propostas"]),
             "mensalistas_na_meta_antes": sum(
                 1 for r in impacto if r["pct_antes"] >= 70
             ),
@@ -446,17 +475,162 @@ async def analisar_otimizacao_global(
     }
 
 
+# ── Detecção e resolução de conflitos por data real ────────────────────────────
+
+def _datas_futuras_uc(ev_id: int, uc_id: int, uc_aulas: dict, hoje: date) -> list[date]:
+    """Retorna as datas futuras das aulas de uma UC, ordenadas."""
+    aulas = uc_aulas.get((ev_id, uc_id), [])
+    return sorted(a.data for a in aulas if a.data and a.data >= hoje)
+
+
+def _gerar_datas_evento(ev: Evento, data_inicio: date, n_aulas: int) -> list[date]:
+    """
+    Gera n_aulas datas a partir de data_inicio seguindo os dias_semana do evento.
+    Considera data_fim do evento como limite.
+    """
+    dias_semana = set(ev.dias_semana or [])
+    if not dias_semana:
+        dias_semana = {0, 1, 2, 3, 4}  # seg-sex fallback
+    data_fim = ev.data_fim or (data_inicio + timedelta(days=365))
+
+    datas = []
+    cursor = data_inicio
+    while len(datas) < n_aulas and cursor <= data_fim:
+        if cursor.weekday() in dias_semana:
+            datas.append(cursor)
+        cursor += timedelta(days=1)
+    return datas
+
+
+def _detectar_conflitos_reais(
+    atribuicao: dict[tuple[int, int], int | None],   # (ev_id, uc_id) → prof_id
+    uc_aulas: dict[tuple[int, int], list[Aula]],
+    todos_eventos: dict[int, Evento],
+    ucs_map: dict[int, UnidadeCurricular],
+    profs_map: dict[int, Professor],
+    hoje: date,
+) -> list[dict]:
+    """
+    Detecta conflitos reais: mesmo professor em datas idênticas com horários sobrepostos.
+    Retorna lista de conflitos com propostas de resolução.
+    """
+    # Agrupa UCs por professor
+    prof_ucs: dict[int, list[tuple[int, int]]] = {}
+    for (ev_id, uc_id), prof_id in atribuicao.items():
+        if prof_id is not None:
+            prof_ucs.setdefault(prof_id, []).append((ev_id, uc_id))
+
+    conflitos = []
+
+    for prof_id, ucs in prof_ucs.items():
+        prof = profs_map.get(prof_id)
+        if not prof:
+            continue
+
+        for idx_a in range(len(ucs)):
+            ev_a, uc_a = ucs[idx_a]
+            for idx_b in range(idx_a + 1, len(ucs)):
+                ev_b, uc_b = ucs[idx_b]
+
+                # Verifica sobreposição de horário entre os dois eventos
+                evA = todos_eventos.get(ev_a)
+                evB = todos_eventos.get(ev_b)
+                if not evA or not evB:
+                    continue
+                if not _eventos_conflitam(evA, evB):
+                    continue
+
+                # Datas reais das aulas futuras de cada UC
+                datas_a = set(_datas_futuras_uc(ev_a, uc_a, uc_aulas, hoje))
+                datas_b = set(_datas_futuras_uc(ev_b, uc_b, uc_aulas, hoje))
+                datas_conflito = sorted(datas_a & datas_b)
+
+                if not datas_conflito:
+                    continue
+
+                uc_A = ucs_map.get(uc_a)
+                uc_B = ucs_map.get(uc_b)
+
+                # Proposta 1: mover UC_B para começar depois que UC_A terminar
+                data_fim_a = max(datas_a) if datas_a else None
+                data_fim_b = max(datas_b) if datas_b else None
+                propostas = []
+
+                # Mover UC_B para depois de UC_A
+                if data_fim_a and evB.data_fim and datas_b:
+                    nova_inicio_b = data_fim_a + timedelta(days=1)
+                    datas_possiveis = _gerar_datas_evento(evB, nova_inicio_b, len(datas_b))
+                    if len(datas_possiveis) == len(datas_b) and (not evB.data_fim or datas_possiveis[-1] <= evB.data_fim):
+                        propostas.append({
+                            "tipo": "ajuste_data",
+                            "evento_id": ev_b,
+                            "uc_id": uc_b,
+                            "uc_nome": uc_B.nome if uc_B else f"UC {uc_b}",
+                            "evento_nome": evB.nome_turma,
+                            "nova_data_inicio": nova_inicio_b.isoformat(),
+                            "nova_data_fim": datas_possiveis[-1].isoformat() if datas_possiveis else None,
+                            "descricao": (
+                                f"Atrasar '{uc_B.nome if uc_B else 'UC'}' para iniciar em "
+                                f"{nova_inicio_b.strftime('%d/%m/%Y')} "
+                                f"(após '{uc_A.nome if uc_A else 'UC_A'}' terminar)"
+                            ),
+                        })
+
+                # Mover UC_A para depois de UC_B
+                if data_fim_b and evA.data_fim and datas_a:
+                    nova_inicio_a = data_fim_b + timedelta(days=1)
+                    datas_possiveis = _gerar_datas_evento(evA, nova_inicio_a, len(datas_a))
+                    if len(datas_possiveis) == len(datas_a) and (not evA.data_fim or datas_possiveis[-1] <= evA.data_fim):
+                        propostas.append({
+                            "tipo": "ajuste_data",
+                            "evento_id": ev_a,
+                            "uc_id": uc_a,
+                            "uc_nome": uc_A.nome if uc_A else f"UC {uc_a}",
+                            "evento_nome": evA.nome_turma,
+                            "nova_data_inicio": nova_inicio_a.isoformat(),
+                            "nova_data_fim": datas_possiveis[-1].isoformat() if datas_possiveis else None,
+                            "descricao": (
+                                f"Atrasar '{uc_A.nome if uc_A else 'UC'}' para iniciar em "
+                                f"{nova_inicio_a.strftime('%d/%m/%Y')} "
+                                f"(após '{uc_B.nome if uc_B else 'UC_B'}' terminar)"
+                            ),
+                        })
+
+                conflitos.append({
+                    "professor_id": prof_id,
+                    "professor_nome": prof.nome,
+                    "professor_tipo": prof.tipo,
+                    "evento_a_id": ev_a,
+                    "evento_a_nome": evA.nome_turma,
+                    "uc_a_id": uc_a,
+                    "uc_a_nome": uc_A.nome if uc_A else f"UC {uc_a}",
+                    "evento_b_id": ev_b,
+                    "evento_b_nome": evB.nome_turma,
+                    "uc_b_id": uc_b,
+                    "uc_b_nome": uc_B.nome if uc_B else f"UC {uc_b}",
+                    "datas_conflito": [d.isoformat() for d in datas_conflito[:10]],  # primeiras 10
+                    "total_datas_conflito": len(datas_conflito),
+                    "propostas": propostas,
+                })
+
+    return conflitos
+
+
 async def confirmar_otimizacao_global(
     db: AsyncSession,
     remanejamentos: list[dict],
+    ajustes_datas: list[dict] | None = None,
 ) -> dict:
     """
     Aplica os remanejamentos aprovados: atualiza professor_id nas aulas futuras.
+    Opcionalmente aplica ajustes de data: apaga e recria aulas de uma UC deslocada.
     Não marca as aulas como alterada_manualmente (é uma decisão algorítmica).
     """
     hoje = date.today()
     total_aulas = 0
+    aulas_reagendadas = 0
 
+    # ── Remanejamentos de professor ────────────────────────────────────────────
     for rem in remanejamentos:
         ev_id = rem["evento_id"]
         uc_id = rem["uc_id"]
@@ -482,9 +656,74 @@ async def confirmar_otimizacao_global(
             aula.tipo_contrato = prof.tipo
             total_aulas += 1
 
+    # ── Ajustes de data (reagendamento de UCs) ────────────────────────────────
+    for ajuste in (ajustes_datas or []):
+        ev_id = ajuste["evento_id"]
+        uc_id = ajuste["uc_id"]
+        nova_data_inicio = date.fromisoformat(ajuste["nova_data_inicio"])
+
+        # Carrega o evento para recriar as datas
+        res_ev = await db.execute(select(Evento).where(Evento.id == ev_id))
+        ev = res_ev.scalar_one_or_none()
+        if not ev:
+            continue
+
+        # Busca as aulas futuras da UC (para saber quantas recriar e com qual professor)
+        res_aulas = await db.execute(
+            select(Aula).where(
+                and_(
+                    Aula.evento_id == ev_id,
+                    Aula.unidade_curricular_id == uc_id,
+                    Aula.data >= hoje,
+                    Aula.status.notin_(["Cancelada", "Realizada"]),
+                )
+            )
+        )
+        aulas_atuais = res_aulas.scalars().all()
+        if not aulas_atuais:
+            continue
+
+        n_aulas = len(aulas_atuais)
+        prof_id = aulas_atuais[0].professor_id
+        etapa = aulas_atuais[0].etapa
+        turno = aulas_atuais[0].turno
+        tipo_contrato = aulas_atuais[0].tipo_contrato
+
+        # Gera as novas datas a partir de nova_data_inicio
+        novas_datas = _gerar_datas_evento(ev, nova_data_inicio, n_aulas)
+        if not novas_datas:
+            continue
+
+        # Apaga as aulas atuais
+        for aula in aulas_atuais:
+            await db.delete(aula)
+        await db.flush()
+
+        # Recria nas novas datas
+        for seq, d in enumerate(novas_datas, start=1):
+            nova_aula = Aula(
+                evento_id=ev_id,
+                professor_id=prof_id,
+                unidade_curricular_id=uc_id,
+                data=d,
+                horario_inicio=ev.horario_inicio,
+                horario_fim=ev.horario_fim,
+                etapa=etapa,
+                turno=turno,
+                tipo_contrato=tipo_contrato,
+                numero_aula=seq,
+                status="Agendada",
+                tipo="Regular",
+                alterada_manualmente=False,
+            )
+            db.add(nova_aula)
+            aulas_reagendadas += 1
+
     await db.commit()
     return {
         "ok": True,
         "remanejamentos_aplicados": len(remanejamentos),
         "aulas_atualizadas": total_aulas,
+        "aulas_reagendadas": aulas_reagendadas,
+        "ajustes_datas_aplicados": len(ajustes_datas or []),
     }

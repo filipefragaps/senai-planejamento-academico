@@ -1670,6 +1670,7 @@ async def remanejo(
 
 class ConfirmarOtimizacaoRequest(BaseModel):
     remanejamentos: list[dict]
+    ajustes_datas: list[dict] = []
 
 
 @router.get("/otimizar-global")
@@ -1706,7 +1707,7 @@ async def confirmar_otimizacao_global_endpoint(
     """
     from app.services.otimizacao_global_service import confirmar_otimizacao_global
     try:
-        return await confirmar_otimizacao_global(db, body.remanejamentos)
+        return await confirmar_otimizacao_global(db, body.remanejamentos, body.ajustes_datas)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao confirmar: {str(e)}")
 
