@@ -1079,6 +1079,221 @@ async def remover_aula(
     await db.commit()
 
 
+@router.post("/gerar-otimizado/{evento_id}")
+async def gerar_otimizado(
+    evento_id: int,
+    body: GerarRequest,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """
+    Gera proposta OTIMIZADA usando OR-Tools CP-SAT.
+    Resolve TODAS as UCs simultaneamente (vs. greedy UC-a-UC).
+    Retorna alocações + análise de impacto para revisão do coordenador.
+    NÃO salva no banco — use /confirmar para persistir.
+    """
+    import math
+    from datetime import timedelta
+    from app.services.ortools_planejamento import resolver_com_ortools, calcular_impacto
+    from app.services.planejamento_service import _horas_aula, _turno, AlocacaoUC
+    from app.services.regencia import calcular_regencia_professor
+    from app.algorithms.constraint_solver import get_datas_letivas
+
+    # ── Carrega evento ──────────────────────────────────────────────────────────
+    res_ev = await db.execute(select(Evento).where(Evento.id == evento_id))
+    evento = res_ev.scalar_one_or_none()
+    if not evento:
+        raise HTTPException(status_code=404, detail="Evento não encontrado")
+
+    horas_por_aula = _horas_aula(evento)
+
+    # ── Datas letivas (mesma lógica do greedy) ──────────────────────────────────
+    dias_semana = list(evento.dias_semana or [])
+    if not dias_semana:
+        res_dias = await db.execute(
+            select(Aula.data).where(Aula.evento_id == evento_id).limit(200)
+        )
+        dias_semana = sorted(set(row[0].weekday() for row in res_dias.fetchall()))
+    if not dias_semana:
+        raise HTTPException(
+            status_code=422,
+            detail="Evento sem dias da semana configurados. Configure os dias do evento antes de planejar."
+        )
+
+    data_fim_efetiva = evento.data_fim
+    if body.modo_superior and body.clipar_semestre:
+        ano = evento.data_inicio.year
+        data_fim_semestre = date(ano, 12, 31) if evento.data_inicio.month >= 7 else date(ano, 6, 30)
+        data_fim_efetiva = min(evento.data_fim, data_fim_semestre)
+
+    # Estender data_fim se total de aulas excede datas letivas no período
+    ucs_ids = [u.uc_id for u in body.ucs if not u.nao_agendar]
+    if ucs_ids and horas_por_aula > 0:
+        res_chs = await db.execute(
+            select(UnidadeCurricular.carga_horaria).where(UnidadeCurricular.id.in_(ucs_ids))
+        )
+        total_aulas_prev = sum(
+            math.ceil((row[0] or 0) / horas_por_aula) for row in res_chs.fetchall()
+        )
+        dias_base = [d for d in dias_semana if d != 5] or dias_semana
+        datas_check = await get_datas_letivas(evento.data_inicio, data_fim_efetiva, dias_base, db)
+        if total_aulas_prev > len(datas_check):
+            faltam = total_aulas_prev - len(datas_check)
+            extra_cal = int(faltam * 7 / max(len(dias_base), 1)) + 90
+            data_fim_efetiva = data_fim_efetiva + timedelta(days=extra_cal)
+
+    # Pool de datas letivas
+    dias_sem_sabado = [d for d in dias_semana if d != 5]
+    if dias_sem_sabado:
+        datas_letivas = await get_datas_letivas(evento.data_inicio, data_fim_efetiva, dias_sem_sabado, db)
+        if 5 in dias_semana:
+            datas_letivas += await get_datas_letivas(evento.data_inicio, data_fim_efetiva, [5], db)
+    else:
+        datas_letivas = await get_datas_letivas(evento.data_inicio, data_fim_efetiva, dias_semana, db)
+
+    if not datas_letivas:
+        raise HTTPException(
+            status_code=422,
+            detail="Nenhuma data letiva no período do evento. Verifique o calendário acadêmico."
+        )
+
+    # ── Carrega professores e regências ─────────────────────────────────────────
+    res_profs = await db.execute(select(Professor).where(Professor.ativo == True))
+    todos_profs = list(res_profs.scalars().all())
+
+    regencias: dict[int, dict] = {}
+    for prof in todos_profs:
+        regencias[prof.id] = await calcular_regencia_professor(prof, db)
+
+    # ── Monta ucs_datas: {uc, datas, preferidos} por UC ─────────────────────────
+    ucs_datas_solver = []
+    horas_por_uc: dict[int, float] = {}
+    data_cursor = 0
+    datas_ocupadas: set[date] = set()
+
+    preferidos_global = evento.professores_preferidos or []
+
+    for item in sorted(body.ucs, key=lambda x: x.ordem):
+        if item.nao_agendar:
+            continue
+        res_uc = await db.execute(select(UnidadeCurricular).where(UnidadeCurricular.id == item.uc_id))
+        uc = res_uc.scalar_one_or_none()
+        if not uc:
+            continue
+
+        aulas_necessarias = math.ceil((uc.carga_horaria or 0) / horas_por_aula) if horas_por_aula > 0 else 1
+        if aulas_necessarias == 0:
+            aulas_necessarias = 1
+
+        # Compute dates for this UC (same cursor logic as greedy)
+        dias_semana_uc = item.dias_semana or []
+        if dias_semana_uc:
+            datas_pool_uc = await get_datas_letivas(evento.data_inicio, data_fim_efetiva, dias_semana_uc, db)
+            cursor_uc = 0
+            if item.data_inicio:
+                try:
+                    dt_ini = date.fromisoformat(item.data_inicio) if isinstance(item.data_inicio, str) else item.data_inicio
+                    while cursor_uc < len(datas_pool_uc) and datas_pool_uc[cursor_uc] < dt_ini:
+                        cursor_uc += 1
+                except (ValueError, TypeError):
+                    pass
+            datas_uc: list[date] = []
+            while len(datas_uc) < aulas_necessarias and cursor_uc < len(datas_pool_uc):
+                d = datas_pool_uc[cursor_uc]
+                cursor_uc += 1
+                if d not in datas_ocupadas:
+                    datas_uc.append(d)
+        else:
+            if item.data_inicio:
+                try:
+                    dt_ini = date.fromisoformat(item.data_inicio) if isinstance(item.data_inicio, str) else item.data_inicio
+                    while data_cursor < len(datas_letivas) and datas_letivas[data_cursor] < dt_ini:
+                        datas_ocupadas.add(datas_letivas[data_cursor])
+                        data_cursor += 1
+                except (ValueError, TypeError):
+                    pass
+            datas_uc = []
+            while len(datas_uc) < aulas_necessarias and data_cursor < len(datas_letivas):
+                d = datas_letivas[data_cursor]
+                data_cursor += 1
+                if d not in datas_ocupadas:
+                    datas_uc.append(d)
+
+        datas_ocupadas.update(datas_uc)
+
+        preferidos_uc = list(set(
+            preferidos_global + ([item.professor_preferido_id] if item.professor_preferido_id else [])
+        ))
+
+        ucs_datas_solver.append({
+            "uc": uc,
+            "datas": datas_uc,
+            "preferidos": preferidos_uc,
+        })
+        horas_por_uc[uc.id] = (uc.carga_horaria or 0)
+
+    if not ucs_datas_solver:
+        raise HTTPException(status_code=422, detail="Nenhuma UC válida para otimizar.")
+
+    # ── Chama OR-Tools ───────────────────────────────────────────────────────────
+    try:
+        proposta, solver_status, alertas_solver = await resolver_com_ortools(
+            evento=evento,
+            ucs_datas=ucs_datas_solver,
+            todos_profs=todos_profs,
+            regencias=regencias,
+            db=db,
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro no solver: {str(e)}")
+
+    # ── Monta alocações no formato padrão ────────────────────────────────────────
+    turno = _turno(evento)
+    alocacoes_serial = []
+    prof_map = {p.id: p for p in todos_profs}
+
+    for uc_data in ucs_datas_solver:
+        uc = uc_data["uc"]
+        prof_id = proposta.get(uc.id)
+        prof = prof_map.get(prof_id) if prof_id else None
+        datas_uc = uc_data["datas"]
+
+        alocacoes_serial.append({
+            "uc_id": uc.id,
+            "uc_nome": uc.nome,
+            "uc_codigo": uc.codigo_uc or "",
+            "etapa": uc.modulo_etapa,
+            "carga_horaria": uc.carga_horaria or 0,
+            "professor_id": prof_id,
+            "professor_nome": prof.nome if prof else None,
+            "aulas_necessarias": len(datas_uc),
+            "datas_aulas": [d.isoformat() for d in datas_uc],
+            "justificativa": alertas_solver.get(uc.id) or "Otimizado via CP-SAT",
+            "alerta": alertas_solver.get(uc.id),
+            "score": 0.0,
+        })
+
+    # ── Análise de impacto vs. estado atual ─────────────────────────────────────
+    impacto = await calcular_impacto(
+        evento_id=evento_id,
+        proposta=proposta,
+        todos_profs=todos_profs,
+        regencias_antes=regencias,
+        horas_por_uc=horas_por_uc,
+        db=db,
+    )
+
+    return {
+        "evento_id": evento_id,
+        "solver_status": solver_status,
+        "alocacoes": alocacoes_serial,
+        "impacto": impacto,
+        "alertas": {str(k): v for k, v in alertas_solver.items() if v},
+    }
+
+
 @router.post("/gerar/{evento_id}")
 async def gerar(
     evento_id: int,

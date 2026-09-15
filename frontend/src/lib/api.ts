@@ -180,6 +180,8 @@ export const planejamentoApi = {
     api.get(`/planejamento/candidatos/${eventoId}/${ucId}`).then((r) => r.data),
   gerar: (eventoId: number, ucs: { uc_id: number; ordem: number; professor_preferido_id?: number; data_inicio?: string }[], modoSuperior = false, cliparSemestre = false) =>
     api.post(`/planejamento/gerar/${eventoId}`, { ucs, modo_superior: modoSuperior, clipar_semestre: cliparSemestre }).then((r) => r.data),
+  gerarOtimizado: (eventoId: number, ucs: { uc_id: number; ordem: number; professor_preferido_id?: number; data_inicio?: string; nao_agendar?: boolean; dias_semana?: number[] }[], modoSuperior = false, cliparSemestre = false) =>
+    api.post(`/planejamento/gerar-otimizado/${eventoId}`, { ucs, modo_superior: modoSuperior, clipar_semestre: cliparSemestre }).then((r) => r.data),
   confirmar: (eventoId: number, alocacoes: unknown[], substituirFuturas = true) =>
     api.post(`/planejamento/confirmar/${eventoId}`, { alocacoes, substituir_futuras: substituirFuturas }).then((r) => r.data),
   regenciaProjetada: (params?: { evento_id?: number; data_inicio?: string; data_fim?: string }) =>

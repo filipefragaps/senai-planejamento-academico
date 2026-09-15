@@ -5,8 +5,8 @@ import { useMutation } from "@tanstack/react-query";
 import { planejamentoApi } from "@/lib/api";
 import { toast } from "sonner";
 import {
-  X, Loader2, CheckCircle, AlertTriangle, BarChart2, ChevronDown, ChevronRight,
-  Check
+  X, Loader2, AlertTriangle, BarChart2, ChevronDown, ChevronRight,
+  Check, Cpu, TrendingUp, TrendingDown, Minus
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -47,10 +47,45 @@ interface Analise {
   metricas?: Record<string, number>;
 }
 
+interface RegenciaProjecaoItem {
+  professor_id: number;
+  professor_nome: string;
+  tipo: string;
+  regencia_antes: number;
+  horas_delta: number;
+  direcao: "sobe" | "desce";
+}
+
+interface ImpactoData {
+  mudancas: {
+    uc_id: number;
+    professor_atual_id: number;
+    professor_atual_nome: string;
+    professor_proposto_id: number;
+    professor_proposto_nome: string;
+  }[];
+  mantidos_count: number;
+  novos: {
+    uc_id: number;
+    professor_proposto_id: number;
+    professor_proposto_nome: string;
+  }[];
+  sem_professor: number[];
+  regencia_projecao: RegenciaProjecaoItem[];
+  resumo: {
+    total_ucs: number;
+    com_professor: number;
+    sem_professor: number;
+    mudancas: number;
+    mantidos: number;
+  };
+}
+
 interface ResultadoGerado {
   evento_id: number;
   alocacoes: AlocacaoResult[];
-  regencia_projetada: {
+  // Greedy fields
+  regencia_projetada?: {
     professor_id: number;
     nome: string;
     tipo: string;
@@ -62,11 +97,15 @@ interface ResultadoGerado {
     percentual_projetado: number;
     meta: number | null;
   }[];
-  conflitos: { descricao?: string; uc_nome?: string; motivo?: string }[];
-  alertas_regencia: string[];
-  total_aulas: number;
-  horas_planejadas: number;
-  analise: Analise;
+  conflitos?: { descricao?: string; uc_nome?: string; motivo?: string }[];
+  alertas_regencia?: string[];
+  total_aulas?: number;
+  horas_planejadas?: number;
+  analise?: Analise;
+  // OR-Tools fields
+  solver_status?: string;
+  impacto?: ImpactoData;
+  alertas?: Record<string, string>;
 }
 
 interface Props {
@@ -75,6 +114,7 @@ interface Props {
   ucs: UCParaPlanejar[];
   modoSuperior?: boolean;
   cliparSemestre?: boolean;
+  modoOtimizado?: boolean;
   onClose: () => void;
   onConfirmado?: () => void;
 }
@@ -171,32 +211,157 @@ function AlocacaoCard({ a }: { a: AlocacaoResult }) {
   );
 }
 
+// ── ImpactoTab ────────────────────────────────────────────────────────────────
+
+function ImpactoTab({ impacto, solverStatus }: { impacto: ImpactoData; solverStatus?: string }) {
+  const STATUS_CLS: Record<string, string> = {
+    OPTIMAL:  "bg-green-100 text-green-700",
+    FEASIBLE: "bg-blue-100 text-blue-700",
+    INFEASIBLE: "bg-red-100 text-red-700",
+    TIMEOUT:  "bg-amber-100 text-amber-700",
+  };
+  return (
+    <div className="space-y-4">
+      {/* Status do solver */}
+      {solverStatus && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500">Status do solver:</span>
+          <span className={cn("text-xs font-semibold px-2 py-0.5 rounded", STATUS_CLS[solverStatus] ?? "bg-gray-100 text-gray-600")}>
+            {solverStatus}
+          </span>
+        </div>
+      )}
+
+      {/* Resumo */}
+      <div className="grid grid-cols-4 gap-2">
+        {[
+          { label: "Total", value: impacto.resumo.total_ucs },
+          { label: "Alocadas", value: impacto.resumo.com_professor, cls: "text-green-700" },
+          { label: "Mudanças", value: impacto.resumo.mudancas, cls: impacto.resumo.mudancas > 0 ? "text-amber-700" : "text-gray-500" },
+          { label: "Sem prof.", value: impacto.resumo.sem_professor, cls: impacto.resumo.sem_professor > 0 ? "text-red-600" : "text-gray-500" },
+        ].map(({ label, value, cls }) => (
+          <div key={label} className="border rounded-lg p-2 text-center">
+            <p className={cn("text-lg font-bold", cls ?? "text-gray-900")}>{value}</p>
+            <p className="text-[10px] text-gray-400 uppercase tracking-wide">{label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Mudanças de professor */}
+      {impacto.mudancas.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            Mudanças de professor ({impacto.mudancas.length})
+          </p>
+          <div className="space-y-1.5">
+            {impacto.mudancas.map((m) => (
+              <div key={m.uc_id} className="border border-amber-200 bg-amber-50/50 rounded-lg px-3 py-2">
+                <p className="text-xs text-gray-700 font-medium mb-0.5">UC {m.uc_id}</p>
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="text-gray-500 line-through">{m.professor_atual_nome}</span>
+                  <span className="text-gray-400">→</span>
+                  <span className="font-medium text-gray-800">{m.professor_proposto_nome}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Novos sem professor anterior */}
+      {impacto.novos.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            Novas alocações ({impacto.novos.length})
+          </p>
+          <div className="space-y-1">
+            {impacto.novos.map((n) => (
+              <div key={n.uc_id} className="flex items-center gap-1.5 text-xs py-1 border-b last:border-0">
+                <span className="text-green-500">+</span>
+                <span className="font-medium text-gray-800">{n.professor_proposto_nome}</span>
+                <span className="text-gray-400">→ UC {n.uc_id}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Impacto na regência */}
+      {impacto.regencia_projecao.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            Impacto na regência
+          </p>
+          <div className="space-y-1.5">
+            {impacto.regencia_projecao.map((r) => (
+              <div key={r.professor_id} className="flex items-center justify-between border rounded-lg px-3 py-2">
+                <div>
+                  <p className="text-xs font-medium text-gray-800">{r.professor_nome}</p>
+                  <p className="text-[10px] text-gray-400">{r.tipo} · regência atual {r.regencia_antes.toFixed(1)}%</p>
+                </div>
+                <div className={cn(
+                  "flex items-center gap-1 text-xs font-semibold",
+                  r.direcao === "sobe" ? "text-green-600" : "text-amber-600"
+                )}>
+                  {r.direcao === "sobe"
+                    ? <TrendingUp className="h-3.5 w-3.5" />
+                    : <TrendingDown className="h-3.5 w-3.5" />}
+                  {r.horas_delta > 0 ? "+" : ""}{r.horas_delta}h
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {impacto.resumo.sem_professor > 0 && (
+        <div className="border border-red-200 bg-red-50 rounded-lg p-3">
+          <p className="text-xs font-semibold text-red-700 mb-1">
+            {impacto.resumo.sem_professor} UC(s) sem professor
+          </p>
+          <p className="text-xs text-red-600">
+            O solver não encontrou professor disponível e habilitado. Atribua manualmente após confirmar.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 type Etapa = "idle" | "gerando" | "resultado";
 
-export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = false, cliparSemestre = false, onClose, onConfirmado }: Props) {
+export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = false, cliparSemestre = false, modoOtimizado = false, onClose, onConfirmado }: Props) {
   const [etapa, setEtapa] = useState<Etapa>("idle");
   const [resultado, setResultado] = useState<ResultadoGerado | null>(null);
   const [substituirFuturas, setSubstituirFuturas] = useState(true);
-  const [abaAtiva, setAbaAtiva] = useState<"alocacoes" | "regencia" | "analise">("alocacoes");
+  const [abaAtiva, setAbaAtiva] = useState<"alocacoes" | "regencia" | "analise" | "impacto">("alocacoes");
+
+  const buildUCs = () => ucs.map((u) => ({
+    uc_id: u.uc_id,
+    ordem: u.ordem,
+    professor_preferido_id: u.professor_preferido_id,
+    data_inicio: u.data_inicio,
+    nao_agendar: u.nao_agendar ?? false,
+    dias_semana: u.dias_semana && u.dias_semana.length > 0 ? u.dias_semana : undefined,
+  }));
 
   const gerar = useMutation({
     mutationFn: () => {
-      const ucsOrdenadas = ucs.map((u) => ({
-        uc_id: u.uc_id,
-        ordem: u.ordem,
-        professor_preferido_id: u.professor_preferido_id,
-        data_inicio: u.data_inicio,
-        nao_agendar: u.nao_agendar ?? false,
-        dias_semana: u.dias_semana && u.dias_semana.length > 0 ? u.dias_semana : undefined,
-      }));
+      const ucsOrdenadas = buildUCs();
+      if (modoOtimizado) {
+        return planejamentoApi.gerarOtimizado(eventoId, ucsOrdenadas, modoSuperior, cliparSemestre);
+      }
       return planejamentoApi.gerar(eventoId, ucsOrdenadas, modoSuperior, cliparSemestre);
     },
     onMutate: () => setEtapa("gerando"),
     onSuccess: (data) => {
       setResultado(data);
       setEtapa("resultado");
+      // Auto-select impacto tab for OR-Tools results
+      if (modoOtimizado) setAbaAtiva("impacto");
     },
     onError: (err: any) => {
       setEtapa("idle");
@@ -219,11 +384,16 @@ export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = fa
     },
   });
 
-  const abas = [
-    { id: "alocacoes", label: `Alocações (${resultado?.alocacoes.length ?? 0})` },
-    { id: "regencia",  label: "Regência" },
-    { id: "analise",   label: "Análise" },
-  ] as const;
+  const abas = modoOtimizado
+    ? [
+        { id: "impacto",   label: "Impacto" },
+        { id: "alocacoes", label: `Alocações (${resultado?.alocacoes.length ?? 0})` },
+      ]
+    : [
+        { id: "alocacoes", label: `Alocações (${resultado?.alocacoes.length ?? 0})` },
+        { id: "regencia",  label: "Regência" },
+        { id: "analise",   label: "Análise" },
+      ] as const;
 
   return (
     <>
@@ -234,7 +404,16 @@ export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = fa
           {/* Header */}
           <div className="px-6 py-4 border-b shrink-0 flex items-center justify-between">
             <div>
-              <h2 className="font-semibold text-gray-900">Planejamento Automático</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="font-semibold text-gray-900">
+                  {modoOtimizado ? "Otimização Avançada (OR-Tools)" : "Planejamento Automático"}
+                </h2>
+                {modoOtimizado && (
+                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 uppercase tracking-wide flex items-center gap-1">
+                    <Cpu className="h-3 w-3" />CP-SAT
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-gray-500 mt-0.5 truncate max-w-md">{nomeEvento}</p>
             </div>
             {etapa !== "gerando" && (
@@ -250,16 +429,35 @@ export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = fa
             {/* ── IDLE ── */}
             {etapa === "idle" && (
               <div className="p-6 space-y-5">
-                <div className="bg-blue-50 rounded-lg p-4 text-sm text-blue-800">
-                  <p className="font-medium mb-1">O que será gerado</p>
-                  <ul className="list-disc list-inside space-y-1 text-xs text-blue-700">
-                    <li>Alocação de professores para cada UC seguindo a sequência pedagógica</li>
-                    <li>Prioridade para professores com menor regência atual (meta 70%)</li>
-                    <li>Seleção aleatória entre professores com desempenho equivalente</li>
-                    <li>Verificação de disponibilidade e conflitos de agenda</li>
-                    <li>Análise automática com alertas e sugestões de melhoria</li>
-                  </ul>
-                </div>
+                {modoOtimizado ? (
+                  <div className="bg-violet-50 rounded-lg p-4 text-sm text-violet-800 border border-violet-200">
+                    <p className="font-medium mb-1 flex items-center gap-1.5">
+                      <Cpu className="h-3.5 w-3.5" />
+                      Otimização global via CP-SAT
+                    </p>
+                    <ul className="list-disc list-inside space-y-1 text-xs text-violet-700">
+                      <li>Resolve TODAS as UCs simultaneamente (não UC a UC)</li>
+                      <li>Garante que nenhum professor seja atribuído com conflito de agenda</li>
+                      <li>Maximiza equilíbrio de regência entre professores</li>
+                      <li>Respeita habilitação, disponibilidade e preferências do coordenador</li>
+                      <li>Retorna análise de impacto para revisão antes de salvar</li>
+                    </ul>
+                    <p className="text-[10px] text-violet-500 mt-2 italic">
+                      Tempo limite: 10 segundos. Se não encontrar solução ótima, usa a melhor encontrada.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-blue-50 rounded-lg p-4 text-sm text-blue-800">
+                    <p className="font-medium mb-1">O que será gerado</p>
+                    <ul className="list-disc list-inside space-y-1 text-xs text-blue-700">
+                      <li>Alocação de professores para cada UC seguindo a sequência pedagógica</li>
+                      <li>Prioridade para professores com menor regência atual (meta 70%)</li>
+                      <li>Seleção aleatória entre professores com desempenho equivalente</li>
+                      <li>Verificação de disponibilidade e conflitos de agenda</li>
+                      <li>Análise automática com alertas e sugestões de melhoria</li>
+                    </ul>
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
@@ -280,11 +478,15 @@ export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = fa
             {/* ── GERANDO ── */}
             {etapa === "gerando" && (
               <div className="flex flex-col items-center justify-center py-16 gap-4">
-                <Loader2 className="h-10 w-10 text-blue-500 animate-spin" />
+                <Loader2 className={cn("h-10 w-10 animate-spin", modoOtimizado ? "text-violet-500" : "text-blue-500")} />
                 <div className="text-center">
-                  <p className="font-medium text-gray-800">Gerando planejamento...</p>
+                  <p className="font-medium text-gray-800">
+                    {modoOtimizado ? "Otimizando com CP-SAT..." : "Gerando planejamento..."}
+                  </p>
                   <p className="text-sm text-gray-500 mt-1">
-                    Analisando disponibilidades, regência e aptidão dos professores
+                    {modoOtimizado
+                      ? "Resolvendo todas as UCs simultaneamente (até 10 segundos)"
+                      : "Analisando disponibilidades, regência e aptidão dos professores"}
                   </p>
                 </div>
               </div>
@@ -295,27 +497,54 @@ export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = fa
               <div className="flex flex-col">
                 {/* Stats bar */}
                 <div className="px-6 py-3 bg-gray-50 border-b flex items-center gap-6 text-sm shrink-0">
-                  <div>
-                    <span className="text-gray-500">Aulas:</span>{" "}
-                    <span className="font-semibold text-gray-900">{resultado.total_aulas}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Horas:</span>{" "}
-                    <span className="font-semibold text-gray-900">{resultado.horas_planejadas.toFixed(1)}h</span>
-                  </div>
-                  {resultado.analise?.avaliacao_geral && (
-                    <span className={cn(
-                      "text-xs font-semibold px-2 py-0.5 rounded border",
-                      AVALIACAO_CLS[resultado.analise.avaliacao_geral] ?? "text-gray-700 bg-gray-50 border-gray-200"
-                    )}>
-                      {resultado.analise.avaliacao_geral}
-                    </span>
-                  )}
-                  {resultado.conflitos.length > 0 && (
-                    <div className="flex items-center gap-1 text-red-600">
-                      <AlertTriangle className="h-3.5 w-3.5" />
-                      <span className="font-medium">{resultado.conflitos.length} conflito(s)</span>
-                    </div>
+                  {modoOtimizado ? (
+                    <>
+                      <div>
+                        <span className="text-gray-500">UCs:</span>{" "}
+                        <span className="font-semibold text-gray-900">{resultado.alocacoes.length}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Alocadas:</span>{" "}
+                        <span className="font-semibold text-gray-900">
+                          {resultado.alocacoes.filter((a) => a.professor_id).length}
+                        </span>
+                      </div>
+                      {resultado.solver_status && (
+                        <span className={cn(
+                          "text-xs font-semibold px-2 py-0.5 rounded border",
+                          resultado.solver_status === "OPTIMAL" ? "text-green-700 bg-green-50 border-green-200" :
+                          resultado.solver_status === "FEASIBLE" ? "text-blue-700 bg-blue-50 border-blue-200" :
+                          "text-amber-700 bg-amber-50 border-amber-200"
+                        )}>
+                          {resultado.solver_status}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <span className="text-gray-500">Aulas:</span>{" "}
+                        <span className="font-semibold text-gray-900">{resultado.total_aulas ?? 0}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Horas:</span>{" "}
+                        <span className="font-semibold text-gray-900">{(resultado.horas_planejadas ?? 0).toFixed(1)}h</span>
+                      </div>
+                      {resultado.analise?.avaliacao_geral && (
+                        <span className={cn(
+                          "text-xs font-semibold px-2 py-0.5 rounded border",
+                          AVALIACAO_CLS[resultado.analise.avaliacao_geral] ?? "text-gray-700 bg-gray-50 border-gray-200"
+                        )}>
+                          {resultado.analise.avaliacao_geral}
+                        </span>
+                      )}
+                      {(resultado.conflitos?.length ?? 0) > 0 && (
+                        <div className="flex items-center gap-1 text-red-600">
+                          <AlertTriangle className="h-3.5 w-3.5" />
+                          <span className="font-medium">{resultado.conflitos!.length} conflito(s)</span>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -324,7 +553,7 @@ export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = fa
                   {abas.map((a) => (
                     <button
                       key={a.id}
-                      onClick={() => setAbaAtiva(a.id)}
+                      onClick={() => setAbaAtiva(a.id as typeof abaAtiva)}
                       className={cn(
                         "py-2.5 text-sm border-b-2 -mb-px transition-colors",
                         abaAtiva === a.id
@@ -338,6 +567,11 @@ export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = fa
                 </div>
 
                 <div className="p-6 space-y-3">
+                  {/* Aba Impacto (OR-Tools) */}
+                  {abaAtiva === "impacto" && resultado.impacto && (
+                    <ImpactoTab impacto={resultado.impacto} solverStatus={resultado.solver_status} />
+                  )}
+
                   {/* Aba Alocações */}
                   {abaAtiva === "alocacoes" && (
                     <>
@@ -346,10 +580,10 @@ export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = fa
                       ) : (
                         resultado.alocacoes.map((a) => <AlocacaoCard key={a.uc_id} a={a} />)
                       )}
-                      {resultado.conflitos.length > 0 && (
+                      {(resultado.conflitos?.length ?? 0) > 0 && (
                         <div className="border border-red-200 bg-red-50 rounded-lg p-3">
                           <p className="text-xs font-semibold text-red-700 mb-1.5">Conflitos detectados</p>
-                          {resultado.conflitos.map((c, i) => (
+                          {resultado.conflitos!.map((c, i) => (
                             <p key={i} className="text-xs text-red-600">
                               • {c.descricao ?? (c.uc_nome ? `${c.uc_nome}: ${c.motivo}` : JSON.stringify(c))}
                             </p>
@@ -362,15 +596,15 @@ export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = fa
                   {/* Aba Regência */}
                   {abaAtiva === "regencia" && (
                     <>
-                      {resultado.alertas_regencia.length > 0 && (
+                      {(resultado.alertas_regencia?.length ?? 0) > 0 && (
                         <div className="border border-amber-200 bg-amber-50 rounded-lg p-3 mb-3">
-                          {resultado.alertas_regencia.map((a, i) => (
+                          {resultado.alertas_regencia!.map((a, i) => (
                             <p key={i} className="text-xs text-amber-700">⚠ {a}</p>
                           ))}
                         </div>
                       )}
                       <div className="space-y-2">
-                        {resultado.regencia_projetada
+                        {(resultado.regencia_projetada ?? [])
                           .filter((r: any) => (r.horas_planejadas ?? 0) > 0)
                           .map((r: any) => {
                             const atual = Math.min(r.percentual_atual ?? 0, 120);
@@ -411,7 +645,7 @@ export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = fa
                               </div>
                             );
                           })}
-                        {resultado.regencia_projetada.filter((r: any) => (r.horas_planejadas ?? 0) > 0).length === 0 && (
+                        {(resultado.regencia_projetada ?? []).filter((r: any) => (r.horas_planejadas ?? 0) > 0).length === 0 && (
                           <p className="text-sm text-gray-400 text-center py-6">Nenhum professor alocado neste planejamento.</p>
                         )}
                       </div>
@@ -519,8 +753,18 @@ export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = fa
                   </button>
                   <button
                     onClick={() => confirmar.mutate()}
-                    disabled={confirmar.isPending || (resultado?.total_aulas ?? 0) === 0}
-                    title={(resultado?.total_aulas ?? 0) === 0 ? "Nenhuma aula foi planejada. Verifique os dias da semana e o período do evento." : undefined}
+                    disabled={confirmar.isPending || (
+                      modoOtimizado
+                        ? (resultado?.alocacoes.filter((a) => a.professor_id).length ?? 0) === 0
+                        : (resultado?.total_aulas ?? 0) === 0
+                    )}
+                    title={
+                      (modoOtimizado
+                        ? (resultado?.alocacoes.filter((a) => a.professor_id).length ?? 0) === 0
+                        : (resultado?.total_aulas ?? 0) === 0)
+                        ? "Nenhuma aula foi planejada. Verifique os dias da semana e o período do evento."
+                        : undefined
+                    }
                     className="btn-primary flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {confirmar.isPending
