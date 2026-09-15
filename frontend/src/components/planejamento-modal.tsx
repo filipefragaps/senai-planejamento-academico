@@ -6,7 +6,7 @@ import { planejamentoApi } from "@/lib/api";
 import { toast } from "sonner";
 import {
   X, Loader2, AlertTriangle, BarChart2, ChevronDown, ChevronRight,
-  Check, Cpu, TrendingUp, TrendingDown, RefreshCw
+  Check, Cpu, TrendingUp, TrendingDown, RefreshCw, Printer
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -209,6 +209,201 @@ function AlocacaoCard({ a }: { a: AlocacaoResult }) {
     </div>
   );
 }
+
+// ── Relatório de Impressão ────────────────────────────────────────────────────
+
+function imprimirRelatorio(resultado: ResultadoGerado, nomeEvento: string, modoOtimizado: boolean) {
+  // Build date → aulas map
+  const dateMap: Record<string, { uc_nome: string; professor_nome: string | null; alerta: string | null }[]> = {};
+  for (const aloc of resultado.alocacoes) {
+    for (const d of aloc.datas_aulas) {
+      if (!dateMap[d]) dateMap[d] = [];
+      dateMap[d].push({ uc_nome: aloc.uc_nome, professor_nome: aloc.professor_nome, alerta: aloc.alerta });
+    }
+  }
+
+  const allDates = Object.keys(dateMap).sort();
+  if (allDates.length === 0 && resultado.alocacoes.length === 0) {
+    alert("Nenhuma aula gerada para imprimir.");
+    return;
+  }
+
+  // Color palette per UC
+  const palette = ["#dbeafe","#d1fae5","#fef9c3","#fce7f3","#e0e7ff","#f3e8ff","#ffedd5","#cffafe","#dcfce7","#fef3c7"];
+  const ucColors: Record<string, string> = {};
+  let ci = 0;
+  for (const aloc of resultado.alocacoes) {
+    if (!ucColors[aloc.uc_nome]) { ucColors[aloc.uc_nome] = palette[ci++ % palette.length]; }
+  }
+
+  // Build months range
+  const months: { year: number; month: number }[] = [];
+  if (allDates.length > 0) {
+    const minD = new Date(allDates[0] + "T00:00:00");
+    const maxD = new Date(allDates[allDates.length - 1] + "T00:00:00");
+    let cur = new Date(minD.getFullYear(), minD.getMonth(), 1);
+    const end = new Date(maxD.getFullYear(), maxD.getMonth(), 1);
+    while (cur <= end) {
+      months.push({ year: cur.getFullYear(), month: cur.getMonth() });
+      cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+    }
+  }
+
+  const DAY_NAMES = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+  const MONTH_NAMES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+  const calendarHTML = months.map(({ year, month }) => {
+    const firstWeekday = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    const emptyCells = Array.from({ length: firstWeekday }).map(() => `<div class="day empty"></div>`).join("");
+
+    const dayCells = Array.from({ length: daysInMonth }, (_, i) => {
+      const d = i + 1;
+      const ds = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      const aulas = dateMap[ds] || [];
+      const wd = new Date(year, month, d).getDay();
+      const isWe = wd === 0 || wd === 6;
+      const chips = aulas.map(a =>
+        `<div class="chip" style="background:${ucColors[a.uc_nome] || "#f3f4f6"}">
+          <div class="chip-uc">${a.uc_nome.length > 22 ? a.uc_nome.substring(0, 22) + "…" : a.uc_nome}</div>
+          ${a.professor_nome
+            ? `<div class="chip-prof">${a.professor_nome.split(" ").slice(0, 2).join(" ")}</div>`
+            : `<div class="chip-sem">Sem professor</div>`}
+         </div>`
+      ).join("");
+      return `<div class="day${isWe ? " we" : ""}${aulas.length ? " has-aula" : ""}">
+        <span class="dn">${d}</span>${chips}</div>`;
+    }).join("");
+
+    return `<div class="month-block">
+      <div class="month-title">${MONTH_NAMES[month]} ${year}</div>
+      <div class="cal-grid">
+        ${DAY_NAMES.map(n => `<div class="dh">${n}</div>`).join("")}
+        ${emptyCells}${dayCells}
+      </div></div>`;
+  }).join("");
+
+  // Allocations table
+  const alocsRows = resultado.alocacoes.map(a =>
+    `<tr${a.alerta ? ' class="warn-row"' : ""}>
+      <td>${a.uc_nome}${a.etapa ? ` <span class="etapa">${a.etapa}</span>` : ""}${a.alerta ? " ⚠" : ""}</td>
+      <td>${a.carga_horaria}h</td>
+      <td>${a.professor_nome || "—"}</td>
+      <td>${a.datas_aulas.length}</td>
+      <td>${a.datas_aulas.length > 0 ? fmtDate(a.datas_aulas[0]) + "/" + new Date(a.datas_aulas[0]+"T00:00:00").getFullYear().toString().slice(2) : "—"}</td>
+    </tr>`
+  ).join("");
+
+  // Impact section (OR-Tools)
+  let impactoHTML = "";
+  if (modoOtimizado && resultado.impacto) {
+    const { resumo, mudancas, regencia_projecao } = resultado.impacto;
+    impactoHTML = `
+      <section>
+        <h2>Impacto da Otimização</h2>
+        <div class="summary-grid">
+          <div class="s-card"><div class="s-num">${resumo.total_ucs}</div><div class="s-lbl">Total UCs</div></div>
+          <div class="s-card ok"><div class="s-num">${resumo.com_professor}</div><div class="s-lbl">Alocadas</div></div>
+          <div class="s-card${resumo.mudancas > 0 ? " warn" : ""}"><div class="s-num">${resumo.mudancas}</div><div class="s-lbl">Mudanças</div></div>
+          <div class="s-card${resumo.sem_professor > 0 ? " danger" : ""}"><div class="s-num">${resumo.sem_professor}</div><div class="s-lbl">Sem professor</div></div>
+        </div>
+      </section>
+      ${mudancas.length > 0 ? `
+      <section>
+        <h2>Mudanças de Professor</h2>
+        <table><thead><tr><th>UC</th><th>Professor Atual</th><th>Professor Proposto</th></tr></thead>
+        <tbody>${mudancas.map(m => `<tr>
+          <td>UC ${m.uc_id}</td>
+          <td class="strike">${m.professor_atual_nome}</td>
+          <td class="bold green">${m.professor_proposto_nome}</td></tr>`).join("")}
+        </tbody></table>
+      </section>` : ""}
+      ${regencia_projecao.length > 0 ? `
+      <section>
+        <h2>Projeção de Regência</h2>
+        <table><thead><tr><th>Professor</th><th>Tipo</th><th>Regência atual</th><th>Variação (h)</th></tr></thead>
+        <tbody>${regencia_projecao.map(r => `<tr>
+          <td>${r.professor_nome}</td><td>${r.tipo}</td>
+          <td>${r.regencia_antes.toFixed(1)}%</td>
+          <td class="${r.direcao === "sobe" ? "verde" : "laranja"}">${r.horas_delta > 0 ? "+" : ""}${r.horas_delta}h</td></tr>`).join("")}
+        </tbody></table>
+      </section>` : ""}`;
+  }
+
+  const solverBadge = modoOtimizado
+    ? `· Otimização CP-SAT${resultado.solver_status ? ` (${resultado.solver_status})` : ""}`
+    : "· Modo Rápido (Greedy)";
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Planejamento – ${nomeEvento}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:11px;color:#111;padding:16px}
+h1{font-size:15px;font-weight:700;margin-bottom:2px}
+.sub{font-size:10px;color:#6b7280;margin-bottom:18px}
+section{margin-bottom:22px}
+h2{font-size:12px;font-weight:600;color:#374151;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #e5e7eb}
+table{width:100%;border-collapse:collapse;font-size:10px;margin-top:4px}
+th{background:#f9fafb;padding:4px 7px;text-align:left;font-weight:600;border:1px solid #e5e7eb}
+td{padding:3px 7px;border:1px solid #e5e7eb;vertical-align:top}
+.strike{text-decoration:line-through;color:#9ca3af}
+.bold{font-weight:600}.green{color:#15803d}.verde{color:#16a34a;font-weight:600}.laranja{color:#d97706;font-weight:600}
+.warn-row td{background:#fffbeb}
+.etapa{font-size:8px;color:#6b7280;margin-left:3px}
+.summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px}
+.s-card{border:1px solid #e5e7eb;border-radius:6px;padding:8px;text-align:center}
+.s-card.ok{border-color:#86efac;background:#f0fdf4}
+.s-card.warn{border-color:#fcd34d;background:#fffbeb}
+.s-card.danger{border-color:#fca5a5;background:#fef2f2}
+.s-num{font-size:22px;font-weight:700;line-height:1}
+.s-lbl{font-size:9px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-top:2px}
+.month-block{margin-bottom:18px;page-break-inside:avoid}
+.month-title{font-size:12px;font-weight:600;color:#1f2937;margin-bottom:5px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:#d1d5db;border:1px solid #d1d5db}
+.dh{background:#f3f4f6;text-align:center;font-size:8px;font-weight:600;color:#6b7280;padding:3px 2px}
+.day{background:#fff;min-height:52px;padding:2px 2px 2px 3px;position:relative}
+.day.empty,.day.we{background:#f9fafb}
+.dn{font-size:9px;color:#6b7280;display:block;margin-bottom:2px}
+.chip{border-radius:3px;padding:2px 3px;margin-bottom:2px}
+.chip-uc{font-size:8px;font-weight:600;color:#1f2937;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:100%}
+.chip-prof{font-size:7px;color:#4b5563;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.chip-sem{font-size:7px;color:#dc2626;font-style:italic}
+.legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.leg-item{display:flex;align-items:center;gap:3px;font-size:9px;color:#374151}
+.leg-swatch{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+@media print{body{padding:8px}.month-block{page-break-inside:avoid}section{page-break-inside:avoid}}
+</style></head><body>
+<h1>${nomeEvento}</h1>
+<p class="sub">Gerado em ${new Date().toLocaleDateString("pt-BR")} às ${new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})} ${solverBadge}</p>
+
+${impactoHTML}
+
+<section>
+  <h2>Alocações de Professor por UC</h2>
+  <table><thead><tr><th>Unidade Curricular</th><th>CH</th><th>Professor</th><th>Aulas</th><th>Início</th></tr></thead>
+  <tbody>${alocsRows}</tbody></table>
+</section>
+
+${allDates.length > 0 ? `<section>
+  <h2>Calendário Proposto</h2>
+  <div class="legend">${Object.entries(ucColors).map(([name, color]) =>
+    `<div class="leg-item"><div class="leg-swatch" style="background:${color}"></div>${name.length > 30 ? name.substring(0,30)+"…" : name}</div>`
+  ).join("")}</div>
+  <div style="margin-top:12px">${calendarHTML}</div>
+</section>` : ""}
+
+</body></html>`;
+
+  const win = window.open("", "_blank", "width=1100,height=800");
+  if (win) {
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 600);
+  }
+}
+
 
 // ── ImpactoTab ────────────────────────────────────────────────────────────────
 
@@ -736,14 +931,24 @@ export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = fa
           {/* Footer */}
           <div className="border-t px-6 py-3 shrink-0 flex items-center justify-between gap-3">
             {etapa === "resultado" && (
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={substituirFuturas}
-                  onChange={(e) => setSubstituirFuturas(e.target.checked)}
-                />
-                <span className="text-xs text-gray-600">Substituir aulas futuras não travadas</span>
-              </label>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={substituirFuturas}
+                    onChange={(e) => setSubstituirFuturas(e.target.checked)}
+                  />
+                  <span className="text-xs text-gray-600">Substituir aulas futuras não travadas</span>
+                </label>
+                <button
+                  onClick={() => resultado && imprimirRelatorio(resultado, nomeEvento, modoOtimizado)}
+                  className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-2.5 py-1.5 hover:bg-gray-50 transition-colors"
+                  title="Imprimir relatório com calendário de impacto"
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                  Imprimir
+                </button>
+              </div>
             )}
             {etapa !== "resultado" && <div />}
 
