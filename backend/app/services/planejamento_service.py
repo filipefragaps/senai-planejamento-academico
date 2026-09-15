@@ -460,19 +460,26 @@ async def gerar_planejamento(
                 if not tem_conflito:
                     sem_conflito.append(c)
 
-            # Prioridade: disponíveis sem conflito > indisponíveis sem conflito > qualquer um
+            # Prioridade: disponíveis sem conflito > indisponíveis sem conflito
+            # Professores com conflito de agenda NÃO são atribuídos — UC fica sem professor
             disponiveis_sem_conflito = [c for c in sem_conflito if c.get("disponivel", True)]
-            pool = disponiveis_sem_conflito if disponiveis_sem_conflito else (sem_conflito if sem_conflito else candidatos)
+            pool = disponiveis_sem_conflito if disponiveis_sem_conflito else sem_conflito
 
-            top_score = pool[0]["score"]
-            grupo = [c for c in pool if (top_score - c["score"]) <= SCORE_TOLERANCE]
-            preferidos_no_grupo = [c for c in grupo if c["is_preferido"]]
-            cand = preferidos_no_grupo[0] if preferidos_no_grupo else random.choice(grupo)
+            if not pool:
+                # Todos os candidatos têm conflito de agenda — não atribui ninguém
+                justificativa = (
+                    f"Todos os {len(candidatos)} professor(es) habilitado(s) para esta UC já possuem "
+                    "aulas no mesmo horário em outras turmas. Atribua manualmente após reorganizar o calendário."
+                )
+                alerta = "⚠ Sem professor disponível: todos os candidatos têm conflito de horário neste período."
+            else:
+                top_score = pool[0]["score"]
+                grupo = [c for c in pool if (top_score - c["score"]) <= SCORE_TOLERANCE]
+                preferidos_no_grupo = [c for c in grupo if c["is_preferido"]]
+                cand = preferidos_no_grupo[0] if preferidos_no_grupo else random.choice(grupo)
 
-            if not sem_conflito:
-                alerta = f"Conflito detectado para {cand['professor'].nome} na 1ª data. Revisar manualmente."
-            elif not disponiveis_sem_conflito:
-                alerta = f"Nenhum professor com disponibilidade cadastrada para este horário; alocado {cand['professor'].nome}. Revisar manualmente."
+                if not disponiveis_sem_conflito:
+                    alerta = f"Nenhum professor com disponibilidade cadastrada neste horário; alocado {cand['professor'].nome}. Verificar disponibilidade."
             elif preferidos and not cand["is_preferido"]:
                 alerta = f"Professor preferido não disponível/habilitado; alocado {cand['professor'].nome}."
 
