@@ -480,8 +480,8 @@ async def gerar_planejamento(
 
                 if not disponiveis_sem_conflito:
                     alerta = f"Nenhum professor com disponibilidade cadastrada neste horário; alocado {cand['professor'].nome}. Verificar disponibilidade."
-            elif preferidos and not cand["is_preferido"]:
-                alerta = f"Professor preferido não disponível/habilitado; alocado {cand['professor'].nome}."
+                elif preferidos and not cand["is_preferido"]:
+                    alerta = f"Professor preferido não disponível/habilitado; alocado {cand['professor'].nome}."
 
         if cand:
             professor_escolhido = cand["professor"]
