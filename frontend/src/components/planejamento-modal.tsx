@@ -930,28 +930,21 @@ export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = fa
 
           {/* Footer */}
           <div className="border-t px-6 py-3 shrink-0 flex items-center justify-between gap-3">
-            {etapa === "resultado" && (
-              <div className="flex items-center gap-3">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={substituirFuturas}
-                    onChange={(e) => setSubstituirFuturas(e.target.checked)}
-                  />
-                  <span className="text-xs text-gray-600">Substituir aulas futuras não travadas</span>
-                </label>
-                <button
-                  onClick={() => resultado && imprimirRelatorio(resultado, nomeEvento, modoOtimizado)}
-                  className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-2.5 py-1.5 hover:bg-gray-50 transition-colors"
-                  title="Imprimir relatório com calendário de impacto"
-                >
-                  <Printer className="h-3.5 w-3.5" />
-                  Imprimir
-                </button>
-              </div>
+            {/* Lado esquerdo: opção de substituir */}
+            {etapa === "resultado" ? (
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={substituirFuturas}
+                  onChange={(e) => setSubstituirFuturas(e.target.checked)}
+                />
+                <span className="text-xs text-gray-600">Substituir aulas futuras não travadas</span>
+              </label>
+            ) : (
+              <div />
             )}
-            {etapa !== "resultado" && <div />}
 
+            {/* Lado direito: fluxo de ações */}
             <div className="flex gap-2 shrink-0">
               {etapa !== "gerando" && (
                 <button onClick={onClose} className="btn-secondary">Cancelar</button>
@@ -980,6 +973,15 @@ export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = fa
                     className="btn-secondary"
                   >
                     Ajustar
+                  </button>
+                  {/* Imprimir: entre Ajustar e Confirmar — para revisar antes de salvar */}
+                  <button
+                    onClick={() => resultado && imprimirRelatorio(resultado, nomeEvento, modoOtimizado)}
+                    className="btn-secondary flex items-center gap-1.5"
+                    title="Abrir relatório para revisão antes de confirmar"
+                  >
+                    <Printer className="h-4 w-4" />
+                    Imprimir Relatório
                   </button>
                   <button
                     onClick={() => confirmar.mutate()}
