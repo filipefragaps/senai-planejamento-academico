@@ -1238,7 +1238,7 @@ async def gerar_otimizado(
 
     # ── Chama OR-Tools ───────────────────────────────────────────────────────────
     try:
-        proposta, solver_status, alertas_solver = await resolver_com_ortools(
+        proposta, solver_status, alertas_solver, uc_dias_atribuidos = await resolver_com_ortools(
             evento=evento,
             ucs_datas=ucs_datas_solver,
             todos_profs=todos_profs,
@@ -1250,6 +1250,36 @@ async def gerar_otimizado(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro no solver: {str(e)}")
 
+    # ── Re-gera datas usando os dias fracionados atribuídos a cada UC ────────────
+    # Quando o solver fracionou dias (ex: UC1→Seg+Ter, UC2→Qua, UC3→Qui+Sex),
+    # as datas pré-computadas (sequenciais) são substituídas pelas datas reais
+    # dos dias atribuídos, sem sobreposição entre UCs.
+    datas_usadas_global: set[date] = set()
+    for uc_data in ucs_datas_solver:
+        uc = uc_data["uc"]
+        dias_uc = uc_dias_atribuidos.get(uc.id, dias_semana)
+        n_aulas_uc = len(uc_data["datas"])
+
+        if sorted(dias_uc) != sorted(dias_semana):
+            # Dias realmente fracionados: re-gera datas somente com os dias atribuídos
+            pool_fracionado = await get_datas_letivas(
+                evento.data_inicio, data_fim_efetiva, dias_uc, db
+            )
+            novas_datas = [d for d in pool_fracionado if d not in datas_usadas_global]
+            uc_data["datas"] = novas_datas[:n_aulas_uc]
+
+            # Fallback: se dias atribuídos não bastam, completa com qualquer dia livre
+            if len(uc_data["datas"]) < n_aulas_uc:
+                pool_todos = await get_datas_letivas(
+                    evento.data_inicio, data_fim_efetiva, dias_semana, db
+                )
+                extras = [d for d in pool_todos if d not in datas_usadas_global and d not in uc_data["datas"]]
+                faltam = n_aulas_uc - len(uc_data["datas"])
+                uc_data["datas"].extend(extras[:faltam])
+            uc_data["datas"].sort()
+
+        datas_usadas_global.update(uc_data["datas"])
+
     # ── Monta alocações no formato padrão ────────────────────────────────────────
     turno = _turno(evento)
     alocacoes_serial = []
@@ -1260,6 +1290,13 @@ async def gerar_otimizado(
         prof_id = proposta.get(uc.id)
         prof = prof_map.get(prof_id) if prof_id else None
         datas_uc = uc_data["datas"]
+        dias_uc = uc_dias_atribuidos.get(uc.id, dias_semana)
+
+        justificativa = alertas_solver.get(uc.id) or "Otimizado via CP-SAT"
+        if sorted(dias_uc) != sorted(dias_semana) and not alertas_solver.get(uc.id):
+            nomes_dias = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
+            dias_str = "+".join(nomes_dias[d] for d in sorted(dias_uc) if d < 7)
+            justificativa = f"Otimizado via CP-SAT · dias fracionados: {dias_str}"
 
         alocacoes_serial.append({
             "uc_id": uc.id,
@@ -1271,7 +1308,8 @@ async def gerar_otimizado(
             "professor_nome": prof.nome if prof else None,
             "aulas_necessarias": len(datas_uc),
             "datas_aulas": [d.isoformat() for d in datas_uc],
-            "justificativa": alertas_solver.get(uc.id) or "Otimizado via CP-SAT",
+            "dias_semana_uc": dias_uc,
+            "justificativa": justificativa,
             "alerta": alertas_solver.get(uc.id),
             "score": 0.0,
         })

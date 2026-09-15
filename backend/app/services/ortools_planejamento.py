@@ -8,17 +8,24 @@ e encontra a atribuição que melhor equilibra regência, habilitação e dispon
 Restrições HARD (não violáveis):
   - Professor deve ter habilitação (atuação) para a UC e curso
   - Professor não pode ter aulas em outras turmas nas mesmas datas/horário
+  - Professor com conflito em dia da semana (cross-evento) não pode pegar UC naquele dia
 
 Restrições SOFT (via função objetivo):
   - Preferir professores abaixo da meta de regência (70%)
   - Preferir professores com disponibilidade cadastrada no horário
   - Preferir professores com maior nível de competência na UC
   - Respeitar preferências explícitas do coordenador
+  - Preferir atribuições que minimizam sobreposição com compromisos em outros eventos
+
+Fracionamento de dias:
+  Quando o evento tem >= 2 dias na semana, o solver também decide quais dias
+  cada UC recebe, permitindo que professores disponíveis apenas em certos dias
+  sejam alocados a UCs que ficaram naqueles dias.
 """
 import math
 from datetime import date
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_, func, extract
 
 from app.models.aula import Aula
 from app.models.professor import Professor
@@ -40,14 +47,15 @@ async def resolver_com_ortools(
     todos_profs: list[Professor],
     regencias: dict[int, dict],
     db: AsyncSession,
-) -> tuple[dict[int, int | None], str, dict[int, str | None]]:
+) -> tuple[dict[int, int | None], str, dict[int, str | None], dict[int, list[int]]]:
     """
-    Aloca professores a UCs usando CP-SAT.
+    Aloca professores a UCs usando CP-SAT com fracionamento de dias.
 
     Retorna:
-      - dict  uc_id → prof_id   (None se UC ficou sem professor)
+      - dict  uc_id → prof_id        (None se UC ficou sem professor)
       - status string: "OPTIMAL" | "FEASIBLE" | "INFEASIBLE" | "TIMEOUT"
-      - dict  uc_id → alerta    (None se sem alerta)
+      - dict  uc_id → alerta         (None se sem alerta)
+      - dict  uc_id → [dias_semana]  dias da semana atribuídos a cada UC
     """
     try:
         from ortools.sat.python import cp_model
@@ -56,14 +64,44 @@ async def resolver_com_ortools(
             "OR-Tools não está instalado. Adicione 'ortools' ao requirements.txt."
         )
 
-    n_ucs = len(ucs_datas)
+    n_ucs  = len(ucs_datas)
     n_profs = len(todos_profs)
+    dias_semana = list(evento.dias_semana or [])
+    n_dias = len(dias_semana)
+
+    # ── Pré-computar dias ocupados cross-evento por professor ─────────────────
+    # Para cada professor, quais dias da semana (Python weekday 0=seg) ele já tem
+    # aulas em OUTROS eventos durante o período deste evento.
+    prof_busy_weekdays: list[set[int]] = [set() for _ in range(n_profs)]
+
+    if n_dias >= 2 and evento.id and evento.data_inicio and evento.data_fim:
+        prof_ids = [p.id for p in todos_profs]
+        busy_rows = await db.execute(
+            select(
+                Aula.professor_id,
+                extract("dow", Aula.data).label("dow"),
+            )
+            .where(
+                and_(
+                    Aula.professor_id.in_(prof_ids),
+                    Aula.evento_id != evento.id,
+                    Aula.status != "Cancelada",
+                    Aula.data >= evento.data_inicio,
+                    Aula.data <= evento.data_fim,
+                )
+            )
+            .distinct()
+        )
+        prof_idx = {p.id: i for i, p in enumerate(todos_profs)}
+        for row in busy_rows.all():
+            idx = prof_idx.get(row.professor_id)
+            if idx is not None:
+                # PostgreSQL DOW: 0=Dom → Python weekday 6; 1=Seg → 0; …; 6=Sáb → 5
+                pg_dow = int(row.dow)
+                py_dow = (pg_dow - 1) % 7
+                prof_busy_weekdays[idx].add(py_dow)
 
     # ── Pré-computar viabilidade ──────────────────────────────────────────────
-    # feasible[j][i]  = professor i pode ministrar UC j (habilitado + sem conflito de agenda)
-    # disponivel[j][i] = professor i tem disponibilidade cadastrada no horário
-    # nivel[j][i]     = nível de competência (1-5)
-
     feasible   = [[False] * n_profs for _ in range(n_ucs)]
     disponivel = [[False] * n_profs for _ in range(n_ucs)]
     nivel      = [[3]     * n_profs for _ in range(n_ucs)]
@@ -73,14 +111,12 @@ async def resolver_com_ortools(
         datas: list[date] = uc_data.get("datas", [])
 
         for i, prof in enumerate(todos_profs):
-            # 1. Habilitação (UC + curso)
             hab, niv = await _checa_habilitacao_e_nivel(prof, uc, db)
             if not hab:
                 continue
 
             nivel[j][i] = niv
 
-            # 2. Disponibilidade (soft — não elimina, só influencia objetivo)
             disp = True
             for dia in (evento.dias_semana or []):
                 ok = await verificar_disponibilidade_professor(
@@ -91,7 +127,7 @@ async def resolver_com_ortools(
                     break
             disponivel[j][i] = disp
 
-            # 3. Conflito de agenda em qualquer das datas planejadas (hard)
+            # Conflito de datas pré-computadas (hard — usado quando não há fracionamento)
             conflito = False
             if datas:
                 res = await db.execute(
@@ -125,21 +161,80 @@ async def resolver_com_ortools(
         if vars_j:
             model.AddAtMostOne(vars_j)
 
-    # Restrição 2: professor com datas sobrepostas entre UCs do mesmo evento
-    for i in range(n_profs):
-        for j1 in range(n_ucs):
-            if not feasible[j1][i]:
-                continue
-            for j2 in range(j1 + 1, n_ucs):
-                if not feasible[j2][i]:
-                    continue
-                d1 = set(ucs_datas[j1].get("datas", []))
-                d2 = set(ucs_datas[j2].get("datas", []))
-                if d1 & d2 and (j1, i) in x and (j2, i) in x:
-                    model.Add(x[(j1, i)] + x[(j2, i)] <= 1)
+    # ── Fracionamento de dias ─────────────────────────────────────────────────
+    # Só ativa quando há >= 2 dias na semana e >= 2 UCs para fracionar.
+    # Calcula quantas semanas o evento tem e quantos dias mínimos cada UC precisa.
+    usar_fracionamento = (n_dias >= 2 and n_ucs >= 2)
+    d_var: dict[tuple[int, int], cp_model.IntVar] = {}
 
-    # ── Função objetivo (inteiros 0-100 por variável) ─────────────────────────
-    # Pesos: regência 40 | preferido 30 | competência 20 | disponibilidade 10
+    if usar_fracionamento:
+        weeks = 20
+        if evento.data_fim and evento.data_inicio:
+            weeks = max(1, (evento.data_fim - evento.data_inicio).days // 7 + 1)
+
+        for j in range(n_ucs):
+            for k in range(n_dias):
+                d_var[(j, k)] = model.NewBoolVar(f"d_{j}_{k}")
+
+        # Cada dia da semana deve ir para pelo menos uma UC
+        for k in range(n_dias):
+            model.AddAtLeastOne([d_var[(j, k)] for j in range(n_ucs)])
+
+        # Quando n_ucs <= n_dias: cada dia vai para exatamente uma UC (UCs paralelas)
+        if n_ucs <= n_dias:
+            for k in range(n_dias):
+                model.AddAtMostOne([d_var[(j, k)] for j in range(n_ucs)])
+
+        # Cada UC recebe dias suficientes para suas aulas caberem no período
+        for j, uc_data in enumerate(ucs_datas):
+            n_aulas_uc = max(1, len(uc_data.get("datas", [])))
+            min_d = max(1, math.ceil(n_aulas_uc / weeks))
+            model.Add(sum(d_var[(j, k)] for k in range(n_dias)) >= min_d)
+
+        # Incompatibilidade professor × dia: se prof está ocupado em dia W e UC
+        # recebe dia W, então o prof não pode ser atribuído a essa UC.
+        for j in range(n_ucs):
+            for i in range(n_profs):
+                if (j, i) not in x:
+                    continue
+                for k, dia in enumerate(dias_semana):
+                    if dia in prof_busy_weekdays[i]:
+                        # x[j,i]=1 e d_var[j,k]=1 simultaneamente → inviável
+                        model.Add(x[(j, i)] + d_var[(j, k)] <= 1)
+
+        # Quando fracionamento está ativo, dois professores iguais em UCs que
+        # compartilham o mesmo dia -> conflito (tratado via prof-day acima quando
+        # n_ucs <= n_dias). Para n_ucs > n_dias os conflitos de data pré-computados
+        # permanecem como proteção adicional.
+        if n_ucs > n_dias:
+            for i in range(n_profs):
+                for j1 in range(n_ucs):
+                    if not feasible[j1][i]:
+                        continue
+                    for j2 in range(j1 + 1, n_ucs):
+                        if not feasible[j2][i]:
+                            continue
+                        d1 = set(ucs_datas[j1].get("datas", []))
+                        d2 = set(ucs_datas[j2].get("datas", []))
+                        if d1 & d2 and (j1, i) in x and (j2, i) in x:
+                            model.Add(x[(j1, i)] + x[(j2, i)] <= 1)
+    else:
+        # Sem fracionamento: restrição original de datas sobrepostas
+        for i in range(n_profs):
+            for j1 in range(n_ucs):
+                if not feasible[j1][i]:
+                    continue
+                for j2 in range(j1 + 1, n_ucs):
+                    if not feasible[j2][i]:
+                        continue
+                    d1 = set(ucs_datas[j1].get("datas", []))
+                    d2 = set(ucs_datas[j2].get("datas", []))
+                    if d1 & d2 and (j1, i) in x and (j2, i) in x:
+                        model.Add(x[(j1, i)] + x[(j2, i)] <= 1)
+
+    # ── Função objetivo ───────────────────────────────────────────────────────
+    # Pesos base: regência 40 | preferido 30 | competência 20 | disponibilidade 10
+    # Bônus extra: baixa sobreposição de dias cross-evento (+5 por dia livre)
     obj_terms = []
     for (j, i), var in x.items():
         prof = todos_profs[i]
@@ -152,8 +247,11 @@ async def resolver_com_ortools(
         bonus_pref  = 30 if prof.id in preferidos else 0
         bonus_comp  = int((nivel[j][i] / 5) * 20)
         bonus_disp  = 10 if disponivel[j][i] else 0
+        # Quanto menos dias ocupados no período deste evento, melhor
+        busy_overlap = len(prof_busy_weekdays[i] & set(dias_semana))
+        bonus_livre  = (n_dias - busy_overlap) * 5
 
-        score = necessidade + bonus_pref + bonus_comp + bonus_disp
+        score = necessidade + bonus_pref + bonus_comp + bonus_disp + bonus_livre
         obj_terms.append(score * var)
 
     if obj_terms:
@@ -161,7 +259,7 @@ async def resolver_com_ortools(
 
     # ── Resolver ──────────────────────────────────────────────────────────────
     solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = 10.0
+    solver.parameters.max_time_in_seconds = 15.0
     solver.parameters.num_search_workers = 4
     code = solver.Solve(model)
 
@@ -175,8 +273,9 @@ async def resolver_com_ortools(
     status = _STATUS.get(code, "UNKNOWN")
 
     # ── Extrair resultado ─────────────────────────────────────────────────────
-    result:  dict[int, int | None]   = {}
-    alertas: dict[int, str | None]   = {}
+    result:             dict[int, int | None]   = {}
+    alertas:            dict[int, str | None]   = {}
+    uc_dias_atribuidos: dict[int, list[int]]    = {}
 
     for j, uc_data in enumerate(ucs_datas):
         uc: UnidadeCurricular = uc_data["uc"]
@@ -194,6 +293,17 @@ async def resolver_com_ortools(
                         )
                     break
 
+        # Dias atribuídos a esta UC
+        if usar_fracionamento and d_var and code in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            dias_uc = [
+                dias_semana[k]
+                for k in range(n_dias)
+                if (j, k) in d_var and solver.Value(d_var[(j, k)]) == 1
+            ]
+            uc_dias_atribuidos[uc.id] = dias_uc if dias_uc else dias_semana
+        else:
+            uc_dias_atribuidos[uc.id] = dias_semana
+
         if prof_id is None:
             n_hab = sum(1 for i in range(n_profs) if feasible[j][i])
             if n_hab == 0:
@@ -207,7 +317,7 @@ async def resolver_com_ortools(
         result[uc.id]  = prof_id
         alertas[uc.id] = alerta
 
-    return result, status, alertas
+    return result, status, alertas, uc_dias_atribuidos
 
 
 # ---------------------------------------------------------------------------
