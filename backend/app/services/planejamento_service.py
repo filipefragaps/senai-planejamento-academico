@@ -23,6 +23,7 @@ from app.models.evento import Evento
 from app.models.professor import Professor
 from app.models.atuacao import Atuacao
 from app.models.unidade_curricular import UnidadeCurricular
+from app.models.planejamento_snapshot import PlanejamentoSnapshot
 from app.algorithms.constraint_solver import (
     get_datas_letivas,
     verificar_conflito_professor,
@@ -649,7 +650,52 @@ async def confirmar_planejamento(
         if uc_ids_no_plano:
             del_conditions.append(Aula.unidade_curricular_id.in_(uc_ids_no_plano))
         res_del = await db.execute(select(Aula).where(and_(*del_conditions)))
-        for aula in res_del.scalars().all():
+        aulas_para_deletar = res_del.scalars().all()
+
+        # Salva snapshot antes de deletar para permitir reversão
+        if aulas_para_deletar:
+            snapshot_data = [
+                {
+                    "id": a.id,
+                    "evento_id": a.evento_id,
+                    "professor_id": a.professor_id,
+                    "unidade_curricular_id": a.unidade_curricular_id,
+                    "data": a.data.isoformat() if a.data else None,
+                    "horario_inicio": str(a.horario_inicio) if a.horario_inicio else None,
+                    "horario_fim": str(a.horario_fim) if a.horario_fim else None,
+                    "sala": a.sala,
+                    "ambiente": a.ambiente,
+                    "numero_aula": a.numero_aula,
+                    "subturma": a.subturma,
+                    "etapa": a.etapa,
+                    "turno": a.turno,
+                    "tipo_contrato": a.tipo_contrato,
+                    "status": a.status,
+                    "tipo": a.tipo,
+                    "observacoes": a.observacoes,
+                    "alterada_manualmente": a.alterada_manualmente,
+                }
+                for a in aulas_para_deletar
+            ]
+            # Remove snapshots antigos — mantém apenas os 2 mais recentes
+            res_snaps = await db.execute(
+                select(PlanejamentoSnapshot)
+                .where(PlanejamentoSnapshot.evento_id == evento_id)
+                .order_by(PlanejamentoSnapshot.criado_em.desc())
+            )
+            snaps_existentes = res_snaps.scalars().all()
+            for snap_antigo in snaps_existentes[1:]:  # mantém 1, deleta o resto
+                await db.delete(snap_antigo)
+
+            db.add(PlanejamentoSnapshot(
+                evento_id=evento_id,
+                aulas_snapshot=snapshot_data,
+                total_aulas=len(snapshot_data),
+                descricao=f"Planejamento anterior ({len(snapshot_data)} aulas)",
+            ))
+            await db.flush()
+
+        for aula in aulas_para_deletar:
             await db.delete(aula)
 
     inseridas = 0

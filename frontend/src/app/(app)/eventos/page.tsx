@@ -1004,6 +1004,7 @@ export default function EventosPage() {
   const [abaAtiva, setAbaAtiva] = useState<"cronograma" | "ucs" | "regencia">("cronograma");
   const [aulaEditando, setAulaEditando] = useState<AulaRow | null>(null);
   const [gerarAberto, setGerarAberto] = useState(false);
+  const [reverterConfirm, setReverterConfirm] = useState(false);
   const [ofertaPickerAberto, setOfertaPickerAberto] = useState(false);
   const [otimizacaoAberta, setOtimizacaoAberta] = useState(false);
   const [ucsOrdenadas, setUcsOrdenadas] = useState<UCItem[]>([]);
@@ -1039,6 +1040,13 @@ export default function EventosPage() {
     queryKey: ["cronograma", eventoSelecionado?.id],
     queryFn: () => planejamentoApi.cronograma({ evento_id: eventoSelecionado!.id, limit: 1000 }),
     enabled: !!eventoSelecionado && (abaAtiva === "cronograma" || limparAberto),
+  });
+
+  const { data: snapshotInfo } = useQuery({
+    queryKey: ["planejamento-snapshot", eventoSelecionado?.id],
+    queryFn: () => planejamentoApi.getSnapshot(eventoSelecionado!.id),
+    enabled: !!eventoSelecionado && abaAtiva === "ucs",
+    staleTime: 30_000,
   });
 
   const {
@@ -1202,6 +1210,21 @@ export default function EventosPage() {
       qc.invalidateQueries({ queryKey: ["regencia-projetada", eventoSelecionado?.id] });
     },
     onError: (err: any) => toast.error(err?.response?.data?.detail || "Erro ao remover aulas"),
+  });
+
+  const reverterPlanejamento = useMutation({
+    mutationFn: () => planejamentoApi.reverter(eventoSelecionado!.id),
+    onSuccess: (res: any) => {
+      setReverterConfirm(false);
+      toast.success(`Planejamento revertido. ${res.aulas_restauradas} aula(s) restaurada(s).`);
+      qc.invalidateQueries({ queryKey: ["cronograma", eventoSelecionado?.id] });
+      qc.invalidateQueries({ queryKey: ["planejamento-snapshot", eventoSelecionado?.id] });
+      qc.invalidateQueries({ queryKey: ["regencia-projetada", eventoSelecionado?.id] });
+    },
+    onError: (err: any) => {
+      setReverterConfirm(false);
+      toast.error(err?.response?.data?.detail || "Erro ao reverter planejamento");
+    },
   });
 
   const excluirEventoMut = useMutation({
@@ -2065,14 +2088,26 @@ export default function EventosPage() {
                                           );
                                         })()}
                                       </div>
-                                      <button
-                                        onClick={() => setGerarAberto(true)}
-                                        disabled={gerarBloqueado}
-                                        className="shrink-0 btn-primary flex items-center gap-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                                      >
-                                        <RefreshCw className="h-4 w-4" />
-                                        Gerar Planejamento
-                                      </button>
+                                      <div className="flex items-center gap-2 shrink-0">
+                                        {snapshotInfo?.disponivel && (
+                                          <button
+                                            onClick={() => setReverterConfirm(true)}
+                                            className="btn-secondary flex items-center gap-1.5 text-sm text-amber-700 border-amber-300 hover:bg-amber-50"
+                                            title={`Reverter ao planejamento anterior (${snapshotInfo.total_aulas} aulas)`}
+                                          >
+                                            <ArrowDown className="h-4 w-4" />
+                                            Reverter
+                                          </button>
+                                        )}
+                                        <button
+                                          onClick={() => setGerarAberto(true)}
+                                          disabled={gerarBloqueado}
+                                          className="btn-primary flex items-center gap-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                          <RefreshCw className="h-4 w-4" />
+                                          Gerar Planejamento
+                                        </button>
+                                      </div>
                                     </div>
                                   );
                                 })()}
@@ -2276,6 +2311,41 @@ export default function EventosPage() {
         onSaved={() => qc.invalidateQueries({ queryKey: ["cronograma", eventoSelecionado?.id] })}
       />
 
+      {/* Diálogo de confirmação de reversão */}
+      {reverterConfirm && eventoSelecionado && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4">
+            <h3 className="text-base font-semibold text-gray-900 mb-2">Reverter planejamento?</h3>
+            <p className="text-sm text-gray-600 mb-1">
+              Esta ação irá restaurar o planejamento anterior
+              {snapshotInfo?.total_aulas ? ` (${snapshotInfo.total_aulas} aulas)` : ""}.
+            </p>
+            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+              O planejamento atual (não alterado manualmente) será substituído. Esta ação não pode ser desfeita.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setReverterConfirm(false)}
+                className="btn-secondary text-sm"
+                disabled={reverterPlanejamento.isPending}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => reverterPlanejamento.mutate()}
+                disabled={reverterPlanejamento.isPending}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 transition-colors disabled:opacity-50"
+              >
+                {reverterPlanejamento.isPending
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <ArrowDown className="h-4 w-4" />}
+                Reverter
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {gerarAberto && eventoSelecionado && (
         <PlanejamentoModal
           eventoId={eventoSelecionado.id}
@@ -2287,6 +2357,7 @@ export default function EventosPage() {
           onConfirmado={() => {
             qc.invalidateQueries({ queryKey: ["cronograma", eventoSelecionado.id] });
             qc.invalidateQueries({ queryKey: ["regencia-projetada", eventoSelecionado.id] });
+            qc.invalidateQueries({ queryKey: ["planejamento-snapshot", eventoSelecionado.id] });
             setAbaAtiva("cronograma");
           }}
         />

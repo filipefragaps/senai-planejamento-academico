@@ -21,6 +21,7 @@ from app.models.oferta import OfertaCurso
 from app.models.professor import Professor
 from app.models.unidade_curricular import UnidadeCurricular
 from app.models.curso import Curso
+from app.models.planejamento_snapshot import PlanejamentoSnapshot
 from app.services.planejamento_service import gerar_planejamento, confirmar_planejamento, analisar_proprio, PlanejamentoResult
 from app.services.regencia import calcular_regencia_professor
 
@@ -1355,6 +1356,118 @@ async def confirmar(
         raise HTTPException(status_code=500, detail=f"Erro ao confirmar: {str(e)}")
 
     return resultado
+
+
+# ── Snapshot / Reversão ────────────────────────────────────────────────────────
+
+@router.get("/snapshot/{evento_id}")
+async def get_snapshot(
+    evento_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """Retorna metadados do snapshot disponível para reversão (se houver)."""
+    res = await db.execute(
+        select(PlanejamentoSnapshot)
+        .where(PlanejamentoSnapshot.evento_id == evento_id)
+        .order_by(PlanejamentoSnapshot.criado_em.desc())
+        .limit(1)
+    )
+    snap = res.scalar_one_or_none()
+    if not snap:
+        return {"disponivel": False}
+    return {
+        "disponivel": True,
+        "snapshot_id": snap.id,
+        "total_aulas": snap.total_aulas,
+        "descricao": snap.descricao,
+        "criado_em": snap.criado_em.isoformat(),
+    }
+
+
+@router.post("/reverter/{evento_id}")
+async def reverter_planejamento(
+    evento_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """
+    Reverte o planejamento do evento ao estado do último snapshot salvo.
+
+    Remove as aulas atuais não alteradas manualmente e restaura as aulas
+    do snapshot. Aulas com alterada_manualmente=True são preservadas.
+    """
+    res = await db.execute(
+        select(PlanejamentoSnapshot)
+        .where(PlanejamentoSnapshot.evento_id == evento_id)
+        .order_by(PlanejamentoSnapshot.criado_em.desc())
+        .limit(1)
+    )
+    snap = res.scalar_one_or_none()
+    if not snap:
+        raise HTTPException(status_code=404, detail="Nenhum snapshot disponível para este evento.")
+
+    # Deleta aulas atuais não travadas (para dar lugar ao snapshot)
+    res_aulas = await db.execute(
+        select(Aula).where(
+            and_(
+                Aula.evento_id == evento_id,
+                Aula.alterada_manualmente == False,
+            )
+        )
+    )
+    for aula in res_aulas.scalars().all():
+        await db.delete(aula)
+
+    await db.flush()
+
+    # Restaura as aulas do snapshot
+    restauradas = 0
+    for dados in snap.aulas_snapshot:
+        d_str = dados.get("data")
+        if not d_str:
+            continue
+
+        from datetime import time as _time
+        def _parse_time(v):
+            if v is None:
+                return None
+            if isinstance(v, str):
+                parts = v.split(":")
+                return _time(int(parts[0]), int(parts[1]), int(parts[2]) if len(parts) > 2 else 0)
+            return v
+
+        aula = Aula(
+            evento_id=evento_id,
+            professor_id=dados.get("professor_id"),
+            unidade_curricular_id=dados.get("unidade_curricular_id"),
+            data=date.fromisoformat(d_str),
+            horario_inicio=_parse_time(dados.get("horario_inicio")),
+            horario_fim=_parse_time(dados.get("horario_fim")),
+            sala=dados.get("sala"),
+            ambiente=dados.get("ambiente"),
+            numero_aula=dados.get("numero_aula"),
+            subturma=dados.get("subturma"),
+            etapa=dados.get("etapa"),
+            turno=dados.get("turno"),
+            tipo_contrato=dados.get("tipo_contrato"),
+            status=dados.get("status", "Agendada"),
+            tipo=dados.get("tipo", "Regular"),
+            observacoes=dados.get("observacoes"),
+            alterada_manualmente=dados.get("alterada_manualmente", False),
+        )
+        db.add(aula)
+        restauradas += 1
+
+    # Remove o snapshot usado (só havia 1, o mais recente)
+    await db.delete(snap)
+    await db.commit()
+
+    return {
+        "revertido": True,
+        "evento_id": evento_id,
+        "aulas_restauradas": restauradas,
+    }
 
 
 @router.get("/regencia-projetada")

@@ -184,6 +184,10 @@ export const planejamentoApi = {
     api.post(`/planejamento/gerar-otimizado/${eventoId}`, { ucs, modo_superior: modoSuperior, clipar_semestre: cliparSemestre }).then((r) => r.data),
   confirmar: (eventoId: number, alocacoes: unknown[], substituirFuturas = true) =>
     api.post(`/planejamento/confirmar/${eventoId}`, { alocacoes, substituir_futuras: substituirFuturas }).then((r) => r.data),
+  getSnapshot: (eventoId: number) =>
+    api.get(`/planejamento/snapshot/${eventoId}`).then((r) => r.data) as Promise<{ disponivel: boolean; snapshot_id?: number; total_aulas?: number; descricao?: string; criado_em?: string }>,
+  reverter: (eventoId: number) =>
+    api.post(`/planejamento/reverter/${eventoId}`).then((r) => r.data),
   regenciaProjetada: (params?: { evento_id?: number; data_inicio?: string; data_fim?: string }) =>
     api.get("/planejamento/regencia-projetada", { params }).then((r) => r.data),
   datasDisponiveis: (aulaId: number) =>
