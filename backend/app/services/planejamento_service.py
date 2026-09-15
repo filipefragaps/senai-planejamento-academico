@@ -451,7 +451,10 @@ async def gerar_planejamento(
                 if not tem_conflito:
                     sem_conflito.append(c)
 
-            pool = sem_conflito if sem_conflito else candidatos
+            # Prioridade: disponíveis sem conflito > indisponíveis sem conflito > qualquer um
+            disponiveis_sem_conflito = [c for c in sem_conflito if c.get("disponivel", True)]
+            pool = disponiveis_sem_conflito if disponiveis_sem_conflito else (sem_conflito if sem_conflito else candidatos)
+
             top_score = pool[0]["score"]
             grupo = [c for c in pool if (top_score - c["score"]) <= SCORE_TOLERANCE]
             preferidos_no_grupo = [c for c in grupo if c["is_preferido"]]
@@ -459,6 +462,8 @@ async def gerar_planejamento(
 
             if not sem_conflito:
                 alerta = f"Conflito detectado para {cand['professor'].nome} na 1ª data. Revisar manualmente."
+            elif not disponiveis_sem_conflito:
+                alerta = f"Nenhum professor com disponibilidade cadastrada para este horário; alocado {cand['professor'].nome}. Revisar manualmente."
             elif preferidos and not cand["is_preferido"]:
                 alerta = f"Professor preferido não disponível/habilitado; alocado {cand['professor'].nome}."
 
