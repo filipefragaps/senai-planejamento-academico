@@ -1250,35 +1250,76 @@ async def gerar_otimizado(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro no solver: {str(e)}")
 
-    # ── Re-gera datas usando os dias fracionados atribuídos a cada UC ────────────
-    # Quando o solver fracionou dias (ex: UC1→Seg+Ter, UC2→Qua, UC3→Qui+Sex),
-    # as datas pré-computadas (sequenciais) são substituídas pelas datas reais
-    # dos dias atribuídos, sem sobreposição entre UCs.
+    # ── Re-gera datas usando cursores por track de dia ───────────────────────────
+    # Cada dia da semana tem um cursor que avança à medida que UCs consomem datas.
+    # Quando UC1 termina no track Seg, UC4 (se também mapeada para Seg) começa
+    # exatamente onde UC1 parou — nenhum dia fica vazio entre UCs consecutivas.
+    #
+    # Registra n_aulas_target antes de modificar uc_data["datas"]
+    aulas_target_map: dict[int, int] = {
+        ud["uc"].id: len(ud["datas"]) for ud in ucs_datas_solver
+    }
+
+    # Pool por dia da semana (respeita calendário letivo / feriados)
+    day_pool: dict[int, list[date]] = {}
+    for dia in dias_semana:
+        day_pool[dia] = await get_datas_letivas(
+            evento.data_inicio, data_fim_efetiva, [dia], db
+        )
+    day_cursor: dict[int, int] = {dia: 0 for dia in dias_semana}
     datas_usadas_global: set[date] = set()
+
     for uc_data in ucs_datas_solver:
         uc = uc_data["uc"]
         dias_uc = uc_dias_atribuidos.get(uc.id, dias_semana)
-        n_aulas_uc = len(uc_data["datas"])
+        n_aulas_uc = aulas_target_map[uc.id]
 
         if sorted(dias_uc) != sorted(dias_semana):
-            # Dias realmente fracionados: re-gera datas somente com os dias atribuídos
-            pool_fracionado = await get_datas_letivas(
-                evento.data_inicio, data_fim_efetiva, dias_uc, db
-            )
-            novas_datas = [d for d in pool_fracionado if d not in datas_usadas_global]
-            uc_data["datas"] = novas_datas[:n_aulas_uc]
+            # Fracionamento ativo: coleta próximas datas dos tracks atribuídos,
+            # interleando cronologicamente e avançando os cursores.
+            novas_datas: list[date] = []
+            while len(novas_datas) < n_aulas_uc:
+                # Candidato mais cedo dentre os tracks desta UC
+                best_date: date | None = None
+                best_dia: int | None = None
+                for dia in dias_uc:
+                    cur = day_cursor[dia]
+                    pool = day_pool[dia]
+                    # Pula datas já consumidas por outras UCs
+                    while cur < len(pool) and pool[cur] in datas_usadas_global:
+                        cur += 1
+                    day_cursor[dia] = cur
+                    if cur < len(pool):
+                        if best_date is None or pool[cur] < best_date:
+                            best_date = pool[cur]
+                            best_dia = dia
+                if best_date is None:
+                    break  # sem mais datas nos tracks preferidos
+                novas_datas.append(best_date)
+                datas_usadas_global.add(best_date)
+                day_cursor[best_dia] += 1  # type: ignore[index]
 
-            # Fallback: se dias atribuídos não bastam, completa com qualquer dia livre
-            if len(uc_data["datas"]) < n_aulas_uc:
-                pool_todos = await get_datas_letivas(
-                    evento.data_inicio, data_fim_efetiva, dias_semana, db
-                )
-                extras = [d for d in pool_todos if d not in datas_usadas_global and d not in uc_data["datas"]]
-                faltam = n_aulas_uc - len(uc_data["datas"])
-                uc_data["datas"].extend(extras[:faltam])
-            uc_data["datas"].sort()
+            # Fallback: completa com qualquer dia disponível se tracks esgotaram
+            if len(novas_datas) < n_aulas_uc:
+                for dia in dias_semana:
+                    if dia in dias_uc:
+                        continue
+                    cur = day_cursor[dia]
+                    pool = day_pool[dia]
+                    while cur < len(pool) and pool[cur] in datas_usadas_global:
+                        cur += 1
+                    day_cursor[dia] = cur
+                    if cur < len(pool):
+                        novas_datas.append(pool[cur])
+                        datas_usadas_global.add(pool[cur])
+                        day_cursor[dia] += 1
+                        if len(novas_datas) >= n_aulas_uc:
+                            break
 
-        datas_usadas_global.update(uc_data["datas"])
+            uc_data["datas"] = sorted(novas_datas)
+        else:
+            # Sem fracionamento: mantém datas pré-computadas e registra uso
+            datas_usadas_global.update(uc_data["datas"])
 
     # ── Monta alocações no formato padrão ────────────────────────────────────────
     turno = _turno(evento)

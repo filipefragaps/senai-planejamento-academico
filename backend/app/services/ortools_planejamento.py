@@ -180,11 +180,6 @@ async def resolver_com_ortools(
         for k in range(n_dias):
             model.AddAtLeastOne([d_var[(j, k)] for j in range(n_ucs)])
 
-        # Quando n_ucs <= n_dias: cada dia vai para exatamente uma UC (UCs paralelas)
-        if n_ucs <= n_dias:
-            for k in range(n_dias):
-                model.AddAtMostOne([d_var[(j, k)] for j in range(n_ucs)])
-
         # Cada UC recebe dias suficientes para suas aulas caberem no período
         for j, uc_data in enumerate(ucs_datas):
             n_aulas_uc = max(1, len(uc_data.get("datas", [])))
@@ -202,22 +197,11 @@ async def resolver_com_ortools(
                         # x[j,i]=1 e d_var[j,k]=1 simultaneamente → inviável
                         model.Add(x[(j, i)] + d_var[(j, k)] <= 1)
 
-        # Quando fracionamento está ativo, dois professores iguais em UCs que
-        # compartilham o mesmo dia -> conflito (tratado via prof-day acima quando
-        # n_ucs <= n_dias). Para n_ucs > n_dias os conflitos de data pré-computados
-        # permanecem como proteção adicional.
-        if n_ucs > n_dias:
-            for i in range(n_profs):
-                for j1 in range(n_ucs):
-                    if not feasible[j1][i]:
-                        continue
-                    for j2 in range(j1 + 1, n_ucs):
-                        if not feasible[j2][i]:
-                            continue
-                        d1 = set(ucs_datas[j1].get("datas", []))
-                        d2 = set(ucs_datas[j2].get("datas", []))
-                        if d1 & d2 and (j1, i) in x and (j2, i) in x:
-                            model.Add(x[(j1, i)] + x[(j2, i)] <= 1)
+        # Nota: não restringimos "um UC por dia" porque múltiplas UCs podem
+        # compartilhar o mesmo track sequencialmente (a pós-processamento usa
+        # cursores por track para evitar sobreposição de datas).
+        # A restrição de datas sobrepostas pré-computadas NÃO se aplica aqui
+        # porque o pós-processamento re-gera as datas sem sobreposição.
     else:
         # Sem fracionamento: restrição original de datas sobrepostas
         for i in range(n_profs):
