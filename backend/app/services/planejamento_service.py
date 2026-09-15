@@ -439,10 +439,19 @@ async def gerar_planejamento(
             for c in candidatos:
                 tem_conflito = False
                 if datas_uc:
-                    # Conflito com aulas já salvas no banco
-                    tem_conflito = await verificar_conflito_professor(
-                        c["professor"].id, datas_uc[0], evento.horario_inicio, evento.horario_fim, db
+                    # Conflito com aulas já salvas no banco em QUALQUER das datas planejadas
+                    res_conf = await db.execute(
+                        select(Aula.id).where(
+                            and_(
+                                Aula.professor_id == c["professor"].id,
+                                Aula.data.in_(datas_uc),
+                                Aula.status != "Cancelada",
+                                Aula.horario_inicio < evento.horario_fim,
+                                Aula.horario_fim > evento.horario_inicio,
+                            )
+                        ).limit(1)
                     )
+                    tem_conflito = res_conf.scalar() is not None
                     # Conflito com outra UC já alocada neste preview (mesmo evento, mesma data/horário)
                     if not tem_conflito:
                         datas_prof = professor_datas_planejadas.get(c["professor"].id, set())
