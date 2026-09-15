@@ -6,7 +6,7 @@ import { planejamentoApi } from "@/lib/api";
 import { toast } from "sonner";
 import {
   X, Loader2, AlertTriangle, BarChart2, ChevronDown, ChevronRight,
-  Check, Cpu, TrendingUp, TrendingDown, Minus
+  Check, Cpu, TrendingUp, TrendingDown, RefreshCw
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -114,7 +114,6 @@ interface Props {
   ucs: UCParaPlanejar[];
   modoSuperior?: boolean;
   cliparSemestre?: boolean;
-  modoOtimizado?: boolean;
   onClose: () => void;
   onConfirmado?: () => void;
 }
@@ -332,12 +331,16 @@ function ImpactoTab({ impacto, solverStatus }: { impacto: ImpactoData; solverSta
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 type Etapa = "idle" | "gerando" | "resultado";
+type Algoritmo = "greedy" | "ortools";
 
-export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = false, cliparSemestre = false, modoOtimizado = false, onClose, onConfirmado }: Props) {
+export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = false, cliparSemestre = false, onClose, onConfirmado }: Props) {
   const [etapa, setEtapa] = useState<Etapa>("idle");
+  const [algoritmo, setAlgoritmo] = useState<Algoritmo>("greedy");
   const [resultado, setResultado] = useState<ResultadoGerado | null>(null);
   const [substituirFuturas, setSubstituirFuturas] = useState(true);
   const [abaAtiva, setAbaAtiva] = useState<"alocacoes" | "regencia" | "analise" | "impacto">("alocacoes");
+
+  const modoOtimizado = algoritmo === "ortools";
 
   const buildUCs = () => ucs.map((u) => ({
     uc_id: u.uc_id,
@@ -360,8 +363,7 @@ export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = fa
     onSuccess: (data) => {
       setResultado(data);
       setEtapa("resultado");
-      // Auto-select impacto tab for OR-Tools results
-      if (modoOtimizado) setAbaAtiva("impacto");
+      setAbaAtiva(modoOtimizado ? "impacto" : "alocacoes");
     },
     onError: (err: any) => {
       setEtapa("idle");
@@ -404,16 +406,7 @@ export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = fa
           {/* Header */}
           <div className="px-6 py-4 border-b shrink-0 flex items-center justify-between">
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="font-semibold text-gray-900">
-                  {modoOtimizado ? "Otimização Avançada (OR-Tools)" : "Planejamento Automático"}
-                </h2>
-                {modoOtimizado && (
-                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 uppercase tracking-wide flex items-center gap-1">
-                    <Cpu className="h-3 w-3" />CP-SAT
-                  </span>
-                )}
-              </div>
+              <h2 className="font-semibold text-gray-900">Planejamento Automático</h2>
               <p className="text-xs text-gray-500 mt-0.5 truncate max-w-md">{nomeEvento}</p>
             </div>
             {etapa !== "gerando" && (
@@ -429,35 +422,55 @@ export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = fa
             {/* ── IDLE ── */}
             {etapa === "idle" && (
               <div className="p-6 space-y-5">
-                {modoOtimizado ? (
-                  <div className="bg-violet-50 rounded-lg p-4 text-sm text-violet-800 border border-violet-200">
-                    <p className="font-medium mb-1 flex items-center gap-1.5">
-                      <Cpu className="h-3.5 w-3.5" />
-                      Otimização global via CP-SAT
-                    </p>
-                    <ul className="list-disc list-inside space-y-1 text-xs text-violet-700">
-                      <li>Resolve TODAS as UCs simultaneamente (não UC a UC)</li>
-                      <li>Garante que nenhum professor seja atribuído com conflito de agenda</li>
-                      <li>Maximiza equilíbrio de regência entre professores</li>
-                      <li>Respeita habilitação, disponibilidade e preferências do coordenador</li>
-                      <li>Retorna análise de impacto para revisão antes de salvar</li>
-                    </ul>
-                    <p className="text-[10px] text-violet-500 mt-2 italic">
-                      Tempo limite: 10 segundos. Se não encontrar solução ótima, usa a melhor encontrada.
-                    </p>
+                {/* Seletor de algoritmo */}
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Modo de geração</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => setAlgoritmo("greedy")}
+                      className={cn(
+                        "rounded-lg border-2 p-3 text-left transition-all",
+                        algoritmo === "greedy"
+                          ? "border-blue-500 bg-blue-50"
+                          : "border-gray-200 hover:border-gray-300 bg-white"
+                      )}
+                    >
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <RefreshCw className="h-3.5 w-3.5 text-blue-600" />
+                        <span className="text-xs font-semibold text-gray-800">Rápido (Padrão)</span>
+                      </div>
+                      <p className="text-[10px] text-gray-500 leading-relaxed">
+                        UC a UC por ordem pedagógica. Resultado imediato.
+                        Bom para planejamentos simples.
+                      </p>
+                    </button>
+                    <button
+                      onClick={() => setAlgoritmo("ortools")}
+                      className={cn(
+                        "rounded-lg border-2 p-3 text-left transition-all",
+                        algoritmo === "ortools"
+                          ? "border-violet-500 bg-violet-50"
+                          : "border-gray-200 hover:border-gray-300 bg-white"
+                      )}
+                    >
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Cpu className="h-3.5 w-3.5 text-violet-600" />
+                        <span className="text-xs font-semibold text-gray-800">Otimizado (CP-SAT)</span>
+                        <span className="text-[9px] font-semibold px-1 py-0.5 rounded bg-violet-100 text-violet-700 uppercase tracking-wide">IA</span>
+                      </div>
+                      <p className="text-[10px] text-gray-500 leading-relaxed">
+                        Resolve todas as UCs juntas. Evita conflitos globais.
+                        Mostra impacto completo antes de salvar.
+                      </p>
+                    </button>
                   </div>
-                ) : (
-                  <div className="bg-blue-50 rounded-lg p-4 text-sm text-blue-800">
-                    <p className="font-medium mb-1">O que será gerado</p>
-                    <ul className="list-disc list-inside space-y-1 text-xs text-blue-700">
-                      <li>Alocação de professores para cada UC seguindo a sequência pedagógica</li>
-                      <li>Prioridade para professores com menor regência atual (meta 70%)</li>
-                      <li>Seleção aleatória entre professores com desempenho equivalente</li>
-                      <li>Verificação de disponibilidade e conflitos de agenda</li>
-                      <li>Análise automática com alertas e sugestões de melhoria</li>
-                    </ul>
-                  </div>
-                )}
+                  {algoritmo === "ortools" && (
+                    <p className="text-[10px] text-violet-600 mt-1 flex items-center gap-1">
+                      <Cpu className="h-3 w-3" />
+                      Tempo máximo: 10 segundos. Retorna a melhor solução encontrada.
+                    </p>
+                  )}
+                </div>
 
                 <div className="space-y-2">
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
@@ -496,7 +509,12 @@ export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = fa
             {etapa === "resultado" && resultado && (
               <div className="flex flex-col">
                 {/* Stats bar */}
-                <div className="px-6 py-3 bg-gray-50 border-b flex items-center gap-6 text-sm shrink-0">
+                <div className="px-6 py-3 bg-gray-50 border-b flex items-center gap-6 text-sm shrink-0 flex-wrap">
+                  {algoritmo === "ortools" && (
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 uppercase tracking-wide flex items-center gap-1">
+                      <Cpu className="h-3 w-3" />CP-SAT
+                    </span>
+                  )}
                   {modoOtimizado ? (
                     <>
                       <div>
@@ -737,10 +755,17 @@ export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = fa
                 <button
                   onClick={() => gerar.mutate()}
                   disabled={ucs.length === 0}
-                  className="btn-primary flex items-center gap-1.5"
+                  className={cn(
+                    "flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
+                    algoritmo === "ortools"
+                      ? "bg-violet-600 hover:bg-violet-700"
+                      : "bg-blue-600 hover:bg-blue-700"
+                  )}
                 >
-                  <BarChart2 className="h-4 w-4" />
-                  Gerar
+                  {algoritmo === "ortools"
+                    ? <Cpu className="h-4 w-4" />
+                    : <BarChart2 className="h-4 w-4" />}
+                  {algoritmo === "ortools" ? "Otimizar com CP-SAT" : "Gerar"}
                 </button>
               )}
               {etapa === "resultado" && (

@@ -14,7 +14,7 @@ import { OtimizacaoGlobalModal } from "@/components/otimizacao-global-modal";
 import { toast } from "sonner";
 import {
   Search, Plus, Upload, Loader2, RefreshCw, ArrowUp, ArrowDown, X, Download,
-  ChevronLeft, ChevronRight, Trash2, BarChart3, Cpu,
+  ChevronLeft, ChevronRight, Trash2, BarChart3,
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 import { downloadModeloBancoDados } from "@/lib/templates";
@@ -1004,7 +1004,6 @@ export default function EventosPage() {
   const [abaAtiva, setAbaAtiva] = useState<"cronograma" | "ucs" | "regencia">("cronograma");
   const [aulaEditando, setAulaEditando] = useState<AulaRow | null>(null);
   const [gerarAberto, setGerarAberto] = useState(false);
-  const [gerarOtimizadoAberto, setGerarOtimizadoAberto] = useState(false);
   const [ofertaPickerAberto, setOfertaPickerAberto] = useState(false);
   const [otimizacaoAberta, setOtimizacaoAberta] = useState(false);
   const [ucsOrdenadas, setUcsOrdenadas] = useState<UCItem[]>([]);
@@ -2066,25 +2065,14 @@ export default function EventosPage() {
                                           );
                                         })()}
                                       </div>
-                                      <div className="flex items-center gap-2 shrink-0">
-                                        <button
-                                          onClick={() => setGerarOtimizadoAberto(true)}
-                                          disabled={gerarBloqueado}
-                                          title="Otimização global via OR-Tools CP-SAT — resolve todas as UCs simultaneamente"
-                                          className="btn-secondary flex items-center gap-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed border-violet-300 text-violet-700 hover:bg-violet-50"
-                                        >
-                                          <Cpu className="h-4 w-4" />
-                                          Otimizar
-                                        </button>
-                                        <button
-                                          onClick={() => setGerarAberto(true)}
-                                          disabled={gerarBloqueado}
-                                          className="btn-primary flex items-center gap-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                          <RefreshCw className="h-4 w-4" />
-                                          Gerar Planejamento
-                                        </button>
-                                      </div>
+                                      <button
+                                        onClick={() => setGerarAberto(true)}
+                                        disabled={gerarBloqueado}
+                                        className="shrink-0 btn-primary flex items-center gap-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                      >
+                                        <RefreshCw className="h-4 w-4" />
+                                        Gerar Planejamento
+                                      </button>
                                     </div>
                                   );
                                 })()}
@@ -2296,23 +2284,6 @@ export default function EventosPage() {
           modoSuperior={modoSuperior}
           cliparSemestre={cliparSemestre}
           onClose={() => setGerarAberto(false)}
-          onConfirmado={() => {
-            qc.invalidateQueries({ queryKey: ["cronograma", eventoSelecionado.id] });
-            qc.invalidateQueries({ queryKey: ["regencia-projetada", eventoSelecionado.id] });
-            setAbaAtiva("cronograma");
-          }}
-        />
-      )}
-
-      {gerarOtimizadoAberto && eventoSelecionado && (
-        <PlanejamentoModal
-          eventoId={eventoSelecionado.id}
-          nomeEvento={eventoSelecionado.nome_turma}
-          ucs={ucsParaPlanejar}
-          modoSuperior={modoSuperior}
-          cliparSemestre={cliparSemestre}
-          modoOtimizado={true}
-          onClose={() => setGerarOtimizadoAberto(false)}
           onConfirmado={() => {
             qc.invalidateQueries({ queryKey: ["cronograma", eventoSelecionado.id] });
             qc.invalidateQueries({ queryKey: ["regencia-projetada", eventoSelecionado.id] });
