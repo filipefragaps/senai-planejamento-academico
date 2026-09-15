@@ -130,6 +130,7 @@ async def alterar_aula_e_replaneja(
 
         novo_professor_id = alteracoes.get("professor_id")
         nova_sala = alteracoes.get("sala")
+        novo_ambiente = alteracoes.get("ambiente")
 
         # UPDATE direto no banco — evita inconsistências de rastreamento de objetos
         # na sessão async do SQLAlchemy ao modificar muitos objetos em loop
@@ -138,8 +139,10 @@ async def alterar_aula_e_replaneja(
             valores["unidade_curricular_id"] = nova_uc_id
         if novo_professor_id is not None:
             valores["professor_id"] = novo_professor_id
-        if nova_sala:
+        if nova_sala is not None:
             valores["sala"] = nova_sala
+        if novo_ambiente is not None:
+            valores["ambiente"] = novo_ambiente
 
         if valores:
             await db.execute(
