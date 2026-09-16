@@ -1250,116 +1250,102 @@ async def gerar_otimizado(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro no solver: {str(e)}")
 
-    # ── Re-gera datas usando cursores por track de dia ───────────────────────────
-    # Cada dia da semana tem um cursor que avança à medida que UCs consomem datas.
-    # Quando UC1 termina no track Seg, UC4 (se também mapeada para Seg) começa
-    # exatamente onde UC1 parou — nenhum dia fica vazio entre UCs consecutivas.
-    #
-    # Registra n_aulas_target antes de modificar uc_data["datas"]
+    # ── Re-gera datas: atribuição cronológica por track ──────────────────────────
+    # Para cada data letiva em ordem cronológica, a UC que "possui" aquele dia
+    # (via d_var do CP-SAT) recebe a data desde que ainda tenha orçamento.
+    # Múltiplas UCs no mesmo track são servidas em sequência (ordem curriculum),
+    # criando blocos contíguos — sem sumiços/reaparecimentos nem dias no dia errado.
     aulas_target_map: dict[int, int] = {
         ud["uc"].id: len(ud["datas"]) for ud in ucs_datas_solver
     }
 
-    # Pool por dia da semana (respeita calendário letivo / feriados)
+    # Pool de datas letivas por dia da semana
     day_pool: dict[int, list[date]] = {}
     for dia in dias_semana:
         day_pool[dia] = await get_datas_letivas(
             evento.data_inicio, data_fim_efetiva, [dia], db
         )
-    day_cursor: dict[int, int] = {dia: 0 for dia in dias_semana}
-    datas_usadas_global: set[date] = set()
 
-    for uc_data in ucs_datas_solver:
-        uc = uc_data["uc"]
-        dias_uc = uc_dias_atribuidos.get(uc.id, dias_semana)
-        n_aulas_uc = aulas_target_map[uc.id]
+    # Para cada dia da semana, ordem de prioridade das UCs:
+    # primárias (track atribuído pelo solver) → secundárias (fallback quando primária esgota)
+    day_priority: dict[int, list[int]] = {}
+    for dia in dias_semana:
+        prim = [i for i, ud in enumerate(ucs_datas_solver)
+                if dia in uc_dias_atribuidos.get(ud["uc"].id, dias_semana)]
+        fall = [i for i, ud in enumerate(ucs_datas_solver)
+                if dia not in uc_dias_atribuidos.get(ud["uc"].id, dias_semana)]
+        day_priority[dia] = prim + fall
 
-        # Coleta próximas datas dos tracks atribuídos, interleando cronologicamente.
-        # Cursores por dia garantem herança sequencial: quando UC1 termina no track
-        # Seg, a próxima UC que também usa Seg começa exatamente onde UC1 parou.
-        novas_datas: list[date] = []
+    # Orçamento por UC (limitado ao planejado pela CH)
+    remaining_budget: dict[int, int] = {
+        ud["uc"].id: aulas_target_map[ud["uc"].id] for ud in ucs_datas_solver
+    }
+    new_dates_map: dict[int, list[date]] = {ud["uc"].id: [] for ud in ucs_datas_solver}
 
-        def _next_from_tracks(tracks: list[int]) -> tuple[date, int] | None:
-            best_date: date | None = None
-            best_dia: int | None = None
-            for dia in tracks:
-                cur = day_cursor[dia]
-                pool = day_pool[dia]
-                while cur < len(pool) and pool[cur] in datas_usadas_global:
-                    cur += 1
-                day_cursor[dia] = cur
-                if cur < len(pool) and (best_date is None or pool[cur] < best_date):
-                    best_date = pool[cur]
-                    best_dia = dia
-            return (best_date, best_dia) if best_date is not None else None  # type: ignore[return-value]
-
-        while len(novas_datas) < n_aulas_uc:
-            hit = _next_from_tracks(sorted(dias_uc))
-            if hit is None:
-                # Tracks preferidos esgotaram — usa qualquer dia disponível
-                outros = [d for d in dias_semana if d not in dias_uc]
-                hit = _next_from_tracks(outros) if outros else None
-            if hit is None:
+    # Processa todas as datas em ordem cronológica
+    all_sorted_dates: list[tuple[date, int]] = sorted(
+        (d, dia) for dia in dias_semana for d in day_pool[dia]
+    )
+    for d, dia in all_sorted_dates:
+        for uc_idx in day_priority[dia]:
+            uc_id = ucs_datas_solver[uc_idx]["uc"].id
+            if remaining_budget[uc_id] > 0:
+                new_dates_map[uc_id].append(d)
+                remaining_budget[uc_id] -= 1
                 break
-            d, dia = hit
-            novas_datas.append(d)
-            datas_usadas_global.add(d)
-            day_cursor[dia] += 1
 
-        uc_data["datas"] = sorted(novas_datas)
-
-    # ── Gap-fill: preenche dias vazios para evitar buracos no calendário ─────────
-    # Quando uma UC termina antes do fim do evento, os dias que eram dela ficam
-    # livres. A UC mais ativa (maior última data) herda essas datas — mas com
-    # orçamento limitado: cada UC pode absorver no máximo (dias_liberados × 8 semanas)
-    # datas extras, evitando que uma UC de curta duração despeje meses de aulas em outra.
+    # ── Gap-fill de cauda: preenche a janela de transição final ──────────────────
+    # Após os budgets primários esgotarem, podem restar dias no pool na janela entre
+    # o penúltimo UC terminar e o último terminar. A UC mais ativa (maior última data)
+    # herda esses dias, com orçamento = (dias_liberados × 8 semanas) para não
+    # ultrapassar significativamente a CH planejada.
     _MAX_FILL_WEEKS = 8
-    fill_cutoff: date | None = None
-    for uc_item0 in ucs_datas_solver:
-        d0 = uc_item0.get("datas", [])
-        if d0:
-            m = max(d0)
-            if fill_cutoff is None or m > fill_cutoff:
-                fill_cutoff = m
+    used_dates: set[date] = {d for dates in new_dates_map.values() for d in dates}
 
-    # Orçamento por UC: dias_liberados_por_semana × MAX_FILL_WEEKS
+    all_last_dates = sorted(
+        max(dates) for dates in new_dates_map.values() if dates
+    )
+    fill_cutoff: date | None = all_last_dates[-1] if all_last_dates else None
+    fill_start: date | None = all_last_dates[-2] if len(all_last_dates) >= 2 else None
+
     fill_budget: dict[int, int] = {}
-    for uc_item0 in ucs_datas_solver:
-        uid = uc_item0["uc"].id
+    for ud in ucs_datas_solver:
+        uid = ud["uc"].id
         n_proprios = len(uc_dias_atribuidos.get(uid, dias_semana))
         n_liberados = max(0, len(dias_semana) - n_proprios)
         fill_budget[uid] = n_liberados * _MAX_FILL_WEEKS
 
     remaining_fill: list[tuple[date, int]] = []
     for dia in dias_semana:
-        pool = day_pool[dia]
-        for i in range(day_cursor[dia], len(pool)):
-            d = pool[i]
-            if d not in datas_usadas_global and (fill_cutoff is None or d <= fill_cutoff):
+        for d in day_pool[dia]:
+            if (d not in used_dates
+                    and (fill_cutoff is None or d <= fill_cutoff)
+                    and (fill_start is None or d >= fill_start)):
                 remaining_fill.append((d, dia))
     remaining_fill.sort()
 
     for rem_date, _rem_dia in remaining_fill:
         best_uc_fill: dict | None = None
         best_last_fill: date | None = None
-        for uc_item in ucs_datas_solver:
-            uid = uc_item["uc"].id
+        for ud in ucs_datas_solver:
+            uid = ud["uc"].id
             if fill_budget.get(uid, 0) <= 0:
                 continue
-            item_datas = uc_item.get("datas", [])
-            if not item_datas:
+            dates = new_dates_map[uid]
+            if not dates:
                 continue
-            last = max(item_datas)
+            last = max(dates)
             if best_last_fill is None or last > best_last_fill:
                 best_last_fill = last
-                best_uc_fill = uc_item
+                best_uc_fill = ud
         if best_uc_fill is not None:
             uid = best_uc_fill["uc"].id
-            fill_list = list(best_uc_fill["datas"])
-            fill_list.append(rem_date)
-            best_uc_fill["datas"] = sorted(fill_list)
-            datas_usadas_global.add(rem_date)
+            new_dates_map[uid].append(rem_date)
+            used_dates.add(rem_date)
             fill_budget[uid] -= 1
+
+    for ud in ucs_datas_solver:
+        ud["datas"] = sorted(new_dates_map[ud["uc"].id])
 
     # ── Monta alocações no formato padrão ────────────────────────────────────────
     turno = _turno(evento)
