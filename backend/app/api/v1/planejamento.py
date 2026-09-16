@@ -1310,9 +1310,10 @@ async def gerar_otimizado(
 
     # ── Gap-fill: preenche dias vazios para evitar buracos no calendário ─────────
     # Quando uma UC termina antes do fim do evento, os dias que eram dela ficam
-    # livres. A UC com a última aula mais recente ("mais ativa") herda essas datas.
-    # Limite: apenas até a maior data já atribuída (fim natural do conjunto de UCs);
-    # datas além disso não são preenchidas para não ultrapassar a CH das UCs.
+    # livres. A UC mais ativa (maior última data) herda essas datas — mas com
+    # orçamento limitado: cada UC pode absorver no máximo (dias_liberados × 8 semanas)
+    # datas extras, evitando que uma UC de curta duração despeje meses de aulas em outra.
+    _MAX_FILL_WEEKS = 8
     fill_cutoff: date | None = None
     for uc_item0 in ucs_datas_solver:
         d0 = uc_item0.get("datas", [])
@@ -1320,6 +1321,14 @@ async def gerar_otimizado(
             m = max(d0)
             if fill_cutoff is None or m > fill_cutoff:
                 fill_cutoff = m
+
+    # Orçamento por UC: dias_liberados_por_semana × MAX_FILL_WEEKS
+    fill_budget: dict[int, int] = {}
+    for uc_item0 in ucs_datas_solver:
+        uid = uc_item0["uc"].id
+        n_proprios = len(uc_dias_atribuidos.get(uid, dias_semana))
+        n_liberados = max(0, len(dias_semana) - n_proprios)
+        fill_budget[uid] = n_liberados * _MAX_FILL_WEEKS
 
     remaining_fill: list[tuple[date, int]] = []
     for dia in dias_semana:
@@ -1334,6 +1343,9 @@ async def gerar_otimizado(
         best_uc_fill: dict | None = None
         best_last_fill: date | None = None
         for uc_item in ucs_datas_solver:
+            uid = uc_item["uc"].id
+            if fill_budget.get(uid, 0) <= 0:
+                continue
             item_datas = uc_item.get("datas", [])
             if not item_datas:
                 continue
@@ -1342,10 +1354,12 @@ async def gerar_otimizado(
                 best_last_fill = last
                 best_uc_fill = uc_item
         if best_uc_fill is not None:
+            uid = best_uc_fill["uc"].id
             fill_list = list(best_uc_fill["datas"])
             fill_list.append(rem_date)
             best_uc_fill["datas"] = sorted(fill_list)
             datas_usadas_global.add(rem_date)
+            fill_budget[uid] -= 1
 
     # ── Monta alocações no formato padrão ────────────────────────────────────────
     turno = _turno(evento)
