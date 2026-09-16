@@ -1274,52 +1274,39 @@ async def gerar_otimizado(
         dias_uc = uc_dias_atribuidos.get(uc.id, dias_semana)
         n_aulas_uc = aulas_target_map[uc.id]
 
-        if sorted(dias_uc) != sorted(dias_semana):
-            # Fracionamento ativo: coleta próximas datas dos tracks atribuídos,
-            # interleando cronologicamente e avançando os cursores.
-            novas_datas: list[date] = []
-            while len(novas_datas) < n_aulas_uc:
-                # Candidato mais cedo dentre os tracks desta UC
-                best_date: date | None = None
-                best_dia: int | None = None
-                for dia in dias_uc:
-                    cur = day_cursor[dia]
-                    pool = day_pool[dia]
-                    # Pula datas já consumidas por outras UCs
-                    while cur < len(pool) and pool[cur] in datas_usadas_global:
-                        cur += 1
-                    day_cursor[dia] = cur
-                    if cur < len(pool):
-                        if best_date is None or pool[cur] < best_date:
-                            best_date = pool[cur]
-                            best_dia = dia
-                if best_date is None:
-                    break  # sem mais datas nos tracks preferidos
-                novas_datas.append(best_date)
-                datas_usadas_global.add(best_date)
-                day_cursor[best_dia] += 1  # type: ignore[index]
+        # Coleta próximas datas dos tracks atribuídos, interleando cronologicamente.
+        # Cursores por dia garantem herança sequencial: quando UC1 termina no track
+        # Seg, a próxima UC que também usa Seg começa exatamente onde UC1 parou.
+        novas_datas: list[date] = []
 
-            # Fallback: completa com qualquer dia disponível se tracks esgotaram
-            if len(novas_datas) < n_aulas_uc:
-                for dia in dias_semana:
-                    if dia in dias_uc:
-                        continue
-                    cur = day_cursor[dia]
-                    pool = day_pool[dia]
-                    while cur < len(pool) and pool[cur] in datas_usadas_global:
-                        cur += 1
-                    day_cursor[dia] = cur
-                    if cur < len(pool):
-                        novas_datas.append(pool[cur])
-                        datas_usadas_global.add(pool[cur])
-                        day_cursor[dia] += 1
-                        if len(novas_datas) >= n_aulas_uc:
-                            break
+        def _next_from_tracks(tracks: list[int]) -> tuple[date, int] | None:
+            best_date: date | None = None
+            best_dia: int | None = None
+            for dia in tracks:
+                cur = day_cursor[dia]
+                pool = day_pool[dia]
+                while cur < len(pool) and pool[cur] in datas_usadas_global:
+                    cur += 1
+                day_cursor[dia] = cur
+                if cur < len(pool) and (best_date is None or pool[cur] < best_date):
+                    best_date = pool[cur]
+                    best_dia = dia
+            return (best_date, best_dia) if best_date is not None else None  # type: ignore[return-value]
 
-            uc_data["datas"] = sorted(novas_datas)
-        else:
-            # Sem fracionamento: mantém datas pré-computadas e registra uso
-            datas_usadas_global.update(uc_data["datas"])
+        while len(novas_datas) < n_aulas_uc:
+            hit = _next_from_tracks(sorted(dias_uc))
+            if hit is None:
+                # Tracks preferidos esgotaram — usa qualquer dia disponível
+                outros = [d for d in dias_semana if d not in dias_uc]
+                hit = _next_from_tracks(outros) if outros else None
+            if hit is None:
+                break
+            d, dia = hit
+            novas_datas.append(d)
+            datas_usadas_global.add(d)
+            day_cursor[dia] += 1
+
+        uc_data["datas"] = sorted(novas_datas)
 
     # ── Monta alocações no formato padrão ────────────────────────────────────────
     turno = _turno(evento)

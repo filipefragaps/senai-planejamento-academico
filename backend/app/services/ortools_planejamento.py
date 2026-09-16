@@ -69,12 +69,26 @@ async def resolver_com_ortools(
     dias_semana = list(evento.dias_semana or [])
     n_dias = len(dias_semana)
 
+    # Fracionamento só faz sentido com >= 2 dias na semana e >= 2 UCs
+    usar_fracionamento = (n_dias >= 2 and n_ucs >= 2)
+
+    # Semanas disponíveis no período (para calcular dias mínimos por UC)
+    weeks = 20
+    if usar_fracionamento and evento.data_fim and evento.data_inicio:
+        weeks = max(1, (evento.data_fim - evento.data_inicio).days // 7 + 1)
+
+    # Dias mínimos que cada UC precisa no track para caber no período
+    min_days_uc: list[int] = []
+    for uc_data in ucs_datas:
+        n_aulas = max(1, len(uc_data.get("datas", [])))
+        min_days_uc.append(max(1, math.ceil(n_aulas / weeks)) if usar_fracionamento else n_dias)
+
     # ── Pré-computar dias ocupados cross-evento por professor ─────────────────
     # Para cada professor, quais dias da semana (Python weekday 0=seg) ele já tem
     # aulas em OUTROS eventos durante o período deste evento.
     prof_busy_weekdays: list[set[int]] = [set() for _ in range(n_profs)]
 
-    if n_dias >= 2 and evento.id and evento.data_inicio and evento.data_fim:
+    if usar_fracionamento and evento.id and evento.data_inicio and evento.data_fim:
         prof_ids = [p.id for p in todos_profs]
         busy_rows = await db.execute(
             select(
@@ -127,24 +141,31 @@ async def resolver_com_ortools(
                     break
             disponivel[j][i] = disp
 
-            # Conflito de datas pré-computadas (hard — usado quando não há fracionamento)
-            conflito = False
-            if datas:
-                res = await db.execute(
-                    select(Aula.id).where(
-                        and_(
-                            Aula.professor_id == prof.id,
-                            Aula.data.in_(datas),
-                            Aula.status != "Cancelada",
-                            Aula.horario_inicio < evento.horario_fim,
-                            Aula.horario_fim > evento.horario_inicio,
-                        )
-                    ).limit(1)
-                )
-                conflito = res.scalar() is not None
-
-            if not conflito:
-                feasible[j][i] = True
+            if usar_fracionamento:
+                # Com fracionamento: professor é viável se tem dias livres suficientes
+                # no período do evento para cobrir a UC no seu track.
+                busy_in_event = prof_busy_weekdays[i] & set(dias_semana)
+                dias_livres = n_dias - len(busy_in_event)
+                if dias_livres >= min_days_uc[j]:
+                    feasible[j][i] = True
+            else:
+                # Sem fracionamento: conflito por datas pré-computadas (hard)
+                conflito = False
+                if datas:
+                    res = await db.execute(
+                        select(Aula.id).where(
+                            and_(
+                                Aula.professor_id == prof.id,
+                                Aula.data.in_(datas),
+                                Aula.status != "Cancelada",
+                                Aula.horario_inicio < evento.horario_fim,
+                                Aula.horario_fim > evento.horario_inicio,
+                            )
+                        ).limit(1)
+                    )
+                    conflito = res.scalar() is not None
+                if not conflito:
+                    feasible[j][i] = True
 
     # ── Modelo CP-SAT ─────────────────────────────────────────────────────────
     model = cp_model.CpModel()
@@ -168,10 +189,6 @@ async def resolver_com_ortools(
     d_var: dict[tuple[int, int], cp_model.IntVar] = {}
 
     if usar_fracionamento:
-        weeks = 20
-        if evento.data_fim and evento.data_inicio:
-            weeks = max(1, (evento.data_fim - evento.data_inicio).days // 7 + 1)
-
         for j in range(n_ucs):
             for k in range(n_dias):
                 d_var[(j, k)] = model.NewBoolVar(f"d_{j}_{k}")
@@ -181,10 +198,8 @@ async def resolver_com_ortools(
             model.AddAtLeastOne([d_var[(j, k)] for j in range(n_ucs)])
 
         # Cada UC recebe dias suficientes para suas aulas caberem no período
-        for j, uc_data in enumerate(ucs_datas):
-            n_aulas_uc = max(1, len(uc_data.get("datas", [])))
-            min_d = max(1, math.ceil(n_aulas_uc / weeks))
-            model.Add(sum(d_var[(j, k)] for k in range(n_dias)) >= min_d)
+        for j in range(n_ucs):
+            model.Add(sum(d_var[(j, k)] for k in range(n_dias)) >= min_days_uc[j])
 
         # Incompatibilidade professor × dia: se prof está ocupado em dia W e UC
         # recebe dia W, então o prof não pode ser atribuído a essa UC.
@@ -237,6 +252,13 @@ async def resolver_com_ortools(
 
         score = necessidade + bonus_pref + bonus_comp + bonus_disp + bonus_livre
         obj_terms.append(score * var)
+
+    # Penalidade por dias extras além do mínimo necessário.
+    # Isso força o solver a fracionar UCs ao mínimo possível, em vez de atribuir
+    # todos os dias a todas as UCs (o que eliminaria o efeito do fracionamento).
+    if usar_fracionamento and d_var:
+        for (j, k), dv in d_var.items():
+            obj_terms.append(-5 * dv)
 
     if obj_terms:
         model.Maximize(sum(obj_terms))
