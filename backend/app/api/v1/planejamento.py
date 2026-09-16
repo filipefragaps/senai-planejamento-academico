@@ -1310,14 +1310,23 @@ async def gerar_otimizado(
 
     # ── Gap-fill: preenche dias vazios para evitar buracos no calendário ─────────
     # Quando uma UC termina antes do fim do evento, os dias que eram dela ficam
-    # livres. A UC com a última aula mais recente ("mais ativa") herda essas datas,
-    # garantindo que não existam semanas com dias letivos sem aula.
+    # livres. A UC com a última aula mais recente ("mais ativa") herda essas datas.
+    # Limite: apenas até a maior data já atribuída (fim natural do conjunto de UCs);
+    # datas além disso não são preenchidas para não ultrapassar a CH das UCs.
+    fill_cutoff: date | None = None
+    for uc_item0 in ucs_datas_solver:
+        d0 = uc_item0.get("datas", [])
+        if d0:
+            m = max(d0)
+            if fill_cutoff is None or m > fill_cutoff:
+                fill_cutoff = m
+
     remaining_fill: list[tuple[date, int]] = []
     for dia in dias_semana:
         pool = day_pool[dia]
         for i in range(day_cursor[dia], len(pool)):
             d = pool[i]
-            if d not in datas_usadas_global:
+            if d not in datas_usadas_global and (fill_cutoff is None or d <= fill_cutoff):
                 remaining_fill.append((d, dia))
     remaining_fill.sort()
 
