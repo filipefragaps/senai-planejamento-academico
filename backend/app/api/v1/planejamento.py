@@ -1308,6 +1308,36 @@ async def gerar_otimizado(
 
         uc_data["datas"] = sorted(novas_datas)
 
+    # ── Gap-fill: preenche dias vazios para evitar buracos no calendário ─────────
+    # Quando uma UC termina antes do fim do evento, os dias que eram dela ficam
+    # livres. A UC com a última aula mais recente ("mais ativa") herda essas datas,
+    # garantindo que não existam semanas com dias letivos sem aula.
+    remaining_fill: list[tuple[date, int]] = []
+    for dia in dias_semana:
+        pool = day_pool[dia]
+        for i in range(day_cursor[dia], len(pool)):
+            d = pool[i]
+            if d not in datas_usadas_global:
+                remaining_fill.append((d, dia))
+    remaining_fill.sort()
+
+    for rem_date, _rem_dia in remaining_fill:
+        best_uc_fill: dict | None = None
+        best_last_fill: date | None = None
+        for uc_item in ucs_datas_solver:
+            item_datas = uc_item.get("datas", [])
+            if not item_datas:
+                continue
+            last = max(item_datas)
+            if best_last_fill is None or last > best_last_fill:
+                best_last_fill = last
+                best_uc_fill = uc_item
+        if best_uc_fill is not None:
+            fill_list = list(best_uc_fill["datas"])
+            fill_list.append(rem_date)
+            best_uc_fill["datas"] = sorted(fill_list)
+            datas_usadas_global.add(rem_date)
+
     # ── Monta alocações no formato padrão ────────────────────────────────────────
     turno = _turno(evento)
     alocacoes_serial = []
