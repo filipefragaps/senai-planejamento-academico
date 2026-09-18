@@ -4,7 +4,7 @@ const ROTAS_PUBLICAS = ["/login"];
 
 const ALLOWED_ROUTES: Record<string, string[]> = {
   admin:       [], // empty = todas as rotas permitidas
-  coordenador: ["/cronograma", "/ofertas", "/professores", "/cursos", "/eventos", "/ambientes", "/relatorios", "/ia", "/perfil"],
+  coordenador: ["/cronograma", "/ofertas", "/professores", "/cursos", "/eventos", "/ambientes", "/relatorios", "/ia", "/perfil", "/regencia"],
   analista:    ["/cronograma", "/ofertas", "/professores", "/cursos", "/relatorios", "/perfil"],
   secretario:  ["/cronograma", "/cursos", "/ofertas", "/relatorios", "/perfil"],
   professor:   ["/cronograma", "/perfil"],
