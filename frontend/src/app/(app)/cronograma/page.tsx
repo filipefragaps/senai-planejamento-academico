@@ -99,15 +99,20 @@ export default function CronogramaPage() {
   const [eventoFiltro, setEventoFiltro] = useState("");
   const [buscaEvento, setBuscaEvento] = useState("");
   const [filtroModalidades, setFiltroModalidades] = useState<string[]>([]);
-  const [coordenadorFiltro, setCoordenadorFiltro] = useState("");
+  const [coordenadorFiltros, setCoordenadorFiltros] = useState<string[]>([]);
   const [modalidadeOpen, setModalidadeOpen] = useState(false);
+  const [coordenadorOpen, setCoordenadorOpen] = useState(false);
   const modalidadeRef = useRef<HTMLDivElement>(null);
+  const coordenadorRef = useRef<HTMLDivElement>(null);
   const tabelaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (modalidadeRef.current && !modalidadeRef.current.contains(e.target as Node)) {
         setModalidadeOpen(false);
+      }
+      if (coordenadorRef.current && !coordenadorRef.current.contains(e.target as Node)) {
+        setCoordenadorOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -185,11 +190,12 @@ export default function CronogramaPage() {
         .some((s: string) => s.toLowerCase().includes(q));
       const matchM = codigosModalidadesFiltro.size === 0 ||
         codigosModalidadesFiltro.has(codigoModalidade(e.tipo_curso));
-      const matchC = !coordenadorFiltro ||
-        (coordenadorFiltro === "__sem__" ? !e.coordenador : e.coordenador === coordenadorFiltro);
+      const matchC = coordenadorFiltros.length === 0 ||
+        (coordenadorFiltros.includes("__sem__") && !e.coordenador) ||
+        (e.coordenador && coordenadorFiltros.includes(e.coordenador));
       return matchQ && matchM && matchC;
     });
-  }, [todosEventos, buscaEvento, codigosModalidadesFiltro, coordenadorFiltro]);
+  }, [todosEventos, buscaEvento, codigosModalidadesFiltro, coordenadorFiltros]);
 
   const profMap = useMemo(() =>
     new Map((professores as any[]).map((p: any) => [p.id, p.nome ?? ""])),
@@ -206,13 +212,14 @@ export default function CronogramaPage() {
     if (semProfessor) {
       list = list.filter((a: any) => !a.professor_id);
     }
-    if (coordenadorFiltro && !eventoFiltro) {
+    if (coordenadorFiltros.length > 0 && !eventoFiltro) {
       list = list.filter((a: any) =>
-        coordenadorFiltro === "__sem__" ? !a.coordenador : a.coordenador === coordenadorFiltro
+        (coordenadorFiltros.includes("__sem__") && !a.coordenador) ||
+        (a.coordenador && coordenadorFiltros.includes(a.coordenador))
       );
     }
     return list;
-  }, [rawAulas, eventoMap, profMap, semProfessor, coordenadorFiltro, eventoFiltro]);
+  }, [rawAulas, eventoMap, profMap, semProfessor, coordenadorFiltros, eventoFiltro]);
 
   // Mapa de cores por UC
   const ucColorMap = useMemo(() => buildUcColorMap(aulas), [aulas]);
@@ -504,18 +511,56 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
             ))}
           </select>
 
-          {/* Filtro coordenador */}
-          <select
-            className="input w-48 text-sm"
-            value={coordenadorFiltro}
-            onChange={(e) => { setCoordenadorFiltro(e.target.value); setEventoFiltro(""); setDiaSelecionado(null); }}
-          >
-            <option value="">Todos os coordenadores</option>
-            <option value="__sem__">Sem coordenador</option>
-            {coordenadores.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
+          {/* Filtro coordenador — multi-select */}
+          <div className="relative" ref={coordenadorRef}>
+            <button
+              onClick={() => setCoordenadorOpen((o) => !o)}
+              className={cn(
+                "flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition-colors min-w-[180px] justify-between",
+                coordenadorFiltros.length > 0
+                  ? "border-blue-400 bg-blue-50 text-blue-700"
+                  : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+              )}
+            >
+              <span className="truncate">
+                {coordenadorFiltros.length === 0
+                  ? "Coordenador"
+                  : coordenadorFiltros.length === 1
+                  ? (coordenadorFiltros[0] === "__sem__" ? "Sem coordenador" : coordenadorFiltros[0].split(" ")[0])
+                  : `${coordenadorFiltros.length} coordenadores`}
+              </span>
+              <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+            </button>
+            {coordenadorOpen && (
+              <div className="absolute left-0 top-full mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[220px] max-h-72 overflow-y-auto">
+                {coordenadorFiltros.length > 0 && (
+                  <button
+                    onClick={() => { setCoordenadorFiltros([]); setEventoFiltro(""); setDiaSelecionado(null); }}
+                    className="w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50 border-b border-gray-100 font-medium"
+                  >
+                    Limpar seleção
+                  </button>
+                )}
+                {(["__sem__", ...coordenadores] as string[]).map((c) => (
+                  <label key={c} className="flex items-center gap-2.5 px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={coordenadorFiltros.includes(c)}
+                      onChange={() => {
+                        setCoordenadorFiltros((prev) =>
+                          prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]
+                        );
+                        setEventoFiltro("");
+                        setDiaSelecionado(null);
+                      }}
+                      className="rounded border-gray-300"
+                    />
+                    {c === "__sem__" ? <span className="text-gray-400 italic">Sem coordenador</span> : c}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Imprimir Calendário (só quando evento selecionado) */}
           {eventoFiltro && (
