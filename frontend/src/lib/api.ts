@@ -196,9 +196,9 @@ export const planejamentoApi = {
     api.post(`/planejamento/remanejo/${aulaId}`, body).then((r) => r.data),
   pendentes: (eventoId: number) =>
     api.get(`/planejamento/pendentes/${eventoId}`).then((r) => r.data),
-  adicionarAulaManual: (eventoId: number, body: { uc_id: number; data: string; professor_id?: number | null }) =>
+  adicionarAulaManual: (eventoId: number, body: { uc_id: number; data: string; professor_id?: number | null; horario_inicio?: string; horario_fim?: string }) =>
     api.post(`/planejamento/aula-manual/${eventoId}`, body).then((r) => r.data),
-  agendarUCPendente: (eventoId: number, body: { uc_id: number; data_inicio: string; professor_id?: number | null; quantidade?: number }) =>
+  agendarUCPendente: (eventoId: number, body: { uc_id: number; data_inicio: string; professor_id?: number | null; quantidade?: number; horario_inicio?: string; horario_fim?: string }) =>
     api.post(`/planejamento/agendar-uc/${eventoId}`, body).then((r) => r.data),
   removerAula: (aulaId: number) =>
     api.delete(`/planejamento/aula/${aulaId}`),

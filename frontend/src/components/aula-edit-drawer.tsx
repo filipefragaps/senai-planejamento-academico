@@ -42,6 +42,8 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
     status: "Agendada",
     observacoes: "",
     motivo: "",
+    horario_inicio: "",
+    horario_fim: "",
   });
   const [replanejáFuturas, setReplanejáFuturas] = useState(false);
 
@@ -66,6 +68,8 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
         status: aula.status,
         observacoes: aula.observacoes ?? "",
         motivo: "",
+        horario_inicio: (aula.horario_inicio ?? "").slice(0, 5),
+        horario_fim: (aula.horario_fim ?? "").slice(0, 5),
       });
     }
   }, [aula?.id]);
@@ -166,6 +170,10 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
       if (form.subturma !== (aula.subturma ?? "")) alteracoes.subturma = form.subturma || null;
       if (form.status !== aula.status) alteracoes.status = form.status;
       if (form.observacoes !== (aula.observacoes ?? "")) alteracoes.observacoes = form.observacoes || null;
+      const iniOriginal = (aula.horario_inicio ?? "").slice(0, 5);
+      const fimOriginal = (aula.horario_fim ?? "").slice(0, 5);
+      if (form.horario_inicio && form.horario_inicio !== iniOriginal) alteracoes.horario_inicio = form.horario_inicio;
+      if (form.horario_fim && form.horario_fim !== fimOriginal) alteracoes.horario_fim = form.horario_fim;
 
       return aulasApi.alterar(aula.id, {
         alteracoes,
@@ -238,6 +246,30 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+
+          <Field label="Horário">
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <p className="text-[10px] text-gray-400 mb-1">Início</p>
+                <input
+                  type="time"
+                  className="input w-full text-sm"
+                  value={form.horario_inicio}
+                  onChange={(e) => set("horario_inicio", e.target.value)}
+                />
+              </div>
+              <span className="text-gray-400 mt-4">–</span>
+              <div className="flex-1">
+                <p className="text-[10px] text-gray-400 mb-1">Fim</p>
+                <input
+                  type="time"
+                  className="input w-full text-sm"
+                  value={form.horario_fim}
+                  onChange={(e) => set("horario_fim", e.target.value)}
+                />
+              </div>
+            </div>
+          </Field>
 
           <Field label="Professor">
             <select

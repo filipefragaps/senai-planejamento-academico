@@ -860,10 +860,22 @@ async def get_ucs_pendentes(
 
 # ── Aula Manual ───────────────────────────────────────────────────────────────
 
+def _parse_hhmm(s: str | None, fallback):
+    if not s:
+        return fallback
+    try:
+        parts = s.split(":")
+        return time(int(parts[0]), int(parts[1]))
+    except Exception:
+        return fallback
+
+
 class AulaManualRequest(BaseModel):
     uc_id: int
     data: str           # YYYY-MM-DD
     professor_id: Optional[int] = None
+    horario_inicio: Optional[str] = None  # "HH:MM" — sobrescreve horário do evento
+    horario_fim: Optional[str] = None
 
 
 @router.post("/aula-manual/{evento_id}", status_code=201)
@@ -892,7 +904,8 @@ async def adicionar_aula_manual(
     except ValueError:
         raise HTTPException(status_code=422, detail="Data inválida — use YYYY-MM-DD")
 
-    hi = evento.horario_inicio
+    hi = _parse_hhmm(body.horario_inicio, evento.horario_inicio)
+    hf = _parse_hhmm(body.horario_fim, evento.horario_fim)
     turno_str = "Manhã"
     if hi:
         h = hi.hour
@@ -917,8 +930,8 @@ async def adicionar_aula_manual(
         unidade_curricular_id=body.uc_id,
         professor_id=body.professor_id,
         data=data_aula,
-        horario_inicio=evento.horario_inicio,
-        horario_fim=evento.horario_fim,
+        horario_inicio=hi,
+        horario_fim=hf,
         turno=turno_str,
         status="Agendada",
         tipo="Reposição",
@@ -942,6 +955,8 @@ class AgendarUCRequest(BaseModel):
     data_inicio: str          # YYYY-MM-DD
     professor_id: Optional[int] = None
     quantidade: Optional[int] = None  # sobrescreve o cálculo automático
+    horario_inicio: Optional[str] = None  # "HH:MM" — sobrescreve horário do evento
+    horario_fim: Optional[str] = None
 
 
 @router.post("/agendar-uc/{evento_id}", status_code=201)
@@ -971,8 +986,9 @@ async def agendar_uc_pendente(
     except ValueError:
         raise HTTPException(status_code=422, detail="Data inválida — use YYYY-MM-DD")
 
-    # Horas por aula a partir do horário do evento
-    hi, hf = evento.horario_inicio, evento.horario_fim
+    # Horas por aula — usa horário fornecido ou fallback do evento
+    hi = _parse_hhmm(body.horario_inicio, evento.horario_inicio)
+    hf = _parse_hhmm(body.horario_fim, evento.horario_fim)
     if hi and hf:
         segundos = (hf.hour * 3600 + hf.minute * 60) - (hi.hour * 3600 + hi.minute * 60)
         horas_por_aula = max(segundos / 3600, 0.5)
@@ -1036,8 +1052,8 @@ async def agendar_uc_pendente(
                 unidade_curricular_id=body.uc_id,
                 professor_id=body.professor_id,
                 data=data_atual,
-                horario_inicio=evento.horario_inicio,
-                horario_fim=evento.horario_fim,
+                horario_inicio=hi,
+                horario_fim=hf,
                 turno=turno_str,
                 status="Agendada",
                 tipo="Regular",

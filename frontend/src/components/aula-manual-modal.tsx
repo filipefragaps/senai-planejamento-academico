@@ -61,6 +61,8 @@ export function AulaManualModal({ eventoId, data, horarioInicio, horarioFim, onC
         uc_id: ucId as number,
         data,
         professor_id: professorId || null,
+        horario_inicio: horaIni || undefined,
+        horario_fim: horaFim || undefined,
       }),
     onSuccess: () => onSaved(),
     onError: (err: any) =>
@@ -75,6 +77,8 @@ export function AulaManualModal({ eventoId, data, horarioInicio, horarioFim, onC
         data_inicio: data,
         professor_id: professorId || null,
         quantidade: qtdCalculada ?? undefined,
+        horario_inicio: horaIni || undefined,
+        horario_fim: horaFim || undefined,
       }),
     onSuccess: (res: any) => {
       if (res.aulas_criadas === 0) {
@@ -231,6 +235,34 @@ export function AulaManualModal({ eventoId, data, horarioInicio, horarioFim, onC
             </select>
           </div>
 
+          {/* Horário da aula — sempre visível */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+              Horário
+            </label>
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <label className="block text-[10px] text-gray-400 mb-1">Início</label>
+                <input
+                  type="time"
+                  value={horaIni}
+                  onChange={(e) => setHoraIni(e.target.value)}
+                  className="input w-full text-sm"
+                />
+              </div>
+              <span className="text-gray-400 mt-4">–</span>
+              <div className="flex-1">
+                <label className="block text-[10px] text-gray-400 mb-1">Fim</label>
+                <input
+                  type="time"
+                  value={horaFim}
+                  onChange={(e) => setHoraFim(e.target.value)}
+                  className="input w-full text-sm"
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Banner agendar todas — só aparece quando há pendências */}
           {ucSelecionada && ucSelecionada.aulas_faltando > 0 && (
             <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 space-y-2.5">
@@ -241,52 +273,19 @@ export function AulaManualModal({ eventoId, data, horarioInicio, horarioFim, onC
                     Agendar aulas pendentes a partir desta data
                   </p>
                   <p className="text-[11px] text-indigo-600 mt-0.5 leading-snug">
-                    UC de <strong>{ucSelecionada.carga_horaria}h</strong> · {ucSelecionada.horas_agendadas ?? 0}h agendadas · falta <strong>{ucSelecionada.horas_faltando ?? ucSelecionada.aulas_faltando}h</strong>. Confirme o horário para calcular.
+                    UC de <strong>{ucSelecionada.carga_horaria}h</strong> · {ucSelecionada.horas_agendadas ?? 0}h agendadas · falta <strong>{ucSelecionada.horas_faltando ?? ucSelecionada.aulas_faltando}h</strong>
+                    {horas_por_aula !== null
+                      ? ` → ${qtdCalculada} aula${qtdCalculada !== 1 ? "s" : ""} de ${horas_por_aula.toFixed(1)}h`
+                      : " · informe o horário para calcular"}
                   </p>
                 </div>
+                {qtdCalculada !== null && (
+                  <div className="text-center shrink-0">
+                    <p className="text-2xl font-bold text-indigo-700 leading-none">{qtdCalculada}</p>
+                    <p className="text-[10px] text-indigo-500">aulas</p>
+                  </div>
+                )}
               </div>
-
-              {/* Horário da aula */}
-              <div className="flex items-center gap-3">
-                <div className="flex-1">
-                  <label className="block text-[10px] font-semibold text-indigo-700 uppercase tracking-wide mb-1">
-                    Início
-                  </label>
-                  <input
-                    type="time"
-                    value={horaIni}
-                    onChange={(e) => setHoraIni(e.target.value)}
-                    className="w-full rounded-lg border border-indigo-300 bg-white px-2 py-1.5 text-sm font-medium text-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  />
-                </div>
-                <div className="flex-1">
-                  <label className="block text-[10px] font-semibold text-indigo-700 uppercase tracking-wide mb-1">
-                    Fim
-                  </label>
-                  <input
-                    type="time"
-                    value={horaFim}
-                    onChange={(e) => setHoraFim(e.target.value)}
-                    className="w-full rounded-lg border border-indigo-300 bg-white px-2 py-1.5 text-sm font-medium text-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  />
-                </div>
-                <div className="pt-4 text-center min-w-[60px]">
-                  {qtdCalculada !== null ? (
-                    <div>
-                      <p className="text-2xl font-bold text-indigo-700 leading-none">{qtdCalculada}</p>
-                      <p className="text-[10px] text-indigo-500 mt-0.5">aulas</p>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-indigo-400">—</p>
-                  )}
-                </div>
-              </div>
-
-              {horas_por_aula !== null && (
-                <p className="text-[10px] text-indigo-500">
-                  {horas_por_aula.toFixed(1)}h por aula · {ucSelecionada.carga_horaria}h total → {qtdCalculada} aula{qtdCalculada !== 1 ? "s" : ""}
-                </p>
-              )}
 
               <button
                 onClick={() => { setErro(null); mutationTodas.mutate(); }}
