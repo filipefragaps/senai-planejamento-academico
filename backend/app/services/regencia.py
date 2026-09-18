@@ -23,6 +23,17 @@ def _horas_aula(aula: Aula) -> float:
     fim = datetime.combine(base, aula.horario_fim)
     return (fim - inicio).seconds / 3600
 
+
+def _semanas_uteis(data_inicio: date, data_fim: date) -> float:
+    """Conta dias úteis (seg–sex) no período e converte para semanas (÷5)."""
+    dias = 0
+    d = data_inicio
+    while d <= data_fim:
+        if d.weekday() < 5:
+            dias += 1
+        d += timedelta(days=1)
+    return max(1, dias) / 5
+
 META_REGENCIA_MENSALISTA = 0.70
 ALERTA_INFERIOR = 0.50  # Abaixo disso = Crítico
 ALERTA_SUPERIOR = 0.90  # Acima disso = Alerta de sobrecarga
@@ -82,7 +93,7 @@ async def calcular_regencia_professor(
             slots_unicos[chave] = a
     horas_ministradas = sum(_horas_aula(a) for a in slots_unicos.values())
 
-    semanas = max(1, (data_fim - data_inicio).days / 7)
+    semanas = _semanas_uteis(data_inicio, data_fim)
     horas_excedentes = 0.0
     observacao = None
 
@@ -172,7 +183,7 @@ async def verificar_limite_professor(
 
     reg = await calcular_regencia_professor(professor, db, data_inicio, data_fim)
     horas_atuais = reg["horas_ministradas"]
-    semanas = max(1, (data_fim - data_inicio).days / 7)
+    semanas = _semanas_uteis(data_inicio, data_fim)
     horas_limite = professor.horas_contratadas * semanas
 
     if horas_atuais + horas_novas > horas_limite * ALERTA_SUPERIOR:
