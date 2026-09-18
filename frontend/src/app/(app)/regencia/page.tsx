@@ -726,6 +726,63 @@ const STATUS_CARD_STYLE: Record<string, { bg: string; text: string; border: stri
   Sobrecarga: { bg: "bg-orange-50", text: "text-orange-700", border: "border-orange-200", icon: Zap },
 };
 
+// ── RegenciaDiffTooltip ───────────────────────────────────────────────────────
+
+function RegenciaDiffTooltip({ planejadoProfs, executadoProfs, children }: {
+  planejadoProfs: { id: number; nome: string }[];
+  executadoProfs: { id: number; nome: string }[];
+  children: React.ReactNode;
+}) {
+  const [show, setShow] = useState(false);
+  const executadoIds = new Set(executadoProfs.map(p => p.id));
+  const planejadoIds = new Set(planejadoProfs.map(p => p.id));
+  const apenasNoPlanejado = planejadoProfs.filter(p => !executadoIds.has(p.id));
+  const apenasNoExecutado = executadoProfs.filter(p => !planejadoIds.has(p.id));
+
+  if (apenasNoPlanejado.length === 0 && apenasNoExecutado.length === 0) return <>{children}</>;
+
+  return (
+    <div
+      className="relative inline-flex items-center cursor-help"
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+    >
+      {children}
+      {show && (
+        <div className="absolute z-50 top-full left-1/2 -translate-x-1/2 mt-2 w-72 bg-white border border-gray-200 rounded-xl shadow-2xl p-4 text-left pointer-events-none">
+          <p className="text-xs font-bold text-gray-700 mb-3 border-b pb-2">Diferença planejado × executado</p>
+          {apenasNoPlanejado.length > 0 && (
+            <div className={apenasNoExecutado.length > 0 ? "mb-3" : ""}>
+              <p className="text-[11px] font-semibold text-blue-600 mb-1.5 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-blue-500 inline-block shrink-0" />
+                Sem diário — apenas planejado ({apenasNoPlanejado.length})
+              </p>
+              <ul className="space-y-0.5 max-h-48 overflow-y-auto">
+                {apenasNoPlanejado.slice().sort((a, b) => a.nome.localeCompare(b.nome)).map(p => (
+                  <li key={p.id} className="text-xs text-gray-700 truncate pl-3">{p.nome}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {apenasNoExecutado.length > 0 && (
+            <div>
+              <p className="text-[11px] font-semibold text-purple-600 mb-1.5 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-purple-500 inline-block shrink-0" />
+                Apenas no executado ({apenasNoExecutado.length})
+              </p>
+              <ul className="space-y-0.5 max-h-48 overflow-y-auto">
+                {apenasNoExecutado.slice().sort((a, b) => a.nome.localeCompare(b.nome)).map(p => (
+                  <li key={p.id} className="text-xs text-gray-700 truncate pl-3">{p.nome}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export default function RegenciaPage() {
@@ -841,7 +898,12 @@ export default function RegenciaPage() {
     const incluidos = base.filter(p => !excluidos.has(p.professor_id));
     if (incluidos.length === 0) return null;
     const soma = incluidos.reduce((s: number, p: any) => s + (p.percentual_regencia ?? 0), 0);
-    return { media: soma / incluidos.length, count: incluidos.length, total };
+    return {
+      media: soma / incluidos.length,
+      count: incluidos.length,
+      total,
+      profs: incluidos.map((p: any) => ({ id: p.professor_id as number, nome: p.nome as string })),
+    };
   }, [regencias, excluidos, filtroQuadro, filtroModalidades]);
 
   const qc = useQueryClient();
@@ -873,7 +935,11 @@ export default function RegenciaPage() {
       const periodo = p.horas_periodo ?? 0;
       return s + (periodo > 0 ? (h / periodo) * 100 : 0);
     }, 0);
-    return { media: soma / comDiario.length, count: comDiario.length };
+    return {
+      media: soma / comDiario.length,
+      count: comDiario.length,
+      profs: comDiario.map((p: any) => ({ id: p.professor_id as number, nome: p.nome as string })),
+    };
   }, [diarioStats, regencias, excluidos, filtroQuadro, filtroModalidades]);
 
   const importarDiario = useMutation({
@@ -964,7 +1030,12 @@ export default function RegenciaPage() {
                 )}>
                   {mediaRegencia.media.toFixed(1)}%
                 </span>
-                <span className="text-sm text-gray-400">{mediaRegencia.count} prof.</span>
+                <RegenciaDiffTooltip
+                  planejadoProfs={mediaRegencia.profs}
+                  executadoProfs={mediaExecutada?.profs ?? []}
+                >
+                  <span className="text-sm text-gray-400 underline decoration-dotted decoration-gray-300">{mediaRegencia.count} prof.</span>
+                </RegenciaDiffTooltip>
               </div>
             </div>
             <div className="shrink-0 text-right space-y-1">
@@ -998,7 +1069,12 @@ export default function RegenciaPage() {
                   )}>
                     {mediaExecutada.media.toFixed(1)}%
                   </span>
-                  <span className="text-sm text-gray-400">{mediaExecutada.count} prof. c/ diário</span>
+                  <RegenciaDiffTooltip
+                    planejadoProfs={mediaRegencia.profs}
+                    executadoProfs={mediaExecutada.profs}
+                  >
+                    <span className="text-sm text-gray-400 underline decoration-dotted decoration-gray-300">{mediaExecutada.count} prof. c/ diário</span>
+                  </RegenciaDiffTooltip>
                 </div>
               ) : (
                 <p className="text-sm text-gray-400 mt-1">
