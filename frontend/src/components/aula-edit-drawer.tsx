@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { aulasApi, professoresApi, planejamentoApi, cursosApi, ambientesApi } from "@/lib/api";
+import { aulasApi, professoresApi, planejamentoApi, cursosApi, ambientesApi, eventosApi } from "@/lib/api";
 import { toast } from "sonner";
-import { X, Save, Loader2, Lock, RefreshCw, UserCheck, Calendar, ChevronDown, ChevronRight, BookOpen } from "lucide-react";
+import { X, Save, Loader2, Lock, RefreshCw, UserCheck, Calendar, ChevronDown, ChevronRight, BookOpen, Link2, Unlink } from "lucide-react";
 import type { AulaRow } from "@/components/cronograma-table";
 
 const STATUS_OPTIONS = ["Agendada", "Realizada", "Cancelada", "Substituída", "Remarcada"];
@@ -58,6 +58,11 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
   const [tipoRemanejo, setTipoRemanejo] = useState<"substituicao" | "remarcacao">("substituicao");
   const [profSubstituto, setProfSubstituto] = useState<string>("");
   const [novaData, setNovaData] = useState<string>("");
+
+  // Vincular eventos
+  const [secaoVincular, setSecaoVincular] = useState(false);
+  const [eventoVincularId, setEventoVincularId] = useState<string>("");
+  const [ucVincularId, setUcVincularId] = useState<string>("");
 
   useEffect(() => {
     if (aula) {
@@ -158,6 +163,52 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
     queryKey: ["ambientes-ativos"],
     queryFn: () => ambientesApi.listar({ ativo: true }),
     staleTime: 60_000,
+  });
+
+  // Eventos para vincular
+  const { data: todosEventos = [] } = useQuery({
+    queryKey: ["todos-eventos-vincular"],
+    queryFn: () => eventosApi.listar(),
+    enabled: !!aula && secaoVincular,
+    staleTime: 300_000,
+  });
+
+  // UCs do evento alvo para vincular
+  const { data: ucsEventoAlvo = [] } = useQuery({
+    queryKey: ["ucs-evento-alvo", eventoVincularId],
+    queryFn: () => planejamentoApi.ucs(Number(eventoVincularId), undefined, true),
+    enabled: !!eventoVincularId,
+  });
+
+  const vincularMutation = useMutation({
+    mutationFn: () => {
+      if (!aula || !eventoVincularId) throw new Error("Selecione um evento");
+      return planejamentoApi.vincularAula(aula.id, {
+        evento_id: Number(eventoVincularId),
+        uc_id: ucVincularId ? Number(ucVincularId) : null,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Eventos vinculados com sucesso.");
+      qc.invalidateQueries({ queryKey: ["cronograma"] });
+      setEventoVincularId("");
+      setUcVincularId("");
+      onSaved?.();
+    },
+    onError: (err: any) => toast.error(extractErrorMsg(err, "Erro ao vincular")),
+  });
+
+  const desvincularMutation = useMutation({
+    mutationFn: () => {
+      if (!aula) throw new Error("Sem aula");
+      return planejamentoApi.desvincularAula(aula.id);
+    },
+    onSuccess: () => {
+      toast.success("Vínculo removido.");
+      qc.invalidateQueries({ queryKey: ["cronograma"] });
+      onSaved?.();
+    },
+    onError: (err: any) => toast.error(extractErrorMsg(err, "Erro ao desvincular")),
   });
 
   const salvar = useMutation({
@@ -437,6 +488,98 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
                 >
                   {trocaUcMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookOpen className="h-4 w-4" />}
                   Confirmar Troca
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Vincular eventos */}
+          <div className="border rounded-lg overflow-hidden">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between px-3 py-2.5 bg-gray-50 hover:bg-gray-100 transition-colors"
+              onClick={() => setSecaoVincular((v) => !v)}
+            >
+              <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <Link2 className="h-4 w-4 text-gray-500" />
+                Eventos vinculados
+                {(aula as any).grupo_aula_id && (
+                  <span className="ml-1 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-semibold px-1.5 py-px">
+                    vinculado
+                  </span>
+                )}
+              </span>
+              {secaoVincular ? <ChevronDown className="h-4 w-4 text-gray-400" /> : <ChevronRight className="h-4 w-4 text-gray-400" />}
+            </button>
+
+            {secaoVincular && (
+              <div className="p-3 space-y-3 border-t">
+                <p className="text-xs text-gray-500">
+                  Vincule esta aula a outro evento que acontece na mesma data e horário. Professor e sala serão sincronizados automaticamente.
+                </p>
+
+                {(aula as any).grupo_aula_id && (
+                  <div className="flex items-center justify-between rounded-lg bg-indigo-50 border border-indigo-200 px-3 py-2">
+                    <span className="text-xs text-indigo-700 font-medium flex items-center gap-1.5">
+                      <Link2 className="h-3.5 w-3.5" />
+                      Esta aula já está vinculada (grupo #{(aula as any).grupo_aula_id})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => desvincularMutation.mutate()}
+                      disabled={desvincularMutation.isPending}
+                      className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 font-medium"
+                    >
+                      {desvincularMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Unlink className="h-3 w-3" />}
+                      Desvincular
+                    </button>
+                  </div>
+                )}
+
+                <div>
+                  <p className="text-[10px] text-gray-400 mb-1 uppercase tracking-wide font-semibold">Evento a vincular</p>
+                  <select
+                    className="input w-full text-sm"
+                    value={eventoVincularId}
+                    onChange={(e) => { setEventoVincularId(e.target.value); setUcVincularId(""); }}
+                  >
+                    <option value="">— Selecione o evento —</option>
+                    {(todosEventos as any[])
+                      .filter((e: any) => e.id !== aula.evento_id)
+                      .map((e: any) => (
+                        <option key={e.id} value={e.id}>
+                          {e.nome_turma || e.disciplina || `Evento ${e.id}`}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                {eventoVincularId && (
+                  <div>
+                    <p className="text-[10px] text-gray-400 mb-1 uppercase tracking-wide font-semibold">UC desta aula no evento alvo <span className="font-normal normal-case">(opcional)</span></p>
+                    <select
+                      className="input w-full text-sm"
+                      value={ucVincularId}
+                      onChange={(e) => setUcVincularId(e.target.value)}
+                    >
+                      <option value="">— Sem UC definida —</option>
+                      {(ucsEventoAlvo as any[]).map((u: any) => (
+                        <option key={u.id} value={u.id}>
+                          {u.nome} {u.carga_horaria ? `(${u.carga_horaria}h)` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => vincularMutation.mutate()}
+                  disabled={vincularMutation.isPending || !eventoVincularId}
+                  className="w-full btn-primary flex items-center justify-center gap-1.5 py-1.5 text-sm"
+                >
+                  {vincularMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+                  Vincular evento
                 </button>
               </div>
             )}

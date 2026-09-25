@@ -14,6 +14,7 @@ from app.models.contrato import ContratoDocente
 from app.models.pagamento import PagamentoAula, HistoricoPagamento
 from app.models.diario import DiarioAula
 from app.models.planejamento_snapshot import PlanejamentoSnapshot
+from app.models.grupo_aula import GrupoAula
 
 __all__ = [
     "Usuario",
@@ -33,4 +34,5 @@ __all__ = [
     "HistoricoPagamento",
     "DiarioAula",
     "PlanejamentoSnapshot",
+    "GrupoAula",
 ]

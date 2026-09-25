@@ -1,6 +1,6 @@
 "use client";
 
-import { Lock } from "lucide-react";
+import { Lock, Link2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface AulaRow {
@@ -24,6 +24,7 @@ export interface AulaRow {
   alterada_manualmente?: boolean;
   unidade_curricular_id?: number | null;
   professor_id?: number | null;
+  grupo_aula_id?: number | null;
 }
 
 const STATUS_CLS: Record<string, string> = {

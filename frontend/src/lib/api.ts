@@ -202,6 +202,10 @@ export const planejamentoApi = {
     api.post(`/planejamento/agendar-uc/${eventoId}`, body).then((r) => r.data),
   removerAula: (aulaId: number) =>
     api.delete(`/planejamento/aula/${aulaId}`),
+  vincularAula: (aulaId: number, body: { evento_id: number; uc_id?: number | null }) =>
+    api.post(`/planejamento/aulas/${aulaId}/vincular`, body).then((r) => r.data),
+  desvincularAula: (aulaId: number) =>
+    api.delete(`/planejamento/aulas/${aulaId}/vincular`),
   apagarPlanejamento: (eventoId: number, ucId?: number) =>
     api.delete(`/planejamento/apagar/${eventoId}`, { params: ucId != null ? { uc_id: ucId } : undefined }).then((r) => r.data),
   otimizarGlobal: (incluirRpaPj = false) =>

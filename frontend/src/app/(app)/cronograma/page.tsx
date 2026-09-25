@@ -9,7 +9,7 @@ import { AulaManualModal } from "@/components/aula-manual-modal";
 import { CalendarioImpressaoModal } from "@/components/calendario-impressao-modal";
 import { cn } from "@/lib/utils";
 import {
-  ChevronLeft, ChevronRight, Loader2, X, Printer, CalendarDays, LayoutGrid, Filter, FileDown, Search, ChevronDown, Plus, Trash2, Zap,
+  ChevronLeft, ChevronRight, Loader2, X, Printer, CalendarDays, LayoutGrid, Filter, FileDown, Search, ChevronDown, Plus, Trash2, Zap, Link2,
 } from "lucide-react";
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -729,6 +729,9 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
                               <span className="text-[9px] font-semibold text-white truncate flex-1 leading-tight">
                                 {(a.horario_inicio ?? "").slice(0, 5)} {ucLabel}
                               </span>
+                              {a.grupo_aula_id && (
+                                <Link2 className="h-2.5 w-2.5 text-white/80 shrink-0" />
+                              )}
                             </div>
                             {/* Turma */}
                             {a.nome_evento && (
@@ -818,9 +821,14 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
                             <p className="font-semibold text-[10px] text-gray-700 font-mono">
                               {(a.horario_inicio ?? "").slice(0, 5)}–{(a.horario_fim ?? "").slice(0, 5)}
                             </p>
-                            <p className="text-[11px] font-medium text-gray-800 truncate mt-0.5">
-                              {a.uc_nome || a.nome_evento || "—"}
-                            </p>
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <p className="text-[11px] font-medium text-gray-800 truncate flex-1">
+                                {a.uc_nome || a.nome_evento || "—"}
+                              </p>
+                              {a.grupo_aula_id && (
+                                <Link2 className="h-3 w-3 text-indigo-400 shrink-0" title="Aula conjunta" />
+                              )}
+                            </div>
                             {a.professor_nome && (
                               <p className="text-[10px] text-gray-500 truncate">{a.professor_nome}</p>
                             )}

@@ -22,6 +22,7 @@ from app.models.professor import Professor
 from app.models.unidade_curricular import UnidadeCurricular
 from app.models.curso import Curso
 from app.models.planejamento_snapshot import PlanejamentoSnapshot
+from app.models.grupo_aula import GrupoAula
 from app.services.planejamento_service import gerar_planejamento, confirmar_planejamento, analisar_proprio, PlanejamentoResult
 from app.services.regencia import calcular_regencia_professor
 
@@ -218,6 +219,7 @@ def _serializar_aula(a: Aula, nome_prof: str | None = None, nome_uc: str | None 
         "observacoes": a.observacoes,
         "status": a.status,
         "alterada_manualmente": a.alterada_manualmente,
+        "grupo_aula_id": a.grupo_aula_id,
     }
 
 
@@ -1093,6 +1095,137 @@ async def remover_aula(
     if not aula:
         raise HTTPException(status_code=404, detail="Aula não encontrada")
     await db.delete(aula)
+    await db.commit()
+
+
+class VincularAulaRequest(BaseModel):
+    evento_id: int
+    uc_id: Optional[int] = None
+
+
+@router.post("/aulas/{aula_id}/vincular")
+async def vincular_aula(
+    aula_id: int,
+    body: VincularAulaRequest,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """Vincula esta aula a outra do evento indicado (mesma data/horário). Cria a aula parceira se não existir."""
+    res = await db.execute(select(Aula).where(Aula.id == aula_id))
+    aula_a = res.scalar_one_or_none()
+    if not aula_a:
+        raise HTTPException(status_code=404, detail="Aula não encontrada")
+
+    if aula_a.evento_id == body.evento_id:
+        raise HTTPException(status_code=422, detail="Não é possível vincular uma aula ao próprio evento")
+
+    # Verifica tamanho do grupo atual de A
+    if aula_a.grupo_aula_id:
+        res_grp = await db.execute(select(Aula).where(Aula.grupo_aula_id == aula_a.grupo_aula_id))
+        membros_a = res_grp.scalars().all()
+        if len(membros_a) >= 3:
+            raise HTTPException(status_code=422, detail="Grupo já atingiu o máximo de 3 eventos")
+
+    # Busca ou cria aula B no evento alvo na mesma data/horário
+    res_b = await db.execute(
+        select(Aula).where(
+            Aula.evento_id == body.evento_id,
+            Aula.data == aula_a.data,
+            Aula.horario_inicio == aula_a.horario_inicio,
+        ).limit(1)
+    )
+    aula_b = res_b.scalar_one_or_none()
+
+    if aula_b is None:
+        res_ev = await db.execute(select(Evento).where(Evento.id == body.evento_id))
+        evento_b = res_ev.scalar_one_or_none()
+        if not evento_b:
+            raise HTTPException(status_code=404, detail="Evento alvo não encontrado")
+
+        h = aula_a.horario_inicio.hour if aula_a.horario_inicio else 8
+        turno_str = "Tarde" if 12 <= h < 18 else ("Noite" if h >= 18 else "Manhã")
+        aula_b = Aula(
+            evento_id=body.evento_id,
+            data=aula_a.data,
+            horario_inicio=aula_a.horario_inicio,
+            horario_fim=aula_a.horario_fim,
+            professor_id=aula_a.professor_id,
+            ambiente=aula_a.ambiente,
+            sala=aula_a.sala,
+            turno=turno_str,
+            unidade_curricular_id=body.uc_id,
+            tipo_contrato=aula_a.tipo_contrato,
+            status="Agendada",
+            tipo="Regular",
+            alterada_manualmente=True,
+        )
+        db.add(aula_b)
+        await db.flush()
+    else:
+        # Synca professor e ambiente se B não tiver grupo próprio
+        if aula_a.professor_id and not aula_b.professor_id:
+            aula_b.professor_id = aula_a.professor_id
+        if aula_a.ambiente and not aula_b.ambiente:
+            aula_b.ambiente = aula_a.ambiente
+
+    if aula_b.grupo_aula_id and aula_a.grupo_aula_id and aula_b.grupo_aula_id != aula_a.grupo_aula_id:
+        raise HTTPException(status_code=422, detail="As aulas já pertencem a grupos distintos")
+
+    # Determina o grupo
+    grupo_id = aula_a.grupo_aula_id or aula_b.grupo_aula_id
+    if grupo_id is None:
+        novo_grupo = GrupoAula()
+        db.add(novo_grupo)
+        await db.flush()
+        grupo_id = novo_grupo.id
+
+    aula_a.grupo_aula_id = grupo_id
+    aula_b.grupo_aula_id = grupo_id
+    await db.commit()
+
+    # Retorna membros do grupo com info do evento
+    res_membros = await db.execute(select(Aula).where(Aula.grupo_aula_id == grupo_id))
+    membros = res_membros.scalars().all()
+    evento_ids = list({m.evento_id for m in membros})
+    res_evs = await db.execute(select(Evento).where(Evento.id.in_(evento_ids)))
+    ev_map = {e.id: (e.nome_turma or e.disciplina or str(e.id)) for e in res_evs.scalars().all()}
+
+    return {
+        "grupo_id": grupo_id,
+        "membros": [
+            {"aula_id": m.id, "evento_id": m.evento_id, "nome_evento": ev_map.get(m.evento_id)}
+            for m in membros
+        ],
+    }
+
+
+@router.delete("/aulas/{aula_id}/vincular", status_code=204)
+async def desvincular_aula(
+    aula_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """Remove esta aula do seu grupo. Se o grupo ficar com ≤1 membro, é desfeito."""
+    res = await db.execute(select(Aula).where(Aula.id == aula_id))
+    aula = res.scalar_one_or_none()
+    if not aula or not aula.grupo_aula_id:
+        return
+
+    grupo_id = aula.grupo_aula_id
+    aula.grupo_aula_id = None
+    await db.flush()
+
+    res_restantes = await db.execute(select(Aula).where(Aula.grupo_aula_id == grupo_id))
+    restantes = res_restantes.scalars().all()
+    if len(restantes) <= 1:
+        for r in restantes:
+            r.grupo_aula_id = None
+        await db.flush()
+        res_grp = await db.execute(select(GrupoAula).where(GrupoAula.id == grupo_id))
+        grp = res_grp.scalar_one_or_none()
+        if grp:
+            await db.delete(grp)
+
     await db.commit()
 
 

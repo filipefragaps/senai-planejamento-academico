@@ -9,6 +9,7 @@ from app.services.replanejamento import alterar_aula_e_replaneja
 from app.algorithms.constraint_solver import encontrar_professor_alternativo
 from app.models.evento import Evento
 from app.core.deps import get_current_user
+from app.models.professor import Professor
 
 router = APIRouter(prefix="/aulas", tags=["Aulas"])
 
@@ -83,6 +84,30 @@ async def alterar_aula(
             usuario_id=current_user.id,
             db=db,
         )
+        # Sync professor/ambiente to grupo members if applicable
+        aula_alterada_pre = resultado["aula_alterada"]
+        if aula_alterada_pre.grupo_aula_id:
+            sync_fields = {}
+            if "professor_id" in alteracoes:
+                sync_fields["professor_id"] = alteracoes["professor_id"]
+                if alteracoes["professor_id"]:
+                    res_prof = await db.execute(select(Professor).where(Professor.id == alteracoes["professor_id"]))
+                    prof_obj = res_prof.scalar_one_or_none()
+                    if prof_obj:
+                        sync_fields["tipo_contrato"] = prof_obj.tipo
+            if "ambiente" in alteracoes:
+                sync_fields["ambiente"] = alteracoes["ambiente"]
+            if sync_fields:
+                res_siblings = await db.execute(
+                    select(Aula).where(
+                        Aula.grupo_aula_id == aula_alterada_pre.grupo_aula_id,
+                        Aula.id != aula_id,
+                    )
+                )
+                for sibling in res_siblings.scalars().all():
+                    for k, v in sync_fields.items():
+                        setattr(sibling, k, v)
+
         await db.commit()
 
         # Refresh after commit so Pydantic can read all attributes without lazy-load
