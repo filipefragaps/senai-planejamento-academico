@@ -305,6 +305,19 @@ export const diarioApi = {
     api.get("/diario/stats", { params: { data_inicio: dataInicio, data_fim: dataFim } }).then((r) => r.data),
 };
 
+export const pontoApi = {
+  importar: (file: File) => {
+    const form = new FormData();
+    form.append("arquivo", file);
+    return api.post("/ponto/importar", form, {
+      transformRequest: (data, headers) => { if (headers) delete headers["Content-Type"]; return data; },
+    }).then((r) => r.data);
+  },
+  info: () => api.get("/ponto/info").then((r) => r.data),
+  professor: (professorId: number, dataInicio: string, dataFim: string) =>
+    api.get(`/ponto/professor/${professorId}`, { params: { data_inicio: dataInicio, data_fim: dataFim } }).then((r) => r.data),
+};
+
 // Administração / Limpeza de BD
 export const adminApi = {
   limpar: (tipo: "aulas" | "planejamento" | "ofertas" | "importacao" | "tudo") =>

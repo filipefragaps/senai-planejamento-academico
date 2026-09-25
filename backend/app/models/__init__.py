@@ -15,6 +15,7 @@ from app.models.pagamento import PagamentoAula, HistoricoPagamento
 from app.models.diario import DiarioAula
 from app.models.planejamento_snapshot import PlanejamentoSnapshot
 from app.models.grupo_aula import GrupoAula
+from app.models.ponto import PontoMensal
 
 __all__ = [
     "Usuario",
@@ -35,4 +36,5 @@ __all__ = [
     "DiarioAula",
     "PlanejamentoSnapshot",
     "GrupoAula",
+    "PontoMensal",
 ]

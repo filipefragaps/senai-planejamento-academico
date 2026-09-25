@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { professoresApi, planejamentoApi, relatoriosApi, diarioApi, downloadBlob } from "@/lib/api";
+import { professoresApi, planejamentoApi, relatoriosApi, diarioApi, pontoApi, downloadBlob } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { RegenciaBar } from "@/components/regencia-bar";
 import { StatusBadge } from "@/components/status-badge";
@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { getCurrentUser } from "@/lib/auth";
 import {
   Search, X, TrendingUp, CheckCircle, AlertTriangle, Zap, Download, ArrowUpDown, Info, ChevronDown, EyeOff, Eye,
-  Upload, BookOpen, CalendarCheck, FileQuestion,
+  Upload, BookOpen, CalendarCheck, FileQuestion, Clock,
 } from "lucide-react";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -158,7 +158,7 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose, importarDiar
   const [inicio, setInicio] = useState(defaultInicio);
   const [fim, setFim] = useState(defaultFim);
   const [turnoFiltro, setTurnoFiltro] = useState("todos");
-  const [aba, setAba] = useState<"planejado" | "diario">("planejado");
+  const [aba, setAba] = useState<"planejado" | "diario" | "ponto">("planejado");
   const dataInicio = `${inicio}-01`;
   const dataFim = ultimoDiaMes(fim);
 
@@ -179,6 +179,30 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose, importarDiar
     enabled: aba === "diario",
     staleTime: 60_000,
   });
+
+  const { data: pontoInfo } = useQuery({
+    queryKey: ["ponto-info"],
+    queryFn: () => pontoApi.info(),
+    staleTime: 300_000,
+  });
+  const { data: pontoProfessor, isLoading: loadingPonto } = useQuery({
+    queryKey: ["ponto-prof", prof.professor_id, inicio, fim],
+    queryFn: () => pontoApi.professor(prof.professor_id, dataInicio, dataFim),
+    enabled: aba === "ponto",
+    staleTime: 60_000,
+  });
+  const qc = useQueryClient();
+  const [importandoPonto, setImportandoPonto] = useState(false);
+  function handleFilePonto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setImportandoPonto(true);
+    pontoApi.importar(file)
+      .then((r: any) => { toast.success(r.mensagem); qc.invalidateQueries({ queryKey: ["ponto-info"] }); qc.invalidateQueries({ queryKey: ["ponto-prof"] }); })
+      .catch(() => toast.error("Erro ao importar ponto."))
+      .finally(() => setImportandoPonto(false));
+  }
 
   function handleFileDiario(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -248,6 +272,7 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose, importarDiar
           {([
             { key: "planejado", label: "Planejado", icon: CalendarCheck },
             { key: "diario",    label: "Diário / Executado", icon: BookOpen },
+            { key: "ponto",     label: "Ponto Batido", icon: Clock },
           ] as const).map(({ key, label, icon: Icon }) => (
             <button
               key={key}
@@ -266,7 +291,25 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose, importarDiar
         </div>
 
         <div className="overflow-y-auto flex-1 p-6 space-y-5">
-        {aba === "diario" ? (
+        {aba === "ponto" ? (
+          <PontoTab
+            prof={prof}
+            dataInicio={dataInicio}
+            dataFim={dataFim}
+            inicio={inicio}
+            fim={fim}
+            setInicio={setInicio}
+            setFim={setFim}
+            pontoInfo={pontoInfo}
+            pontoProfessor={pontoProfessor}
+            loadingPonto={loadingPonto}
+            importando={importandoPonto}
+            handleFilePonto={handleFilePonto}
+            regencia={regencia}
+            comparacao={comparacao}
+            podeComandar={podeComandar}
+          />
+        ) : aba === "diario" ? (
           <DiarioTab
             prof={prof}
             dataInicio={dataInicio}
@@ -457,6 +500,235 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose, importarDiar
         </>)}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── PontoTab ──────────────────────────────────────────────────────────────────
+
+function fmtHoras(h: number): string {
+  const hh = Math.floor(h);
+  const mm = Math.round((h - hh) * 60);
+  return `${hh}:${String(mm).padStart(2, "0")}`;
+}
+
+function PontoTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, pontoInfo, pontoProfessor, loadingPonto, importando, handleFilePonto, regencia, comparacao, podeComandar }: {
+  prof: any; dataInicio: string; dataFim: string; inicio: string; fim: string;
+  setInicio: (v: string) => void; setFim: (v: string) => void;
+  pontoInfo: any; pontoProfessor: any; loadingPonto: boolean;
+  importando: boolean; handleFilePonto: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  regencia: any; comparacao: any; podeComandar: boolean;
+}) {
+  const registros: any[] = pontoProfessor?.registros ?? [];
+  const totais = pontoProfessor?.totais ?? { horas_efetivas: 0, horas_extras: 0, horas_total: 0 };
+
+  // Regências para o dashboard
+  const chPlan  = (regencia as any)?.horas_ministradas ?? 0;
+  const chTrab  = (regencia as any)?.horas_periodo ?? 0;
+  const percPlan = (regencia as any)?.percentual_regencia ?? 0;
+
+  // Horas executadas (diário dedup) — recalcula igual ao DiarioTab
+  const planejadas: any[] = comparacao?.planejadas ?? [];
+  const soDiario: any[]   = comparacao?.somente_diario ?? [];
+  const horasExec = useMemo(() => {
+    const slotsVistos = new Set<string>();
+    let total = 0;
+    for (const a of planejadas) {
+      if (!a.diario) continue;
+      const chave = `${a.data}|${a.horario_inicio ?? ""}`;
+      if (slotsVistos.has(chave)) continue;
+      slotsVistos.add(chave);
+      const d = a.diario;
+      if (d.qtde_horas != null && d.qtde_horas > 0) total += d.qtde_horas;
+      else if (d.hora_inicio && d.hora_termino) total += horasAula(d.hora_inicio, d.hora_termino);
+      else total += horasAula(a.horario_inicio, a.horario_fim);
+    }
+    const slotsDiario = new Set<string>();
+    for (const d of soDiario) {
+      const chave = `${d.data}|${d.hora_inicio ?? ""}`;
+      if (slotsDiario.has(chave)) continue;
+      slotsDiario.add(chave);
+      if (d.qtde_horas != null && d.qtde_horas > 0) total += d.qtde_horas;
+      else if (d.hora_inicio && d.hora_termino) total += horasAula(d.hora_inicio, d.hora_termino);
+    }
+    return total;
+  }, [planejadas, soDiario]);
+
+  const percDiario = chTrab > 0 ? (horasExec / chTrab) * 100 : null;
+  const percReal   = totais.horas_total > 0 ? (horasExec / totais.horas_total) * 100 : null;
+
+  const semPonto = registros.length === 0 && !loadingPonto;
+
+  return (
+    <div className="space-y-5">
+      {/* Controles */}
+      <div className="flex items-center gap-4 flex-wrap">
+        <span className="text-sm text-gray-600 font-medium">Período:</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500">De</span>
+          <input type="month" value={inicio} onChange={e => setInicio(e.target.value)} className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500">Até</span>
+          <input type="month" value={fim} onChange={e => setFim(e.target.value)} className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          {pontoInfo?.importado_em && (
+            <span className="text-xs text-gray-400">
+              Importado em {new Date(pontoInfo.importado_em).toLocaleDateString("pt-BR")} · {pontoInfo.total} registros
+            </span>
+          )}
+          {podeComandar && (
+            <label className={cn(
+              "flex items-center gap-1.5 cursor-pointer px-3 py-2 rounded-lg border text-sm font-medium transition-colors",
+              importando
+                ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                : "bg-white border-blue-200 text-blue-700 hover:bg-blue-50"
+            )}>
+              <Upload className="h-4 w-4" />
+              {importando ? "Importando..." : "Importar CSV do Ponto"}
+              <input type="file" accept=".csv,.txt" className="hidden" onChange={handleFilePonto} disabled={importando} />
+            </label>
+          )}
+        </div>
+      </div>
+
+      {/* Dashboard de regência */}
+      <div className="rounded-xl border border-gray-200 bg-gray-50 p-5">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Dashboard de Regência</p>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {/* Planejada */}
+          <div className="rounded-lg bg-blue-50 border border-blue-100 p-4 text-center">
+            <p className="text-[10px] text-blue-500 font-medium uppercase tracking-wide">Regência Planejada</p>
+            <p className="text-2xl font-bold text-blue-700 mt-1">{percPlan.toFixed(1)}%</p>
+            <p className="text-[10px] text-blue-400 mt-1">{chPlan.toFixed(1)}h prod. / {chTrab.toFixed(1)}h trab.</p>
+          </div>
+          {/* Diário */}
+          <div className={cn("rounded-lg border p-4 text-center",
+            percDiario === null ? "bg-gray-50 border-gray-200" :
+            percDiario >= 70 ? "bg-indigo-50 border-indigo-100" :
+            percDiario >= 50 ? "bg-yellow-50 border-yellow-100" : "bg-red-50 border-red-100"
+          )}>
+            <p className={cn("text-[10px] font-medium uppercase tracking-wide",
+              percDiario === null ? "text-gray-400" :
+              percDiario >= 70 ? "text-indigo-500" :
+              percDiario >= 50 ? "text-yellow-600" : "text-red-500"
+            )}>Regência do Diário</p>
+            <p className={cn("text-2xl font-bold mt-1",
+              percDiario === null ? "text-gray-400" :
+              percDiario >= 70 ? "text-indigo-700" :
+              percDiario >= 50 ? "text-yellow-700" : "text-red-700"
+            )}>{percDiario !== null ? `${percDiario.toFixed(1)}%` : "—"}</p>
+            <p className="text-[10px] text-gray-400 mt-1">{horasExec.toFixed(1)}h exec. / {chTrab.toFixed(1)}h trab.</p>
+          </div>
+          {/* Ponto */}
+          <div className="rounded-lg bg-slate-50 border border-slate-200 p-4 text-center">
+            <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wide">Horas no Ponto</p>
+            <p className="text-2xl font-bold text-slate-700 mt-1">
+              {totais.horas_total > 0 ? fmtHoras(totais.horas_total) : "—"}
+            </p>
+            <p className="text-[10px] text-slate-400 mt-1">
+              {totais.horas_efetivas > 0 ? `${fmtHoras(totais.horas_efetivas)}h ef.` : "—"}
+              {totais.horas_extras > 0 ? ` · +${fmtHoras(totais.horas_extras)}h extra` : ""}
+            </p>
+          </div>
+          {/* Regência Real */}
+          <div className={cn("rounded-lg border p-4 text-center",
+            percReal === null ? "bg-gray-50 border-gray-200" :
+            percReal >= 70 ? "bg-green-50 border-green-100" :
+            percReal >= 50 ? "bg-yellow-50 border-yellow-100" : "bg-red-50 border-red-100"
+          )}>
+            <p className={cn("text-[10px] font-medium uppercase tracking-wide",
+              percReal === null ? "text-gray-400" :
+              percReal >= 70 ? "text-green-600" :
+              percReal >= 50 ? "text-yellow-600" : "text-red-600"
+            )}>Regência Real</p>
+            <p className={cn("text-2xl font-bold mt-1",
+              percReal === null ? "text-gray-400" :
+              percReal >= 70 ? "text-green-700" :
+              percReal >= 50 ? "text-yellow-700" : "text-red-700"
+            )}>{percReal !== null ? `${percReal.toFixed(1)}%` : "—"}</p>
+            <p className="text-[10px] text-gray-400 mt-1">
+              {percReal !== null ? `${horasExec.toFixed(1)}h diário ÷ ${fmtHoras(totais.horas_total)} ponto` : "sem dados de ponto"}
+            </p>
+          </div>
+        </div>
+        {/* Barra visual comparativa */}
+        {totais.horas_total > 0 && (
+          <div className="mt-4 space-y-2">
+            {[
+              { label: "Planejada", valor: chPlan, total: chTrab, cor: "bg-blue-400" },
+              { label: "Diário (exec.)", valor: horasExec, total: chTrab, cor: "bg-indigo-500" },
+              { label: "Ponto (total)", valor: totais.horas_total, total: Math.max(totais.horas_total, chTrab, horasExec, chPlan) + 1, cor: "bg-slate-400" },
+            ].map(({ label, valor, total, cor }) => (
+              <div key={label} className="flex items-center gap-3 text-xs">
+                <span className="w-28 text-gray-500 shrink-0">{label}</span>
+                <div className="flex-1 bg-gray-200 rounded-full h-2">
+                  <div className={cn("h-2 rounded-full transition-all", cor)} style={{ width: `${Math.min(100, (valor / total) * 100)}%` }} />
+                </div>
+                <span className="w-14 text-right font-mono text-gray-700 shrink-0">{fmtHoras(valor)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Tabela mensal de ponto */}
+      {loadingPonto ? (
+        <div className="text-center text-gray-400 py-8 text-sm">Carregando...</div>
+      ) : semPonto ? (
+        <div className="flex flex-col items-center gap-3 py-10 text-center text-gray-400 border rounded-lg">
+          <Clock className="h-10 w-10 text-gray-300" />
+          <p className="text-sm font-medium">Nenhum registro de ponto encontrado para este período.</p>
+          {!pontoInfo?.total && podeComandar && (
+            <p className="text-xs">Use o botão "Importar CSV do Ponto" acima para carregar a planilha.</p>
+          )}
+        </div>
+      ) : (
+        <div>
+          <h3 className="text-sm font-semibold text-gray-700 mb-2">Registros de Ponto Mensal</h3>
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b">
+                  <th className="px-3 py-2 text-left font-semibold text-gray-600">Período</th>
+                  <th className="px-3 py-2 text-right font-semibold text-gray-600">Horas Efetivas</th>
+                  <th className="px-3 py-2 text-right font-semibold text-gray-600">Horas Extras</th>
+                  <th className="px-3 py-2 text-right font-semibold text-gray-600">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {registros.map((r: any, i: number) => (
+                  <tr key={r.id ?? i} className={cn("border-b last:border-0", i % 2 === 0 ? "bg-white" : "bg-gray-50/50")}>
+                    <td className="px-3 py-2 text-gray-700">
+                      {new Date(r.data_inicio + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}
+                      {" – "}
+                      {new Date(r.data_fim + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-gray-700">{fmtHoras(r.horas_efetivas)}</td>
+                    <td className={cn("px-3 py-2 text-right font-mono", r.horas_extras > 0 ? "text-amber-600 font-semibold" : "text-gray-400")}>
+                      {r.horas_extras > 0 ? `+${fmtHoras(r.horas_extras)}` : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold text-gray-800">{fmtHoras(r.horas_total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              {registros.length > 1 && (
+                <tfoot>
+                  <tr className="bg-slate-50 border-t-2 border-slate-200">
+                    <td className="px-3 py-2 font-semibold text-gray-700">Total acumulado</td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold text-gray-700">{fmtHoras(totais.horas_efetivas)}</td>
+                    <td className={cn("px-3 py-2 text-right font-mono font-semibold", totais.horas_extras > 0 ? "text-amber-600" : "text-gray-400")}>
+                      {totais.horas_extras > 0 ? `+${fmtHoras(totais.horas_extras)}` : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono font-bold text-slate-800">{fmtHoras(totais.horas_total)}</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

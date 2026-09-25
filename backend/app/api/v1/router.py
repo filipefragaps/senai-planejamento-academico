@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1 import auth, cursos, professores, eventos, aulas, importacao, dashboard, relatorios, ia, versoes, ofertas, planejamento, admin, usuarios, ambientes, contratos, pagamentos, diario
+from app.api.v1 import auth, cursos, professores, eventos, aulas, importacao, dashboard, relatorios, ia, versoes, ofertas, planejamento, admin, usuarios, ambientes, contratos, pagamentos, diario, ponto
 
 api_router = APIRouter()
 
@@ -21,3 +21,4 @@ api_router.include_router(usuarios.router)
 api_router.include_router(ambientes.router)
 api_router.include_router(pagamentos.router)
 api_router.include_router(diario.router)
+api_router.include_router(ponto.router)
