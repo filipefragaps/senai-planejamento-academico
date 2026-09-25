@@ -283,17 +283,21 @@ export default function CronogramaPage() {
       const prof = String(a.professor_id ?? "");
       if (prof && prof !== "null") { profGrupos[prof] ??= []; profGrupos[prof].push(a); }
     }
+    // Aulas do mesmo grupo (vinculadas intencionalmente) não são conflito
+    const mesmoGrupo = (a: any, b: any) =>
+      a.grupo_aula_id != null && a.grupo_aula_id === b.grupo_aula_id;
+
     const cAmb = new Set<string>();
     for (const [k, arr] of Object.entries(salaGrupos)) {
       for (let i = 0; i < arr.length; i++)
         for (let j = i + 1; j < arr.length; j++)
-          if (overlaps(arr[i], arr[j])) cAmb.add(k);
+          if (!mesmoGrupo(arr[i], arr[j]) && overlaps(arr[i], arr[j])) cAmb.add(k);
     }
     const cProf = new Set<string>();
     for (const [k, arr] of Object.entries(profGrupos)) {
       for (let i = 0; i < arr.length; i++)
         for (let j = i + 1; j < arr.length; j++)
-          if (overlaps(arr[i], arr[j])) cProf.add(k);
+          if (!mesmoGrupo(arr[i], arr[j]) && overlaps(arr[i], arr[j])) cProf.add(k);
     }
     return { choqueAmbientes: cAmb, choqueProfessores: cProf };
   }, [aulasNoDia]);

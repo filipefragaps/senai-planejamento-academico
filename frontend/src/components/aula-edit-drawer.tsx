@@ -613,13 +613,13 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
 
                 {eventoVincularId && (
                   <div>
-                    <p className="text-[10px] text-gray-400 mb-1 uppercase tracking-wide font-semibold">UC desta aula no evento alvo <span className="font-normal normal-case">(opcional)</span></p>
+                    <p className="text-[10px] text-gray-400 mb-1 uppercase tracking-wide font-semibold">UC no evento alvo <span className="font-normal normal-case text-gray-400">(coordenador define)</span></p>
                     <select
                       className="input w-full text-sm"
                       value={ucVincularId}
                       onChange={(e) => setUcVincularId(e.target.value)}
                     >
-                      <option value="">— Sem UC definida —</option>
+                      <option value="">Todas as UCs (sem UC específica)</option>
                       {(ucsEventoAlvo as any[]).map((u: any) => (
                         <option key={u.id} value={u.id}>
                           {u.nome} {u.carga_horaria ? `(${u.carga_horaria}h)` : ""}
