@@ -322,6 +322,12 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose, importarDiar
               <p className="text-xs text-blue-600 font-medium">CH no Período</p>
               <p className="text-2xl font-bold text-blue-800 mt-1">{totalHoras.toFixed(1)}h</p>
               {turnoFiltro !== "todos" && <p className="text-[10px] text-blue-400 mt-0.5">{turnoAtivo.label}</p>}
+              {turnoFiltro === "todos" && regencia && (() => {
+                const dedup = (regencia as any).horas_ministradas ?? 0;
+                return Math.abs(totalHoras - dedup) > 0.1 ? (
+                  <p className="text-[10px] text-blue-400 mt-0.5">{dedup.toFixed(1)}h únicas (exclui simultâneas)</p>
+                ) : null;
+              })()}
             </div>
             <div className="rounded-lg bg-green-50 border border-green-100 p-4 text-center">
               <p className="text-xs text-green-600 font-medium">Total de Aulas</p>
@@ -532,6 +538,54 @@ function DiarioTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, 
           )}
         </div>
       </div>
+
+      {/* Painel comparativo planejado × executado */}
+      {(planejadas.length > 0 || soDiario.length > 0) && regencia && (() => {
+        const chPlan = (regencia as any).horas_ministradas ?? 0;
+        const chTrab = horasPeriodo;
+        const percPlan = (regencia as any).percentual_regencia ?? 0;
+        const delta = horasExec - chPlan;
+        const deltaPP = percentualExec !== null ? percentualExec - percPlan : null;
+        const soDiarioH = soDiario.reduce((s: number, d: any) => {
+          if (d.qtde_horas != null && d.qtde_horas > 0) return s + d.qtde_horas;
+          if (d.hora_inicio && d.hora_termino) return s + horasAula(d.hora_inicio, d.hora_termino);
+          return s;
+        }, 0);
+        return (
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Comparativo CH</p>
+            <div className="grid grid-cols-4 gap-3 text-center">
+              <div>
+                <p className="text-[10px] text-gray-400 mb-1">CH de trabalho</p>
+                <p className="text-lg font-bold text-gray-700">{chTrab.toFixed(1)}h</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">base de cálculo</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-blue-500 mb-1">CH planejada</p>
+                <p className="text-lg font-bold text-blue-700">{chPlan.toFixed(1)}h</p>
+                <p className="text-[10px] text-blue-400 mt-0.5">{percPlan.toFixed(1)}% regência</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-indigo-500 mb-1">CH executada</p>
+                <p className="text-lg font-bold text-indigo-700">{horasExec.toFixed(1)}h</p>
+                <p className="text-[10px] text-indigo-400 mt-0.5">{percentualExec !== null ? `${percentualExec.toFixed(1)}%` : "—"} regência</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-gray-400 mb-1">Diferença</p>
+                <p className={cn("text-lg font-bold", delta > 0.05 ? "text-amber-600" : delta < -0.05 ? "text-red-600" : "text-green-600")}>
+                  {delta > 0.05 ? "+" : ""}{delta.toFixed(1)}h
+                </p>
+                {deltaPP !== null && (
+                  <p className="text-[10px] text-gray-400 mt-0.5">{deltaPP > 0 ? "+" : ""}{deltaPP.toFixed(1)} p.p.</p>
+                )}
+                {Math.abs(delta) > 0.5 && soDiarioH > 0.1 && (
+                  <p className="text-[10px] text-amber-500 mt-0.5">{soDiarioH.toFixed(1)}h só no diário</p>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Stats de conciliação */}
       {(planejadas.length > 0 || soDiario.length > 0) && (
