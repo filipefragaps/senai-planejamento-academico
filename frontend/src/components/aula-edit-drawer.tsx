@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { aulasApi, professoresApi, planejamentoApi, cursosApi, ambientesApi, eventosApi } from "@/lib/api";
 import { toast } from "sonner";
@@ -63,6 +63,19 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
   const [secaoVincular, setSecaoVincular] = useState(false);
   const [eventoVincularId, setEventoVincularId] = useState<string>("");
   const [ucVincularId, setUcVincularId] = useState<string>("");
+  const [eventoVincularBusca, setEventoVincularBusca] = useState<string>("");
+  const [eventoVincularOpen, setEventoVincularOpen] = useState(false);
+  const eventoVincularRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (eventoVincularRef.current && !eventoVincularRef.current.contains(e.target as Node)) {
+        setEventoVincularOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
 
   useEffect(() => {
     if (aula) {
@@ -536,22 +549,66 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
                   </div>
                 )}
 
-                <div>
+                <div ref={eventoVincularRef} className="relative">
                   <p className="text-[10px] text-gray-400 mb-1 uppercase tracking-wide font-semibold">Evento a vincular</p>
-                  <select
-                    className="input w-full text-sm"
-                    value={eventoVincularId}
-                    onChange={(e) => { setEventoVincularId(e.target.value); setUcVincularId(""); }}
-                  >
-                    <option value="">— Selecione o evento —</option>
-                    {(todosEventos as any[])
-                      .filter((e: any) => e.id !== aula.evento_id)
-                      .map((e: any) => (
-                        <option key={e.id} value={e.id}>
-                          {e.nome_turma || e.disciplina || `Evento ${e.id}`}
-                        </option>
-                      ))}
-                  </select>
+                  {(() => {
+                    const opcoesBase = (todosEventos as any[]).filter((e: any) => e.id !== aula.evento_id);
+                    const busca = eventoVincularBusca.toLowerCase();
+                    const opcoesFiltradas = busca
+                      ? opcoesBase.filter((e: any) =>
+                          String(e.id).includes(busca) ||
+                          (e.nome_turma || "").toLowerCase().includes(busca) ||
+                          (e.disciplina || "").toLowerCase().includes(busca)
+                        )
+                      : opcoesBase;
+                    const selecionado = opcoesBase.find((e: any) => String(e.id) === eventoVincularId);
+                    const labelSelecionado = selecionado
+                      ? `${selecionado.id} — ${selecionado.disciplina || selecionado.nome_turma || ""}`
+                      : "";
+                    return (
+                      <>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            className="input w-full text-sm pr-8"
+                            placeholder="Digite o código ou nome do curso..."
+                            value={eventoVincularOpen ? eventoVincularBusca : labelSelecionado}
+                            onFocus={() => { setEventoVincularOpen(true); setEventoVincularBusca(""); }}
+                            onChange={(e) => { setEventoVincularBusca(e.target.value); setEventoVincularId(""); }}
+                          />
+                          {eventoVincularId && !eventoVincularOpen && (
+                            <button
+                              type="button"
+                              onClick={() => { setEventoVincularId(""); setEventoVincularBusca(""); setUcVincularId(""); }}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                            >✕</button>
+                          )}
+                        </div>
+                        {eventoVincularOpen && (
+                          <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                            {opcoesFiltradas.length === 0 ? (
+                              <div className="px-3 py-2 text-xs text-gray-400">Nenhum evento encontrado</div>
+                            ) : opcoesFiltradas.slice(0, 50).map((e: any) => (
+                              <button
+                                key={e.id}
+                                type="button"
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 flex flex-col border-b border-gray-50 last:border-0"
+                                onMouseDown={() => {
+                                  setEventoVincularId(String(e.id));
+                                  setEventoVincularBusca("");
+                                  setUcVincularId("");
+                                  setEventoVincularOpen(false);
+                                }}
+                              >
+                                <span className="font-mono font-semibold text-blue-700 text-xs">{e.id}</span>
+                                <span className="text-gray-600 text-xs truncate">{e.disciplina || e.nome_turma || "—"}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
 
                 {eventoVincularId && (
