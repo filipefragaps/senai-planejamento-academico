@@ -974,7 +974,14 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
                       <td className="px-4 py-3 font-mono text-gray-700 whitespace-nowrap">
                         {(a.horario_inicio ?? "").slice(0, 5)} – {(a.horario_fim ?? "").slice(0, 5)}
                       </td>
-                      <td className="px-4 py-3 text-gray-900 font-medium">{a.nome_evento || "—"}</td>
+                      <td className="px-4 py-3 text-gray-900 font-medium">
+                        <span className="flex items-center gap-1.5">
+                          {a.grupo_aula_id && (
+                            <span title="Aula conjunta (vinculada)"><Link2 className="h-3.5 w-3.5 text-indigo-400 shrink-0" /></span>
+                          )}
+                          {a.nome_evento || "—"}
+                        </span>
+                      </td>
                       <td className="px-4 py-3 text-gray-700">{a.uc_nome || <span className="text-gray-400">—</span>}</td>
                       <td className="px-4 py-3">
                         {a.etapa ? (
