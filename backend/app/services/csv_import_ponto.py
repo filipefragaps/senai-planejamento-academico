@@ -64,8 +64,24 @@ async def importar_ponto(conteudo: bytes, db: AsyncSession) -> dict:
     Substitui registros do mesmo período (data_inicio + data_fim).
     Retorna dict com contadores.
     """
-    texto = conteudo.decode("utf-8-sig", errors="replace")
-    reader = csv.DictReader(io.StringIO(texto))
+    # Tenta decodificações comuns (CSV do Windows pode vir em latin-1)
+    for enc in ("utf-8-sig", "latin-1", "cp1252", "utf-8"):
+        try:
+            texto = conteudo.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        texto = conteudo.decode("utf-8", errors="replace")
+
+    # Detecta delimitador (CSV brasileiro usa ";" por padrão)
+    sample = texto[:4096]
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=";,\t|")
+        delimiter = dialect.delimiter
+    except csv.Error:
+        delimiter = ";"  # fallback para Excel pt-BR
+    reader = csv.DictReader(io.StringIO(texto), delimiter=delimiter)
 
     # Normaliza cabeçalhos
     raw_fields = reader.fieldnames or []
@@ -91,9 +107,15 @@ async def importar_ponto(conteudo: bytes, db: AsyncSession) -> dict:
     COL_HT   = _col("total_horas_trabalhadas", "total_horas", "total")
 
     if not COL_NOME:
-        raise ValueError("Coluna NOME não encontrada. Colunas detectadas: " + ", ".join(raw_fields))
+        raise ValueError(
+            f"Coluna NOME não encontrada (delimitador='{delimiter}'). "
+            f"Colunas detectadas: {', '.join(raw_fields[:15])}"
+        )
     if not COL_DI or not COL_DF:
-        raise ValueError("Colunas DATA INICIAL / DATA FINAL não encontradas.")
+        raise ValueError(
+            f"Colunas DATA INICIAL/FINAL não encontradas (delimitador='{delimiter}'). "
+            f"Colunas detectadas: {', '.join(raw_fields[:15])}"
+        )
 
     # Pré-carregar professores
     res_prof = await db.execute(select(Professor.id, Professor.nome))
@@ -150,4 +172,4 @@ async def importar_ponto(conteudo: bytes, db: AsyncSession) -> dict:
         inseridos += 1
 
     await db.flush()
-    return {"inseridos": inseridos, "erros": erros, "periodos": len(periodos)}
+    return {"inseridos": inseridos, "erros": erros, "periodos": len(periodos), "delimiter": delimiter}

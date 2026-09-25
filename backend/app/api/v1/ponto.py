@@ -40,6 +40,7 @@ async def importar_ponto(
         "inseridos": resultado["inseridos"],
         "erros": resultado["erros"],
         "periodos": resultado["periodos"],
+        "delimiter": resultado.get("delimiter"),
         "mensagem": (
             f"{resultado['inseridos']} registros importados em {resultado['periodos']} período(s)"
             f" ({resultado['erros']} ignorados)."
