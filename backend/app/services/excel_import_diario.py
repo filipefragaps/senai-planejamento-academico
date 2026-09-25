@@ -11,6 +11,13 @@ import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 
+
+def _norm_nome(s: str) -> str:
+    """Remove acentos, colapsa espaços e converte para maiúsculas — para comparar nomes."""
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+    return re.sub(r"\s+", " ", s.upper().strip())
+
 from app.models.diario import DiarioAula
 from app.models.professor import Professor
 from app.models.aula import Aula
@@ -57,6 +64,14 @@ def _parse_time(val) -> time | None:
     if isinstance(val, datetime):
         return val.time()
     s = str(val).strip()
+    # Excel fractional time: 0.333... = 08:00, 0.5 = 12:00
+    try:
+        f = float(s)
+        if 0.0 <= f < 1.0:
+            total_min = round(f * 24 * 60)
+            return time(total_min // 60, total_min % 60)
+    except (ValueError, TypeError):
+        pass
     for fmt in ("%H:%M:%S", "%H:%M", "%H%M"):
         try:
             return datetime.strptime(s, fmt).time()
@@ -118,9 +133,11 @@ async def importar_diario(conteudo: bytes, db: AsyncSession) -> dict:
     if not COL_DIA:
         raise ValueError("Coluna DIA/DATA não encontrada.")
 
-    # Pré-carregar professores (nome → id)
+    # Pré-carregar professores (nome → id), com fallback sem acento
     res_prof = await db.execute(select(Professor.id, Professor.nome))
-    prof_map: dict[str, int] = {nome.strip().upper(): pid for pid, nome in res_prof.all()}
+    prof_rows = res_prof.all()
+    prof_map: dict[str, int] = {nome.strip().upper(): pid for pid, nome in prof_rows}
+    prof_map_norm: dict[str, int] = {_norm_nome(nome): pid for pid, nome in prof_rows}
 
     # Pré-carregar eventos (nome_turma → id) para match por codigo
     res_ev = await db.execute(select(Evento.id, Evento.nome_turma))
@@ -162,8 +179,8 @@ async def importar_diario(conteudo: bytes, db: AsyncSession) -> dict:
         hora_termino = _parse_time(hf_raw)
         qtde_horas   = _parse_float(horas_raw)
 
-        # Resolver professor_id por nome exato
-        professor_id = prof_map.get(instrutor.upper())
+        # Resolver professor_id: exato → sem acento
+        professor_id = prof_map.get(instrutor.upper()) or prof_map_norm.get(_norm_nome(instrutor))
 
         # Resolver aula_id: por professor_id + data + hora_inicio
         aula_id: int | None = None

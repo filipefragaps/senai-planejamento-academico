@@ -1,4 +1,6 @@
-from datetime import date
+import re
+import unicodedata
+from datetime import date, time
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -13,6 +15,12 @@ from app.core.deps import get_current_user, require_admin_ou_coordenador
 from app.config import settings
 
 router = APIRouter(prefix="/diario", tags=["Diário de Execução"])
+
+
+def _norm_nome(s: str) -> str:
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+    return re.sub(r"\s+", " ", s.upper().strip())
 
 
 @router.post("/importar", status_code=201)
@@ -181,27 +189,53 @@ async def comparacao(
                     "nome_curso": of2["nome_curso"] if of2 else None,
                 }
 
-    # Registros do diário para este professor no período
+    # Registros do diário no período — filtra por professor_id (se vinculado) OU nome normalizado
+    norm_prof = _norm_nome(prof_nome)
     res_diario = await db.execute(
         select(DiarioAula).where(
-            DiarioAula.instrutor.ilike(prof_nome),
             DiarioAula.data >= data_inicio,
             DiarioAula.data <= data_fim,
         ).order_by(DiarioAula.data, DiarioAula.hora_inicio)
     )
-    diario_entries = res_diario.scalars().all()
+    all_diario = res_diario.scalars().all()
+    diario_entries = [
+        d for d in all_diario
+        if d.professor_id == professor_id or _norm_nome(d.instrutor or "") == norm_prof
+    ]
 
-    # Indexar diário por (data, hora_inicio) para lookup rápido
-    diario_idx: dict[tuple, list[DiarioAula]] = {}
+    # Indexar diário por data para lookup flexível de horário
+    diario_por_data: dict[date, list[DiarioAula]] = {}
     for d in diario_entries:
-        chave = (d.data, d.hora_inicio)
-        diario_idx.setdefault(chave, []).append(d)
+        diario_por_data.setdefault(d.data, []).append(d)
 
+    def _min(t: time | None) -> int:
+        return t.hour * 60 + t.minute if t else -999
+
+    def _match_diario(aula_data: date, aula_inicio: time | None) -> DiarioAula | None:
+        candidatos = diario_por_data.get(aula_data, [])
+        if not candidatos:
+            return None
+        aula_m = _min(aula_inicio)
+        # 1) exato
+        for d in candidatos:
+            if d.hora_inicio and _min(d.hora_inicio) == aula_m:
+                return d
+        # 2) dentro de 60 minutos
+        melhor: DiarioAula | None = None
+        melhor_diff = 999
+        for d in candidatos:
+            diff = abs(_min(d.hora_inicio) - aula_m)
+            if diff <= 60 and diff < melhor_diff:
+                melhor = d
+                melhor_diff = diff
+        return melhor
+
+    matched_diario_ids: set[int] = set()
     planejadas_out = []
     for a in aulas_planejadas:
-        chave = (a.data, a.horario_inicio)
-        matches = diario_idx.get(chave, [])
-        diario_match = matches[0] if matches else None
+        diario_match = _match_diario(a.data, a.horario_inicio)
+        if diario_match:
+            matched_diario_ids.add(diario_match.id)
 
         ev = evento_info.get(a.evento_id, {}) if a.evento_id else {}
 
@@ -218,13 +252,6 @@ async def comparacao(
             "diario": _serializar_diario(diario_match) if diario_match else None,
         })
 
-    # Registros do diário sem correspondência no planejado
-    matched_diario_ids = {
-        d.id
-        for entries in diario_idx.values()
-        for d in entries
-        if any(a.data == d.data and a.horario_inicio == d.hora_inicio for a in aulas_planejadas)
-    }
     somente_diario = [
         _serializar_diario(d)
         for d in diario_entries

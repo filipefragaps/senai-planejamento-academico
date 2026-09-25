@@ -328,7 +328,7 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose, importarDiar
               <p className="text-2xl font-bold text-green-800 mt-1">{totalAulas}</p>
               {turnoFiltro !== "todos" && <p className="text-[10px] text-green-400 mt-0.5">{turnoAtivo.label}</p>}
             </div>
-            <div className="rounded-lg bg-indigo-50 border border-indigo-100 p-4 text-center">
+            <div className="rounded-lg bg-indigo-50 border border-indigo-100 p-4 text-center relative group">
               <p className="text-xs text-indigo-600 font-medium">Regência do Período</p>
               <p className="text-2xl font-bold text-indigo-800 mt-1">
                 {turnoFiltro === "todos"
@@ -345,6 +345,21 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose, importarDiar
                 <p className="text-[10px] text-amber-500 mt-0.5">
                   +{(regencia as any).horas_excedentes.toFixed(1)}h acima da CH mínima
                 </p>
+              )}
+              {turnoFiltro === "todos" && regencia && (
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-20 hidden group-hover:block pointer-events-none">
+                  <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap shadow-lg">
+                    <div className="flex justify-between gap-4">
+                      <span className="text-gray-400">CH de produção</span>
+                      <span className="font-semibold">{((regencia as any).horas_ministradas ?? 0).toFixed(1)}h</span>
+                    </div>
+                    <div className="flex justify-between gap-4 mt-1">
+                      <span className="text-gray-400">CH de trabalho</span>
+                      <span className="font-semibold">{((regencia as any).horas_periodo ?? 0).toFixed(1)}h</span>
+                    </div>
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+                  </div>
+                </div>
               )}
             </div>
           </div>

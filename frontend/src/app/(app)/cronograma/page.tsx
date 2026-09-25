@@ -826,7 +826,7 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
                                 {a.uc_nome || a.nome_evento || "—"}
                               </p>
                               {a.grupo_aula_id && (
-                                <Link2 className="h-3 w-3 text-indigo-400 shrink-0" title="Aula conjunta" />
+                                <span title="Aula conjunta"><Link2 className="h-3 w-3 text-indigo-400 shrink-0" /></span>
                               )}
                             </div>
                             {a.professor_nome && (
