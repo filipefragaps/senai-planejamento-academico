@@ -739,42 +739,68 @@ function DiarioTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, 
           </div>
 
           {/* Somente no diário */}
-          {soDiario.length > 0 && (
-            <div>
-              <h3 className="text-sm font-semibold text-amber-700 mb-2 flex items-center gap-1.5">
-                <AlertTriangle className="h-4 w-4" />
-                Somente no Diário ({soDiario.length}) — sem correspondência no planejado
-              </h3>
-              <div className="overflow-x-auto rounded-lg border border-amber-100">
-                <table className="w-full text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-amber-50 border-b">
-                      <th className="px-3 py-2 text-left font-semibold text-amber-700 whitespace-nowrap">Data</th>
-                      <th className="px-3 py-2 text-left font-semibold text-amber-700 whitespace-nowrap">Horário</th>
-                      <th className="px-3 py-2 text-left font-semibold text-amber-700 whitespace-nowrap">Evento</th>
-                      <th className="px-3 py-2 text-left font-semibold text-amber-700">Curso (Diário)</th>
-                      <th className="px-3 py-2 text-left font-semibold text-amber-700">Componente</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {soDiario.map((d: any, i: number) => (
-                      <tr key={d.id ?? i} className={cn("border-b last:border-0", i % 2 === 0 ? "bg-white" : "bg-amber-50/30")}>
-                        <td className="px-3 py-2 whitespace-nowrap">{fmtData(d.data)}</td>
-                        <td className="px-3 py-2 whitespace-nowrap text-gray-500 font-mono">{d.hora_inicio} – {d.hora_termino}</td>
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          {d.evento_codigo
-                            ? <span className="font-mono font-semibold text-amber-700">{d.evento_codigo}</span>
-                            : <span className="text-gray-300">—</span>}
-                        </td>
-                        <td className="px-3 py-2 min-w-[180px] text-gray-700">{d.evento_nome || "—"}</td>
-                        <td className="px-3 py-2 min-w-[160px] text-gray-500">{d.componente_nome || "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          {soDiario.length > 0 && (() => {
+            // Agrupa por evento para facilitar análise
+            const grupos = new Map<string, { codigo: string | null; nome: string | null; aulas: any[]; chTotal: number }>();
+            for (const d of soDiario) {
+              const key = d.evento_codigo ?? `sem-${d.evento_nome ?? "sem-evento"}`;
+              if (!grupos.has(key)) grupos.set(key, { codigo: d.evento_codigo, nome: d.evento_nome, aulas: [], chTotal: 0 });
+              const g = grupos.get(key)!;
+              g.aulas.push(d);
+              const ch = d.qtde_horas != null && d.qtde_horas > 0 ? d.qtde_horas
+                : (d.hora_inicio && d.hora_termino ? horasAula(d.hora_inicio, d.hora_termino) : 0);
+              g.chTotal += ch;
+            }
+            const totalSoH = Array.from(grupos.values()).reduce((s, g) => s + g.chTotal, 0);
+            return (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-semibold text-amber-700 flex items-center gap-1.5">
+                    <AlertTriangle className="h-4 w-4" />
+                    Executado sem planejamento ({soDiario.length} registros · {totalSoH.toFixed(1)}h)
+                  </h3>
+                  <span className="text-[10px] text-gray-400">{grupos.size} evento{grupos.size !== 1 ? "s" : ""} distintos</span>
+                </div>
+                <div className="space-y-2">
+                  {Array.from(grupos.entries()).map(([key, g]) => (
+                    <div key={key} className="rounded-lg border border-amber-100 overflow-hidden">
+                      {/* Cabeçalho do evento */}
+                      <div className="bg-amber-50 px-3 py-2 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          {g.codigo
+                            ? <span className="font-mono font-bold text-amber-800 shrink-0">{g.codigo}</span>
+                            : <span className="text-gray-400 text-xs italic shrink-0">Sem código</span>}
+                          <span className="text-xs text-gray-600 truncate">{g.nome || "—"}</span>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0 text-xs">
+                          <span className="text-amber-600">{g.aulas.length} aula{g.aulas.length !== 1 ? "s" : ""}</span>
+                          <span className="font-semibold text-amber-800">{g.chTotal.toFixed(1)}h</span>
+                        </div>
+                      </div>
+                      {/* Linhas de aulas */}
+                      <table className="w-full text-xs border-collapse">
+                        <tbody>
+                          {g.aulas.map((d: any, i: number) => {
+                            const ch = d.qtde_horas != null && d.qtde_horas > 0 ? d.qtde_horas
+                              : (d.hora_inicio && d.hora_termino ? horasAula(d.hora_inicio, d.hora_termino) : 0);
+                            return (
+                              <tr key={d.id ?? i} className={cn("border-t border-amber-50", i % 2 === 0 ? "bg-white" : "bg-amber-50/20")}>
+                                <td className="px-3 py-1.5 whitespace-nowrap text-gray-700">{fmtData(d.data)}</td>
+                                <td className="px-3 py-1.5 whitespace-nowrap text-gray-500 font-mono">{d.hora_inicio} – {d.hora_termino}</td>
+                                <td className="px-3 py-1.5 text-gray-500 min-w-[160px]">{d.componente_nome || "—"}</td>
+                                <td className="px-3 py-1.5 text-gray-400 whitespace-nowrap">{d.ambiente || ""}</td>
+                                <td className="px-3 py-1.5 text-right font-mono text-amber-700 whitespace-nowrap">{ch > 0 ? `${ch.toFixed(1)}h` : "—"}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       )}
     </div>
