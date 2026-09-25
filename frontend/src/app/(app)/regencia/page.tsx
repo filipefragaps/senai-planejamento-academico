@@ -470,23 +470,30 @@ function DiarioTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, 
   const comMatch = planejadas.filter(a => a.diario).length;
   const semMatch = planejadas.filter(a => !a.diario).length;
 
-  // Regência executada: soma de horas do diário (planejadas com match + somente diário)
-  // Prioridade: qtde_horas → diff hora_inicio/hora_termino → horas da aula planejada
+  // Regência executada: soma de horas do diário, deduplica por (data, horario_inicio)
+  // para não contar aulas simultâneas de eventos diferentes mais de uma vez.
   const horasExec = useMemo(() => {
-    const deMatchadas = planejadas
-      .filter((a: any) => a.diario)
-      .reduce((s: number, a: any) => {
-        const d = a.diario;
-        if (d.qtde_horas != null && d.qtde_horas > 0) return s + d.qtde_horas;
-        if (d.hora_inicio && d.hora_termino) return s + horasAula(d.hora_inicio, d.hora_termino);
-        return s + horasAula(a.horario_inicio, a.horario_fim);
-      }, 0);
-    const deSomenteDiario = soDiario.reduce((s: number, d: any) => {
-      if (d.qtde_horas != null && d.qtde_horas > 0) return s + d.qtde_horas;
-      if (d.hora_inicio && d.hora_termino) return s + horasAula(d.hora_inicio, d.hora_termino);
-      return s;
-    }, 0);
-    return deMatchadas + deSomenteDiario;
+    const slotsVistos = new Set<string>();
+    let total = 0;
+    for (const a of planejadas) {
+      if (!a.diario) continue;
+      const chave = `${a.data}|${a.horario_inicio ?? ""}`;
+      if (slotsVistos.has(chave)) continue;
+      slotsVistos.add(chave);
+      const d = a.diario;
+      if (d.qtde_horas != null && d.qtde_horas > 0) total += d.qtde_horas;
+      else if (d.hora_inicio && d.hora_termino) total += horasAula(d.hora_inicio, d.hora_termino);
+      else total += horasAula(a.horario_inicio, a.horario_fim);
+    }
+    const slotsDiario = new Set<string>();
+    for (const d of soDiario) {
+      const chave = `${d.data}|${d.hora_inicio ?? ""}`;
+      if (slotsDiario.has(chave)) continue;
+      slotsDiario.add(chave);
+      if (d.qtde_horas != null && d.qtde_horas > 0) total += d.qtde_horas;
+      else if (d.hora_inicio && d.hora_termino) total += horasAula(d.hora_inicio, d.hora_termino);
+    }
+    return total;
   }, [planejadas, soDiario]);
 
   const horasPeriodo = (regencia as any)?.horas_periodo ?? 0;
@@ -546,7 +553,7 @@ function DiarioTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, 
             <p className="text-xl font-bold text-amber-700">{soDiario.length}</p>
           </div>
           <div className={cn(
-            "rounded-lg border p-3 text-center",
+            "rounded-lg border p-3 text-center relative group",
             percentualExec === null ? "bg-gray-50" :
             percentualExec >= 70 ? "bg-indigo-50 border-indigo-100" :
             percentualExec >= 50 ? "bg-yellow-50 border-yellow-100" : "bg-red-50 border-red-100"
@@ -565,6 +572,21 @@ function DiarioTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, 
             </p>
             {horasExec > 0 && (
               <p className="text-[10px] text-gray-400 mt-0.5">{horasExec.toFixed(1)}h executadas</p>
+            )}
+            {percentualExec !== null && (
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-20 hidden group-hover:block pointer-events-none">
+                <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap shadow-lg">
+                  <div className="flex justify-between gap-4">
+                    <span className="text-gray-400">CH de produção</span>
+                    <span className="font-semibold">{horasExec.toFixed(1)}h</span>
+                  </div>
+                  <div className="flex justify-between gap-4 mt-1">
+                    <span className="text-gray-400">CH de trabalho</span>
+                    <span className="font-semibold">{horasPeriodo.toFixed(1)}h</span>
+                  </div>
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+                </div>
+              </div>
             )}
           </div>
         </div>
