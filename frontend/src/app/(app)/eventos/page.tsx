@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { eventosApi, ofertasApi, planejamentoApi, cursosApi, importacaoApi } from "@/lib/api";
 import { LimparBdButton } from "@/components/limpar-bd-button";
@@ -119,6 +119,42 @@ const GRUPO_BADGE: Record<GrupoModalidade, { label: string; cls: string }> = {
   pos:      { label: "Pós-Graduação", cls: "bg-rose-100 text-rose-800 border-rose-200" },
   outros:   { label: "Outra modalidade", cls: "bg-gray-100 text-gray-700 border-gray-200" },
 };
+
+function getSabadosNoPeriodo(inicio: string, fim: string): string[] {
+  if (!inicio || !fim) return [];
+  const result: string[] = [];
+  const d = new Date(inicio + "T12:00:00");
+  const end = new Date(fim + "T12:00:00");
+  while (d.getDay() !== 6) { d.setDate(d.getDate() + 1); if (d > end) return []; }
+  while (d <= end) {
+    result.push(d.toISOString().slice(0, 10));
+    d.setDate(d.getDate() + 7);
+  }
+  return result;
+}
+
+function gerarEncontrosPos(primeiraSexta: string, dataFim: string): Array<{ sexta: string; sabado: string }> {
+  if (!primeiraSexta || !dataFim) return [];
+  const result: Array<{ sexta: string; sabado: string }> = [];
+  const d = new Date(primeiraSexta + "T12:00:00");
+  const end = new Date(dataFim + "T12:00:00");
+  if (d.getDay() !== 5) return []; // deve ser sexta
+  while (d <= end) {
+    const sexta = d.toISOString().slice(0, 10);
+    const sab = new Date(d.getTime() + 86_400_000);
+    result.push({ sexta, sabado: sab.toISOString().slice(0, 10) });
+    d.setDate(d.getDate() + 14);
+  }
+  return result;
+}
+
+function formatDatePT(iso: string): string {
+  if (!iso) return "";
+  const [y, m, day] = iso.split("-");
+  return `${day}/${m}/${y}`;
+}
+
+const DIAS_SEMANA_NOMES = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -1046,6 +1082,9 @@ export default function EventosPage() {
   const [ofertaBuscada, setOfertaBuscada] = useState<{id: number; codigo: string; nome: string} | null>(null);
   const [agendaEditando, setAgendaEditando] = useState(false);
   const [agendaForm, setAgendaForm] = useState({ data_inicio: "", data_fim: "", horario_inicio: "", horario_fim: "", dias_semana: [] as number[] });
+  const [sabadosEad, setSabadosEad] = useState<Record<string, { ativo: boolean; h_inicio: string; h_fim: string }>>({});
+  const [posDataPrimeiro, setPosDataPrimeiro] = useState("");
+  const [modoDistribuido, setModoDistribuido] = useState(false);
 
   // ── Calendário state ────────────────────────────────────────────────────────
   const _hoje = new Date();
@@ -1122,6 +1161,17 @@ export default function EventosPage() {
     enabled: !!eventoSelecionado?.oferta_id && abaAtiva === "ucs",
     staleTime: 300_000,
   });
+
+  // ── Efeitos de modalidade ──────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!eventoSelecionado) return;
+    const grupo = getGrupoModalidade(eventoSelecionado.tipo_modalidade);
+    setModoSuperior(grupo === "superior");
+    setModoDistribuido(false);
+    setSabadosEad({});
+    setPosDataPrimeiro("");
+  }, [eventoSelecionado?.id]);
 
   // ── Mutations ──────────────────────────────────────────────────────────────
 
@@ -2040,6 +2090,188 @@ export default function EventosPage() {
                         );
                       })()}
 
+                      {/* ── Painéis específicos por modalidade ── */}
+                      {(() => {
+                        const grupo = getGrupoModalidade(eventoSelecionado?.tipo_modalidade);
+                        const dataInicio = eventoSelecionado?.data_inicio ?? "";
+                        const dataFim = eventoSelecionado?.data_fim ?? "";
+
+                        // ── Fase 3: EaD — Sábados ─────────────────────────────
+                        if (grupo === "ead") {
+                          const sabados = getSabadosNoPeriodo(dataInicio, dataFim);
+                          const nEadAtivos = sabados.filter((s) => (sabadosEad[s]?.ativo ?? true)).length;
+                          return (
+                            <div className="rounded-lg border border-purple-200 bg-purple-50 p-3 space-y-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <div>
+                                  <p className="text-xs font-semibold text-purple-800">Sábados EaD</p>
+                                  <p className="text-[10px] text-purple-600 mt-0.5">
+                                    {sabados.length} sábados no período · {nEadAtivos} ativos
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setUcsOrdenadas((prev) =>
+                                    prev.map((u) =>
+                                      (u.tipo === "EaD" || u.tipo?.toLowerCase() === "ead")
+                                        ? { ...u, nao_agendar: true }
+                                        : u
+                                    )
+                                  )}
+                                  className="text-[11px] text-purple-700 border border-purple-300 bg-white hover:bg-purple-100 px-2 py-0.5 rounded transition-colors"
+                                >
+                                  Excluir UCs EaD da lista
+                                </button>
+                              </div>
+                              {sabados.length === 0 ? (
+                                <p className="text-xs text-purple-600">Configure as datas de início e fim do evento para ver os sábados.</p>
+                              ) : (
+                                <div className="grid grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
+                                  {sabados.map((sab) => {
+                                    const cfg = sabadosEad[sab] ?? { ativo: true, h_inicio: "08:00", h_fim: "17:00" };
+                                    return (
+                                      <div key={sab} className={cn(
+                                        "rounded border p-2 text-xs transition-colors",
+                                        cfg.ativo ? "border-purple-200 bg-white" : "border-gray-200 bg-gray-50 opacity-60"
+                                      )}>
+                                        <label className="flex items-center gap-1.5 cursor-pointer">
+                                          <input
+                                            type="checkbox"
+                                            checked={cfg.ativo}
+                                            onChange={(e) => setSabadosEad((prev) => ({
+                                              ...prev,
+                                              [sab]: { ...cfg, ativo: e.target.checked },
+                                            }))}
+                                            className="rounded border-purple-300 text-purple-600 focus:ring-purple-500 h-3 w-3"
+                                          />
+                                          <span className={cn("font-medium", cfg.ativo ? "text-purple-800" : "text-gray-400")}>
+                                            {formatDatePT(sab)} ({DIAS_SEMANA_NOMES[new Date(sab + "T12:00:00").getDay()]})
+                                          </span>
+                                        </label>
+                                        {cfg.ativo && (
+                                          <div className="flex items-center gap-1 mt-1.5">
+                                            <input
+                                              type="time"
+                                              value={cfg.h_inicio}
+                                              onChange={(e) => setSabadosEad((prev) => ({
+                                                ...prev,
+                                                [sab]: { ...cfg, h_inicio: e.target.value },
+                                              }))}
+                                              className="input text-[11px] py-0.5 px-1 w-20"
+                                            />
+                                            <span className="text-gray-400">–</span>
+                                            <input
+                                              type="time"
+                                              value={cfg.h_fim}
+                                              onChange={(e) => setSabadosEad((prev) => ({
+                                                ...prev,
+                                                [sab]: { ...cfg, h_fim: e.target.value },
+                                              }))}
+                                              className="input text-[11px] py-0.5 px-1 w-20"
+                                            />
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
+
+                        // ── Fase 4: Pós — Encontros quinzenais ────────────────
+                        if (grupo === "pos") {
+                          const encontros = gerarEncontrosPos(posDataPrimeiro, dataFim);
+                          const chTotal = encontros.length * 12;
+                          return (
+                            <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 space-y-3">
+                              <p className="text-xs font-semibold text-rose-800">Encontros Quinzenais — Pós-Graduação</p>
+                              <div className="flex items-center gap-3 flex-wrap">
+                                <label className="text-[11px] text-rose-700 shrink-0">Primeira sexta-feira:</label>
+                                <input
+                                  type="date"
+                                  value={posDataPrimeiro}
+                                  onChange={(e) => setPosDataPrimeiro(e.target.value)}
+                                  className="input text-xs py-1 px-2"
+                                />
+                                {posDataPrimeiro && new Date(posDataPrimeiro + "T12:00:00").getDay() !== 5 && (
+                                  <span className="text-[11px] text-red-600">⚠ Deve ser uma sexta-feira</span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-rose-600 space-y-0.5">
+                                <p>Sex: 19h–22h (3h) · Sáb: 8h–18h (9h) = <strong>12h efetivas</strong> por encontro</p>
+                                <p>Intervalo de 14 dias (quinzenal) — feriados devem ser ajustados manualmente.</p>
+                              </div>
+                              {encontros.length > 0 && (
+                                <>
+                                  <div className="space-y-1 max-h-44 overflow-y-auto border border-rose-200 rounded bg-white p-2">
+                                    {encontros.map((enc, i) => (
+                                      <div key={i} className="flex items-center gap-2 text-[11px]">
+                                        <span className="text-rose-500 font-mono w-5 text-right shrink-0">#{i + 1}</span>
+                                        <span className="text-gray-700">
+                                          Sex {formatDatePT(enc.sexta)} 19h–22h
+                                        </span>
+                                        <span className="text-gray-400">+</span>
+                                        <span className="text-gray-700">
+                                          Sáb {formatDatePT(enc.sabado)} 8h–18h
+                                        </span>
+                                        <span className="ml-auto text-rose-600 font-medium">12h</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <p className="text-[11px] text-rose-700 font-medium">
+                                    {encontros.length} encontros · {chTotal}h total
+                                    {eventoSelecionado?.carga_horaria_oferta && chTotal < eventoSelecionado.carga_horaria_oferta && (
+                                      <span className="text-amber-600 ml-2">
+                                        ⚠ {eventoSelecionado.carga_horaria_oferta - chTotal}h abaixo da CH da oferta ({eventoSelecionado.carga_horaria_oferta}h)
+                                      </span>
+                                    )}
+                                    {eventoSelecionado?.carga_horaria_oferta && chTotal >= eventoSelecionado.carga_horaria_oferta && (
+                                      <span className="text-green-600 ml-2">✓ CH atendida</span>
+                                    )}
+                                  </p>
+                                </>
+                              )}
+                              {posDataPrimeiro && new Date(posDataPrimeiro + "T12:00:00").getDay() === 5 && encontros.length === 0 && (
+                                <p className="text-[11px] text-amber-600">Nenhum encontro gerado — verifique as datas do evento.</p>
+                              )}
+                            </div>
+                          );
+                        }
+
+                        // ── Fase 6: Técnico — modo distribuído ────────────────
+                        if (grupo === "tecnico") {
+                          return (
+                            <div className={cn(
+                              "rounded-lg border px-3 py-2.5",
+                              modoDistribuido ? "border-blue-300 bg-blue-50" : "border-gray-200 bg-gray-50"
+                            )}>
+                              <label className="flex items-start gap-2.5 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={modoDistribuido}
+                                  onChange={(e) => setModoDistribuido(e.target.checked)}
+                                  className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <div>
+                                  <p className={cn("text-xs font-semibold", modoDistribuido ? "text-blue-800" : "text-gray-700")}>
+                                    Técnico Presencial — Modo Distribuído
+                                  </p>
+                                  <p className={cn("text-[10px] mt-0.5", modoDistribuido ? "text-blue-600" : "text-gray-400")}>
+                                    {modoDistribuido
+                                      ? "As UCs são distribuídas em paralelo pelos dias disponíveis — ideal quando módulos ocorrem simultaneamente."
+                                      : "Modo padrão: cada UC é concluída antes de iniciar a próxima (sequencial). Ative para distribuição paralela."}
+                                  </p>
+                                </div>
+                              </label>
+                            </div>
+                          );
+                        }
+
+                        return null;
+                      })()}
+
                       {/* Aguardando query de módulos (sucesso ou erro) */}
                       {!modulosResolvido ? (
                         <div className="flex items-center justify-center py-16 text-gray-400">
@@ -2113,46 +2345,67 @@ export default function EventosPage() {
                                 </div>
 
                                 {/* Modo Ensino Superior */}
-                                <div className={cn(
-                                  "rounded-lg border px-3 py-2.5",
-                                  modoSuperior ? "border-indigo-300 bg-indigo-50" : "border-gray-200 bg-gray-50"
-                                )}>
-                                  <label className="flex items-start gap-2.5 cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      checked={modoSuperior}
-                                      onChange={(e) => {
-                                        setModoSuperior(e.target.checked);
-                                        if (!e.target.checked) setCliparSemestre(false);
-                                      }}
-                                      className="mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                    />
-                                    <div>
-                                      <p className={cn("text-xs font-semibold", modoSuperior ? "text-indigo-800" : "text-gray-700")}>
-                                        Ensino Superior — 1 UC por semana
-                                      </p>
-                                      <p className={cn("text-[10px] mt-0.5", modoSuperior ? "text-indigo-600" : "text-gray-400")}>
-                                        Cada UC ocorre sempre no mesmo dia da semana ao longo do semestre. Selecione o dia para cada UC abaixo.
-                                      </p>
-                                    </div>
-                                  </label>
+                                {(() => {
+                                  const grupo = getGrupoModalidade(eventoSelecionado?.tipo_modalidade);
+                                  const autoSuperior = grupo === "superior";
+                                  return (
+                                    <div className={cn(
+                                      "rounded-lg border px-3 py-2.5",
+                                      modoSuperior ? "border-indigo-300 bg-indigo-50" : "border-gray-200 bg-gray-50"
+                                    )}>
+                                      {autoSuperior ? (
+                                        <div>
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-xs font-semibold text-indigo-800">Ensino Superior — 1 UC por slot de dia</span>
+                                            <span className="text-[10px] bg-indigo-200 text-indigo-800 px-1.5 py-0.5 rounded font-medium">Auto</span>
+                                          </div>
+                                          <p className="text-[10px] text-indigo-600 mt-1">
+                                            Cada UC ocupa um dia fixo da semana (Seg–Sex 18h45–22h45). Quando uma UC termina, a próxima UC assume automaticamente o mesmo slot.
+                                          </p>
+                                          <p className="text-[10px] text-indigo-500 mt-0.5">
+                                            Selecione o dia da semana para cada UC na lista abaixo.
+                                          </p>
+                                        </div>
+                                      ) : (
+                                        <label className="flex items-start gap-2.5 cursor-pointer">
+                                          <input
+                                            type="checkbox"
+                                            checked={modoSuperior}
+                                            onChange={(e) => {
+                                              setModoSuperior(e.target.checked);
+                                              if (!e.target.checked) setCliparSemestre(false);
+                                            }}
+                                            className="mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                          />
+                                          <div>
+                                            <p className={cn("text-xs font-semibold", modoSuperior ? "text-indigo-800" : "text-gray-700")}>
+                                              Ensino Superior — 1 UC por semana
+                                            </p>
+                                            <p className={cn("text-[10px] mt-0.5", modoSuperior ? "text-indigo-600" : "text-gray-400")}>
+                                              Cada UC ocorre sempre no mesmo dia da semana ao longo do semestre. Selecione o dia para cada UC abaixo.
+                                            </p>
+                                          </div>
+                                        </label>
+                                      )}
 
-                                  {/* Sub-opção: limitar ao semestre corrente */}
-                                  {modoSuperior && (
-                                    <label className="flex items-center gap-2 mt-2 pt-2 border-t border-indigo-200 cursor-pointer">
-                                      <input
-                                        type="checkbox"
-                                        checked={cliparSemestre}
-                                        onChange={(e) => setCliparSemestre(e.target.checked)}
-                                        className="rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
-                                      />
-                                      <span className="text-[11px] text-indigo-700">
-                                        Limitar ao semestre corrente
-                                        <span className="ml-1 text-indigo-400">(marque para Graduação/Licenciatura)</span>
-                                      </span>
-                                    </label>
-                                  )}
-                                </div>
+                                      {/* Sub-opção: limitar ao semestre corrente */}
+                                      {modoSuperior && (
+                                        <label className="flex items-center gap-2 mt-2 pt-2 border-t border-indigo-200 cursor-pointer">
+                                          <input
+                                            type="checkbox"
+                                            checked={cliparSemestre}
+                                            onChange={(e) => setCliparSemestre(e.target.checked)}
+                                            className="rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
+                                          />
+                                          <span className="text-[11px] text-indigo-700">
+                                            Limitar ao semestre corrente
+                                            <span className="ml-1 text-indigo-400">(marque para Graduação/Licenciatura)</span>
+                                          </span>
+                                        </label>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
 
                                 {/* Cabeçalho com botão Gerar */}
                                 {(() => {
