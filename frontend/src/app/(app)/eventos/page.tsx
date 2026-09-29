@@ -98,7 +98,7 @@ function parsearDiasSemana(texto: string): number[] {
   return dias.sort((a, b) => a - b);
 }
 
-type GrupoModalidade = "fic" | "tecnico" | "ead" | "superior" | "pos" | "outros";
+type GrupoModalidade = "fic" | "tecnico" | "ead" | "seduc" | "superior" | "pos" | "outros";
 
 function getGrupoModalidade(tipoModalidade: string | null | undefined): GrupoModalidade {
   if (!tipoModalidade) return "outros";
@@ -110,6 +110,7 @@ function getGrupoModalidade(tipoModalidade: string | null | undefined): GrupoMod
     if ([3, 11, 21, 51, 53, 54].includes(codigo)) return "fic";
     if (codigo === 31) return "tecnico";
     if (codigo === 33) return "ead";
+    if (codigo === 35) return "seduc";
     if ([41, 81].includes(codigo)) return "superior";
     if (codigo === 91) return "pos";
   }
@@ -118,6 +119,7 @@ function getGrupoModalidade(tipoModalidade: string | null | undefined): GrupoMod
   if (t.includes("PÓS") || t.includes("POS") || t.includes("ESPECIALIZACAO") || t.includes("ESPECIALIZAÇÃO")) return "pos";
   if (t.includes("SUPERIOR") || t.includes("GRADUAÇ") || t.includes("GRADUAC") || t.includes("LICENCIATURA") || t.includes("BACHARELADO") || t.includes("TECNOLOG")) return "superior";
   if (t.includes("EAD") || t.includes("À DISTÂNCIA") || t.includes("A DISTANCIA") || t.includes("DISTÂNCIA") || t.includes("SEMIPRESENCIAL")) return "ead";
+  if (t.includes("SEDUC") || t.includes("ENSINO MÉDIO") || t.includes("ENSINO MEDIO")) return "seduc";
   if (t.includes("TÉCNICO") || t.includes("TECNICO") || t.includes("SUBSEQUENTE") || t.includes("CONCOMITANTE") || t.includes("INTEGRADO")) return "tecnico";
   if (t.includes("QUALIFICAÇ") || t.includes("QUALIFICAC") || t.includes("FIC") || t.includes("APERFEIÇOAMENTO") || t.includes("APERFEICOAMENTO") || t.includes("FORMAÇ") || t.includes("FORMAC")) return "fic";
 
@@ -128,6 +130,7 @@ const GRUPO_BADGE: Record<GrupoModalidade, { label: string; cls: string }> = {
   fic:      { label: "FIC", cls: "bg-green-100 text-green-800 border-green-200" },
   tecnico:  { label: "Técnico Presencial", cls: "bg-blue-100 text-blue-800 border-blue-200" },
   ead:      { label: "Técnico EaD", cls: "bg-purple-100 text-purple-800 border-purple-200" },
+  seduc:    { label: "Técnico SEDUC", cls: "bg-amber-100 text-amber-800 border-amber-200" },
   superior: { label: "Superior", cls: "bg-indigo-100 text-indigo-800 border-indigo-200" },
   pos:      { label: "Pós-Graduação", cls: "bg-rose-100 text-rose-800 border-rose-200" },
   outros:   { label: "Outra modalidade", cls: "bg-gray-100 text-gray-700 border-gray-200" },
@@ -1098,6 +1101,7 @@ export default function EventosPage() {
   const [sabadosEad, setSabadosEad] = useState<Record<string, { ativo: boolean; h_inicio: string; h_fim: string }>>({});
   const [posDataPrimeiro, setPosDataPrimeiro] = useState("");
   const [modoDistribuido, setModoDistribuido] = useState(false);
+  const [seducSlots, setSeducSlots] = useState<Record<number, { data: string; hora_inicio: string; hora_fim: string }>>({});
   const [grupoFiltro, setGrupoFiltro] = useState<GrupoModalidade | null>(null);
 
   // ── Calendário state ────────────────────────────────────────────────────────
@@ -1185,6 +1189,7 @@ export default function EventosPage() {
     setModoDistribuido(false);
     setSabadosEad({});
     setPosDataPrimeiro("");
+    setSeducSlots({});
   }, [eventoSelecionado?.id]);
 
   // ── Mutations ──────────────────────────────────────────────────────────────
@@ -1611,8 +1616,8 @@ export default function EventosPage() {
 
         {/* ── Sub-janelas por modalidade ──────────────────────────────────── */}
         {!isLoading && statusCounts.total > 0 && (
-          <div className="grid grid-cols-5 gap-3 mt-4">
-            {(["fic", "tecnico", "ead", "superior", "pos"] as GrupoModalidade[]).map((grupo) => {
+          <div className="grid grid-cols-6 gap-3 mt-4">
+            {(["fic", "tecnico", "ead", "seduc", "superior", "pos"] as GrupoModalidade[]).map((grupo) => {
               const badge = GRUPO_BADGE[grupo];
               const count = contagemPorGrupo[grupo] ?? 0;
               const ativo = grupoFiltro === grupo;
@@ -2303,6 +2308,87 @@ export default function EventosPage() {
                                   </p>
                                 </div>
                               </label>
+                            </div>
+                          );
+                        }
+
+                        // ── SEDUC (35) — Agendamento hora-a-hora ──────────────
+                        if (grupo === "seduc") {
+                          const ucsSeduc = ucsOrdenadas.filter((u) => !u.nao_agendar);
+                          const slotsDefinidos = ucsSeduc.filter((u) => seducSlots[u.id]?.data).length;
+                          return (
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-3">
+                              <div>
+                                <p className="text-xs font-semibold text-amber-800">Agendamento SEDUC — Hora-a-hora</p>
+                                <p className="text-[10px] text-amber-600 mt-0.5">
+                                  Atribua data e horário específicos a cada UC. O mesmo dia pode ter múltiplas UCs em horários diferentes.
+                                </p>
+                              </div>
+                              {ucsSeduc.length === 0 ? (
+                                <p className="text-xs text-amber-600">Nenhuma UC disponível para agendamento.</p>
+                              ) : (
+                                <>
+                                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                                    {ucsSeduc.map((uc, idx) => {
+                                      const slot = seducSlots[uc.id] ?? { data: "", hora_inicio: "08:00", hora_fim: "09:00" };
+                                      return (
+                                        <div key={uc.id} className="rounded border border-amber-200 bg-white p-2 space-y-1.5">
+                                          <div className="flex items-center gap-1.5">
+                                            <span className="text-[10px] font-mono text-amber-500 shrink-0 w-4 text-right">{idx + 1}.</span>
+                                            <p className="text-[11px] font-medium text-gray-800 truncate flex-1">{uc.nome}</p>
+                                            <span className="text-[10px] text-amber-600 shrink-0">{uc.carga_horaria}h</span>
+                                          </div>
+                                          <div className="flex items-center gap-2 flex-wrap pl-5">
+                                            <input
+                                              type="date"
+                                              value={slot.data}
+                                              min={dataInicio || undefined}
+                                              max={dataFim || undefined}
+                                              onChange={(e) => setSeducSlots((prev) => ({
+                                                ...prev,
+                                                [uc.id]: { ...slot, data: e.target.value },
+                                              }))}
+                                              className="input text-[11px] py-0.5 px-1"
+                                            />
+                                            <input
+                                              type="time"
+                                              value={slot.hora_inicio}
+                                              step="60"
+                                              onChange={(e) => setSeducSlots((prev) => ({
+                                                ...prev,
+                                                [uc.id]: { ...slot, hora_inicio: e.target.value },
+                                              }))}
+                                              className="input text-[11px] py-0.5 px-1 w-22"
+                                            />
+                                            <span className="text-gray-400 text-[10px]">até</span>
+                                            <input
+                                              type="time"
+                                              value={slot.hora_fim}
+                                              step="60"
+                                              onChange={(e) => setSeducSlots((prev) => ({
+                                                ...prev,
+                                                [uc.id]: { ...slot, hora_fim: e.target.value },
+                                              }))}
+                                              className="input text-[11px] py-0.5 px-1 w-22"
+                                            />
+                                            {slot.data && (
+                                              <span className="text-[10px] text-amber-700 font-medium">
+                                                {new Date(slot.data + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" })}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  <p className="text-[11px] text-amber-700 font-medium">
+                                    {slotsDefinidos} de {ucsSeduc.length} UCs com data atribuída
+                                    {slotsDefinidos === ucsSeduc.length && ucsSeduc.length > 0 && (
+                                      <span className="text-green-600 ml-2">✓ Todas agendadas</span>
+                                    )}
+                                  </p>
+                                </>
+                              )}
                             </div>
                           );
                         }
