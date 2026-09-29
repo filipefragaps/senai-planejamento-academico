@@ -313,6 +313,7 @@ export const pontoApi = {
       transformRequest: (data, headers) => { if (headers) delete headers["Content-Type"]; return data; },
     }).then((r) => r.data);
   },
+  limpar: () => api.delete("/ponto/limpar").then((r) => r.data),
   info: () => api.get("/ponto/info").then((r) => r.data),
   professor: (professorId: number, dataInicio: string, dataFim: string) =>
     api.get(`/ponto/professor/${professorId}`, { params: { data_inicio: dataInicio, data_fim: dataFim } }).then((r) => r.data),

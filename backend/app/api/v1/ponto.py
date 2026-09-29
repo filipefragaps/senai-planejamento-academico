@@ -1,7 +1,7 @@
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_
+from sqlalchemy import select, func, and_, delete
 
 from app.database import get_db
 from app.models.ponto import PontoMensal
@@ -17,9 +17,10 @@ async def importar_ponto(
     db: AsyncSession = Depends(get_db),
     _=Depends(require_admin_ou_coordenador),
 ):
-    """Importa CSV de ponto batido. Substitui registros dos períodos presentes no arquivo."""
-    if not arquivo.filename.lower().endswith((".csv", ".txt")):
-        raise HTTPException(status_code=400, detail="Arquivo deve ser .csv ou .txt")
+    """Importa planilha Excel de ponto batido. Substitui registros dos meses presentes no arquivo."""
+    nome = (arquivo.filename or "").lower()
+    if not nome.endswith((".xlsx", ".xls")):
+        raise HTTPException(status_code=400, detail="Arquivo deve ser .xlsx ou .xls")
 
     tamanho_max = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
     conteudo = await arquivo.read()
@@ -40,12 +41,22 @@ async def importar_ponto(
         "inseridos": resultado["inseridos"],
         "erros": resultado["erros"],
         "periodos": resultado["periodos"],
-        "delimiter": resultado.get("delimiter"),
         "mensagem": (
-            f"{resultado['inseridos']} registros importados em {resultado['periodos']} período(s)"
+            f"{resultado['inseridos']} registros importados em {resultado['periodos']} mês(es)"
             f" ({resultado['erros']} ignorados)."
         ),
     }
+
+
+@router.delete("/limpar", status_code=200)
+async def limpar_ponto(
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_admin_ou_coordenador),
+):
+    """Remove todos os registros de ponto do banco."""
+    result = await db.execute(delete(PontoMensal))
+    await db.commit()
+    return {"removidos": result.rowcount}
 
 
 @router.get("/info")
@@ -76,7 +87,7 @@ async def ponto_professor(
 ):
     """
     Retorna os registros de ponto do professor no período solicitado.
-    Inclui registros cujo período (data_inicio..data_fim) se sobrepõe ao filtro.
+    Inclui registros cujo mês (data_inicio..data_fim) se sobrepõe ao filtro.
     """
     res = await db.execute(
         select(PontoMensal)
@@ -89,9 +100,8 @@ async def ponto_professor(
     )
     registros = res.scalars().all()
 
-    total_efetivas = sum(r.horas_efetivas or 0 for r in registros)
-    total_extras   = sum(r.horas_extras   or 0 for r in registros)
-    total_horas    = sum(r.horas_total    or 0 for r in registros)
+    total_extras = sum(r.horas_extras or 0 for r in registros)
+    total_horas  = sum(r.horas_total  or 0 for r in registros)
 
     return {
         "registros": [
@@ -107,7 +117,7 @@ async def ponto_professor(
             for r in registros
         ],
         "totais": {
-            "horas_efetivas": round(total_efetivas, 2),
+            "horas_efetivas": 0,
             "horas_extras": round(total_extras, 2),
             "horas_total": round(total_horas, 2),
         },
