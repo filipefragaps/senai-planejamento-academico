@@ -59,6 +59,26 @@ async def limpar_ponto(
     return {"removidos": result.rowcount}
 
 
+@router.get("/stats")
+async def stats_ponto(
+    data_inicio: date,
+    data_fim: date,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """Retorna horas_total por professor_id para o período (para exibir regência real na listagem)."""
+    res = await db.execute(
+        select(PontoMensal.professor_id, func.sum(PontoMensal.horas_total))
+        .where(
+            PontoMensal.professor_id.isnot(None),
+            PontoMensal.data_inicio <= data_fim,
+            PontoMensal.data_fim >= data_inicio,
+        )
+        .group_by(PontoMensal.professor_id)
+    )
+    return {str(prof_id): round(float(total or 0), 2) for prof_id, total in res.all()}
+
+
 @router.get("/info")
 async def info_ponto(
     db: AsyncSession = Depends(get_db),

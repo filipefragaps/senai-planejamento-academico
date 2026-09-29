@@ -1233,7 +1233,7 @@ export default function RegenciaPage() {
   const [filtroModalidades, setFiltroModalidades] = useState<string[]>([]);
   const [modalidadeOpen, setModalidadeOpen] = useState(false);
   const modalidadeRef = useRef<HTMLDivElement>(null);
-  const [ordem, setOrdem] = useState<"asc" | "desc">("asc"); // asc = pior primeiro
+  const [ordem, setOrdem] = useState<"asc" | "desc">("desc"); // desc = maior primeiro
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -1291,13 +1291,14 @@ export default function RegenciaPage() {
       );
     }
     if (busca) r = r.filter(p => p.nome.toLowerCase().includes(busca.toLowerCase()));
-    r.sort((a, b) =>
-      ordem === "asc"
-        ? a.percentual_regencia - b.percentual_regencia
-        : b.percentual_regencia - a.percentual_regencia
-    );
+    const perc = (p: any) => {
+      const pontoH = pontoStats ? (pontoStats as any)[String(p.professor_id)] : null;
+      const dioH = diarioStats ? (diarioStats as any)[String(p.professor_id)] : null;
+      return pontoH != null && pontoH > 0 && dioH != null ? (dioH / pontoH) * 100 : p.percentual_regencia;
+    };
+    r.sort((a, b) => ordem === "asc" ? perc(a) - perc(b) : perc(b) - perc(a));
     return r;
-  }, [regencias, filtroStatus, filtroQuadro, filtroModalidades, busca, ordem]);
+  }, [regencias, filtroStatus, filtroQuadro, filtroModalidades, busca, ordem, pontoStats, diarioStats]);
 
   // Contagem recalculada sobre a lista já filtrada por quadro+modalidade (ignora filtroStatus)
   const contagem = useMemo(() => {
@@ -1353,6 +1354,31 @@ export default function RegenciaPage() {
     staleTime: 60_000,
     enabled: !!(diarioInfo as any)?.total,
   });
+
+  const { data: pontoStats } = useQuery<Record<string, number>>({
+    queryKey: ["ponto-stats", regDataInicio, regDataFim],
+    queryFn: () => pontoApi.stats(regDataInicio, regDataFim),
+    staleTime: 60_000,
+  });
+
+  const mediaReal = useMemo(() => {
+    if (!diarioStats || !pontoStats || Object.keys(pontoStats).length === 0) return null;
+    let base = (regencias as any[]).map(p => ({ ...p, status_regencia: p.status ?? p.status_regencia }));
+    if (filtroQuadro === "quadro")      base = base.filter(p => TIPOS_QUADRO.has(p.tipo));
+    if (filtroQuadro === "extraquadro") base = base.filter(p => !TIPOS_QUADRO.has(p.tipo));
+    if (filtroModalidades.length > 0)   base = base.filter(p => (p.modalidades as string[] ?? []).some((m: string) => filtroModalidades.some(fm => m.toLowerCase().includes(fm.toLowerCase()))));
+    const incluidos = base.filter(p => !excluidos.has(p.professor_id));
+    const comAmbos = incluidos.filter(p => {
+      const id = String(p.professor_id);
+      return diarioStats[id] != null && (pontoStats as any)[id] != null && (pontoStats as any)[id] > 0;
+    });
+    if (comAmbos.length === 0) return null;
+    const soma = comAmbos.reduce((s: number, p: any) => {
+      const id = String(p.professor_id);
+      return s + ((diarioStats[id] ?? 0) / ((pontoStats as any)[id] ?? 1)) * 100;
+    }, 0);
+    return { media: soma / comAmbos.length, count: comAmbos.length };
+  }, [diarioStats, pontoStats, regencias, excluidos, filtroQuadro, filtroModalidades]);
 
   const mediaExecutada = useMemo(() => {
     if (!diarioStats || Object.keys(diarioStats).length === 0) return null;
@@ -1518,42 +1544,37 @@ export default function RegenciaPage() {
             </div>
           </div>
 
-          {/* Executada */}
+          {/* Real */}
           <div className="card px-5 py-4 flex items-center gap-4">
-            <div className="h-10 w-10 rounded-xl bg-purple-100 flex items-center justify-center shrink-0">
-              <BookOpen className="h-5 w-5 text-purple-600" />
+            <div className="h-10 w-10 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
+              <Clock className="h-5 w-5 text-slate-600" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Regência Executada</p>
-              {mediaExecutada ? (
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Regência Real</p>
+              {mediaReal ? (
                 <div className="flex items-baseline gap-2 mt-0.5">
                   <span className={cn(
                     "text-3xl font-bold",
-                    mediaExecutada.media >= 70 ? "text-green-700" : mediaExecutada.media >= 50 ? "text-yellow-700" : "text-red-700"
+                    mediaReal.media >= 70 ? "text-green-700" : mediaReal.media >= 50 ? "text-yellow-700" : "text-red-700"
                   )}>
-                    {mediaExecutada.media.toFixed(1)}%
+                    {mediaReal.media.toFixed(1)}%
                   </span>
-                  <RegenciaDiffTooltip
-                    planejadoProfs={mediaRegencia.profs}
-                    executadoProfs={mediaExecutada.profs}
-                  >
-                    <span className="text-sm text-gray-400 underline decoration-dotted decoration-gray-300">{mediaExecutada.count} prof. c/ diário</span>
-                  </RegenciaDiffTooltip>
+                  <span className="text-sm text-gray-400">{mediaReal.count} prof. c/ ponto</span>
                 </div>
               ) : (
                 <p className="text-sm text-gray-400 mt-1">
-                  {(diarioInfo as any)?.total ? "Calculando..." : "Sem diário importado"}
+                  {pontoStats && Object.keys(pontoStats).length > 0 ? "Calculando..." : "Sem ponto importado"}
                 </p>
               )}
             </div>
-            {mediaExecutada && (
+            {mediaReal && (
               <div className="shrink-0 text-right">
                 <p className="text-xs text-gray-400">Meta: 70%</p>
                 <span className={cn(
                   "text-xs font-semibold px-2 py-0.5 rounded-full",
-                  mediaExecutada.media >= 70 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                  mediaReal.media >= 70 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
                 )}>
-                  {mediaExecutada.media >= 70 ? "Atingida" : "Abaixo da meta"}
+                  {mediaReal.media >= 70 ? "Atingida" : "Abaixo da meta"}
                 </span>
               </div>
             )}
@@ -1711,6 +1732,10 @@ export default function RegenciaPage() {
             const statusStyle = STATUS_CARD_STYLE[p.status_regencia] ?? STATUS_CARD_STYLE.Alerta;
             const Icon = statusStyle.icon;
             const isExcluido = excluidos.has(p.professor_id);
+            const pontoH = pontoStats ? (pontoStats as any)[String(p.professor_id)] : null;
+            const dioH = diarioStats ? (diarioStats as any)[String(p.professor_id)] : null;
+            const realPerc = pontoH != null && pontoH > 0 && dioH != null ? (dioH / pontoH) * 100 : null;
+            const displayPerc = realPerc ?? p.percentual_regencia ?? 0;
             return (
               <button
                 key={p.professor_id}
@@ -1762,10 +1787,15 @@ export default function RegenciaPage() {
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-xs">
                     <span className={cn("font-bold text-base", statusStyle.text)}>
-                      {(p.percentual_regencia ?? 0).toFixed(1)}%
+                      {displayPerc.toFixed(1)}%
+                      {realPerc != null && (
+                        <span className="ml-1 text-[10px] font-normal text-slate-400">real</span>
+                      )}
                     </span>
                     <span className="text-gray-400">
-                      {(p.horas_ministradas ?? 0).toFixed(1)}h ministradas
+                      {realPerc != null
+                        ? `${(dioH ?? 0).toFixed(1)}h diário ÷ ${pontoH?.toFixed(1)}h ponto`
+                        : `${(p.horas_ministradas ?? 0).toFixed(1)}h ministradas`}
                     </span>
                   </div>
 
@@ -1775,10 +1805,10 @@ export default function RegenciaPage() {
                       className={cn(
                         "h-3 rounded-full transition-all",
                         p.tipo === "Horista"
-                          ? (p.percentual_regencia >= 100 ? "bg-green-500" : p.percentual_regencia >= 50 ? "bg-yellow-400" : "bg-red-400")
-                          : (p.percentual_regencia >= 90 ? "bg-orange-400" : p.percentual_regencia >= 70 ? "bg-green-500" : p.percentual_regencia >= 50 ? "bg-yellow-400" : "bg-red-400")
+                          ? (displayPerc >= 100 ? "bg-green-500" : displayPerc >= 50 ? "bg-yellow-400" : "bg-red-400")
+                          : (displayPerc >= 90 ? "bg-orange-400" : displayPerc >= 70 ? "bg-green-500" : displayPerc >= 50 ? "bg-yellow-400" : "bg-red-400")
                       )}
-                      style={{ width: `${Math.min(p.percentual_regencia ?? 0, 100)}%` }}
+                      style={{ width: `${Math.min(displayPerc, 100)}%` }}
                     />
                     {/* Marcador da meta na posição correta por tipo */}
                     <div className="absolute top-0 h-3 w-0.5 bg-gray-500/60" style={{ left: `${p.meta_regencia ?? 70}%` }} />

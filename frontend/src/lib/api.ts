@@ -315,6 +315,8 @@ export const pontoApi = {
   },
   limpar: () => api.delete("/ponto/limpar").then((r) => r.data),
   info: () => api.get("/ponto/info").then((r) => r.data),
+  stats: (dataInicio: string, dataFim: string) =>
+    api.get("/ponto/stats", { params: { data_inicio: dataInicio, data_fim: dataFim } }).then((r) => r.data),
   professor: (professorId: number, dataInicio: string, dataFim: string) =>
     api.get(`/ponto/professor/${professorId}`, { params: { data_inicio: dataInicio, data_fim: dataFim } }).then((r) => r.data),
 };
