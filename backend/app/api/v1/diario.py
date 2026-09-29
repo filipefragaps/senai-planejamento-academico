@@ -62,23 +62,30 @@ async def stats_diario(
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    """Horas executadas por professor no período, conforme o diário importado."""
+    """Horas executadas por professor no período (deduplica mesmo dia+horário, igual ao PontoTab)."""
     from collections import defaultdict
     res = await db.execute(
         select(
             DiarioAula.professor_id,
-            DiarioAula.qtde_horas,
+            DiarioAula.data,
             DiarioAula.hora_inicio,
             DiarioAula.hora_termino,
+            DiarioAula.qtde_horas,
         )
         .where(
             DiarioAula.professor_id.isnot(None),
             DiarioAula.data >= data_inicio,
             DiarioAula.data <= data_fim,
         )
+        .order_by(DiarioAula.professor_id, DiarioAula.data, DiarioAula.hora_inicio)
     )
     horas_por_prof: dict[int, float] = defaultdict(float)
+    slots_vistos: dict[int, set] = defaultdict(set)
     for row in res.all():
+        slot = (row.data, row.hora_inicio)
+        if slot in slots_vistos[row.professor_id]:
+            continue
+        slots_vistos[row.professor_id].add(slot)
         h = 0.0
         if row.qtde_horas is not None:
             h = float(row.qtde_horas)
