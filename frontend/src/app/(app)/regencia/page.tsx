@@ -543,11 +543,10 @@ function PontoTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, p
       else if (d.hora_inicio && d.hora_termino) total += horasAula(d.hora_inicio, d.hora_termino);
       else total += horasAula(a.horario_inicio, a.horario_fim);
     }
-    const slotsDiario = new Set<string>();
     for (const d of soDiario) {
       const chave = `${d.data}|${d.hora_inicio ?? ""}`;
-      if (slotsDiario.has(chave)) continue;
-      slotsDiario.add(chave);
+      if (slotsVistos.has(chave)) continue;
+      slotsVistos.add(chave);
       if (d.qtde_horas != null && d.qtde_horas > 0) total += d.qtde_horas;
       else if (d.hora_inicio && d.hora_termino) total += horasAula(d.hora_inicio, d.hora_termino);
     }
@@ -763,11 +762,10 @@ function DiarioTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, 
       else if (d.hora_inicio && d.hora_termino) total += horasAula(d.hora_inicio, d.hora_termino);
       else total += horasAula(a.horario_inicio, a.horario_fim);
     }
-    const slotsDiario = new Set<string>();
     for (const d of soDiario) {
       const chave = `${d.data}|${d.hora_inicio ?? ""}`;
-      if (slotsDiario.has(chave)) continue;
-      slotsDiario.add(chave);
+      if (slotsVistos.has(chave)) continue;
+      slotsVistos.add(chave);
       if (d.qtde_horas != null && d.qtde_horas > 0) total += d.qtde_horas;
       else if (d.hora_inicio && d.hora_termino) total += horasAula(d.hora_inicio, d.hora_termino);
     }
