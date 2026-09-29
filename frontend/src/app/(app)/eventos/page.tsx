@@ -42,6 +42,7 @@ interface Evento {
   turno?: string | null;
   coordenador?: string | null;
   tipo_modalidade?: string | null;
+  tipo_curso?: string | null;
   pasta?: string | null;
   carga_horaria_oferta?: number | null;
 }
@@ -1184,7 +1185,7 @@ export default function EventosPage() {
 
   useEffect(() => {
     if (!eventoSelecionado) return;
-    const grupo = getGrupoModalidade(eventoSelecionado.tipo_modalidade);
+    const grupo = getGrupoModalidade(eventoSelecionado.tipo_curso || eventoSelecionado.tipo_modalidade);
     setModoSuperior(grupo === "superior");
     setModoDistribuido(false);
     setSabadosEad({});
@@ -1423,7 +1424,7 @@ export default function EventosPage() {
   const contagemPorGrupo = useMemo(() => {
     const c: Partial<Record<GrupoModalidade, number>> = {};
     for (const e of (eventos as Evento[])) {
-      const g = getGrupoModalidade(e.tipo_modalidade);
+      const g = getGrupoModalidade(e.tipo_curso || e.tipo_modalidade);
       c[g] = (c[g] ?? 0) + 1;
     }
     return c;
@@ -1457,7 +1458,7 @@ export default function EventosPage() {
         const matchTurno = !turnoFiltro || e.turno === turnoFiltro;
         const matchCoordenador = !coordenadorFiltro
           || (coordenadorFiltro === "__sem__" ? !e.coordenador : e.coordenador === coordenadorFiltro);
-        const matchGrupo = !grupoFiltro || getGrupoModalidade(e.tipo_modalidade) === grupoFiltro;
+        const matchGrupo = !grupoFiltro || getGrupoModalidade(e.tipo_curso || e.tipo_modalidade) === grupoFiltro;
         return matchSearch && matchStatus && matchModalidade && matchTurno && matchCoordenador && matchGrupo;
       })
       .sort((a, b) => {
@@ -1623,7 +1624,7 @@ export default function EventosPage() {
               const ativo = grupoFiltro === grupo;
               const pct = statusCounts.total > 0 ? Math.round((count / statusCounts.total) * 100) : 0;
               const eventosDoGrupo = (eventos as Evento[])
-                .filter((e) => getGrupoModalidade(e.tipo_modalidade) === grupo)
+                .filter((e) => getGrupoModalidade(e.tipo_curso || e.tipo_modalidade) === grupo)
                 .slice(0, 5);
               return (
                 <button
@@ -1952,7 +1953,7 @@ export default function EventosPage() {
 
                       {/* ── Badge de modalidade ── */}
                       {(() => {
-                        const grupo = getGrupoModalidade(eventoSelecionado?.tipo_modalidade);
+                        const grupo = getGrupoModalidade(eventoSelecionado?.tipo_curso || eventoSelecionado?.tipo_modalidade);
                         const badge = GRUPO_BADGE[grupo];
                         const pasta = eventoSelecionado?.pasta;
                         if (!eventoSelecionado?.tipo_modalidade && !pasta) return null;
@@ -2135,7 +2136,7 @@ export default function EventosPage() {
 
                       {/* ── Painéis específicos por modalidade ── */}
                       {(() => {
-                        const grupo = getGrupoModalidade(eventoSelecionado?.tipo_modalidade);
+                        const grupo = getGrupoModalidade(eventoSelecionado?.tipo_curso || eventoSelecionado?.tipo_modalidade);
                         const dataInicio = eventoSelecionado?.data_inicio ?? "";
                         const dataFim = eventoSelecionado?.data_fim ?? "";
 
@@ -2470,7 +2471,7 @@ export default function EventosPage() {
 
                                 {/* Modo Ensino Superior */}
                                 {(() => {
-                                  const grupo = getGrupoModalidade(eventoSelecionado?.tipo_modalidade);
+                                  const grupo = getGrupoModalidade(eventoSelecionado?.tipo_curso || eventoSelecionado?.tipo_modalidade);
                                   const autoSuperior = grupo === "superior";
                                   return (
                                     <div className={cn(
