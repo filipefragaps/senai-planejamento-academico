@@ -86,7 +86,8 @@ async def listar_eventos(
             oferta_data.get("coordenador") if oferta_data
             else coord_por_codigo.get((e.nome_turma or "").strip())
         )
-        d["tipo_modalidade"] = e.tipo_modalidade
+        # tipo_modalidade: prefere modalidade da oferta (tem o código numérico), fallback para o campo do evento
+        d["tipo_modalidade"] = (oferta_data.get("modalidade") if oferta_data else None) or e.tipo_modalidade
         d["pasta"] = oferta_data.get("pasta") if oferta_data else None
         d["carga_horaria_oferta"] = oferta_data.get("carga_horaria") if oferta_data else None
         out.append(d)
