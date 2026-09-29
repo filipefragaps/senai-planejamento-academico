@@ -56,38 +56,45 @@ async def listar_eventos(
             for o in res.scalars().all()
         }
 
-    # Fallback: para eventos sem oferta_id, busca coordenador via codigo_evento = nome_turma
+    # Fallback: para eventos sem oferta_id, busca coordenador E modalidade via codigo_evento = nome_turma
     codigos_sem_oferta = {
         e.nome_turma.strip(): e.nome_turma.strip()
         for e in eventos_list
         if not e.oferta_id and e.nome_turma
     }
     coord_por_codigo: dict[str, str | None] = {}
+    modalidade_por_codigo: dict[str, str | None] = {}
     if codigos_sem_oferta:
         res2 = await db.execute(
-            select(OfertaCurso.codigo_evento, OfertaCurso.coordenador)
+            select(OfertaCurso.codigo_evento, OfertaCurso.coordenador, OfertaCurso.modalidade)
             .where(OfertaCurso.codigo_evento.in_(list(codigos_sem_oferta.keys())))
         )
-        for codigo, coord in res2.all():
+        for codigo, coord, modalidade in res2.all():
             coord_por_codigo[codigo] = coord
+            modalidade_por_codigo[codigo] = modalidade
 
     out = []
     for e in eventos_list:
         d = EventoOut.model_validate(e).model_dump()
         curso_data = cursos.get(e.curso_id) or {}
         oferta_data = oferta_map.get(e.oferta_id) if e.oferta_id else {}
+        nome_turma_key = (e.nome_turma or "").strip()
         d["nome_curso"] = curso_data.get("nome")
         d["area"] = curso_data.get("area") or (oferta_data.get("area") if oferta_data else None)
-        # Modalidade vem da oferta (pasta) — fallback para tipo do curso
-        d["tipo_curso"] = (oferta_data.get("modalidade") if oferta_data else None) or curso_data.get("tipo")
+        # Modalidade: oferta vinculada → fallback via codigo_evento → fallback tipo do curso
+        modalidade_efetiva = (
+            (oferta_data.get("modalidade") if oferta_data else None)
+            or modalidade_por_codigo.get(nome_turma_key)
+        )
+        d["tipo_curso"] = modalidade_efetiva or curso_data.get("tipo")
         d["turno"] = oferta_data.get("turno") if oferta_data else None
         # Coordenador: tenta via oferta_id, fallback via codigo_evento
         d["coordenador"] = (
             oferta_data.get("coordenador") if oferta_data
-            else coord_por_codigo.get((e.nome_turma or "").strip())
+            else coord_por_codigo.get(nome_turma_key)
         )
-        # tipo_modalidade: prefere modalidade da oferta (tem o código numérico), fallback para o campo do evento
-        d["tipo_modalidade"] = (oferta_data.get("modalidade") if oferta_data else None) or e.tipo_modalidade
+        # tipo_modalidade: mesma lógica — oferta vinculada → codigo_evento → campo do evento
+        d["tipo_modalidade"] = modalidade_efetiva or e.tipo_modalidade
         d["pasta"] = oferta_data.get("pasta") if oferta_data else None
         d["carga_horaria_oferta"] = oferta_data.get("carga_horaria") if oferta_data else None
         out.append(d)
