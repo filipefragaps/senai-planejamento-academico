@@ -545,9 +545,11 @@ function LimparPontoBtn() {
 // ── PontoTab ──────────────────────────────────────────────────────────────────
 
 function fmtHoras(h: number): string {
-  const hh = Math.floor(h);
-  const mm = Math.round((h - hh) * 60);
-  return `${hh}:${String(mm).padStart(2, "0")}`;
+  const neg = h < 0;
+  const abs = Math.abs(h);
+  const hh = Math.floor(abs);
+  const mm = Math.round((abs - hh) * 60);
+  return `${neg ? "-" : ""}${hh}:${String(mm).padStart(2, "0")}`;
 }
 
 function PontoTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, pontoInfo, pontoProfessor, loadingPonto, importando, handleFilePonto, regencia, comparacao, podeComandar }: {
@@ -732,9 +734,8 @@ function PontoTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, p
               <thead>
                 <tr className="bg-gray-50 border-b">
                   <th className="px-3 py-2 text-left font-semibold text-gray-600">Período</th>
-                  <th className="px-3 py-2 text-right font-semibold text-gray-600">Horas Efetivas</th>
-                  <th className="px-3 py-2 text-right font-semibold text-gray-600">Horas Extras</th>
-                  <th className="px-3 py-2 text-right font-semibold text-gray-600">Total</th>
+                  <th className="px-3 py-2 text-right font-semibold text-gray-600">Horas Batidas</th>
+                  <th className="px-3 py-2 text-right font-semibold text-gray-600">Banco de Horas</th>
                 </tr>
               </thead>
               <tbody>
@@ -745,11 +746,13 @@ function PontoTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, p
                       {" – "}
                       {new Date(r.data_fim + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}
                     </td>
-                    <td className="px-3 py-2 text-right font-mono text-gray-700">{fmtHoras(r.horas_efetivas)}</td>
-                    <td className={cn("px-3 py-2 text-right font-mono", r.horas_extras > 0 ? "text-amber-600 font-semibold" : "text-gray-400")}>
-                      {r.horas_extras > 0 ? `+${fmtHoras(r.horas_extras)}` : "—"}
+                    <td className="px-3 py-2 text-right font-mono text-gray-800 font-semibold">{fmtHoras(r.horas_total)}</td>
+                    <td className={cn("px-3 py-2 text-right font-mono font-semibold",
+                      r.horas_extras == null ? "text-gray-300" :
+                      r.horas_extras > 0 ? "text-amber-600" : "text-red-500"
+                    )}>
+                      {r.horas_extras == null ? "—" : `${r.horas_extras > 0 ? "+" : ""}${fmtHoras(r.horas_extras)}`}
                     </td>
-                    <td className="px-3 py-2 text-right font-mono font-semibold text-gray-800">{fmtHoras(r.horas_total)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -757,11 +760,13 @@ function PontoTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, p
                 <tfoot>
                   <tr className="bg-slate-50 border-t-2 border-slate-200">
                     <td className="px-3 py-2 font-semibold text-gray-700">Total acumulado</td>
-                    <td className="px-3 py-2 text-right font-mono font-semibold text-gray-700">{fmtHoras(totais.horas_efetivas)}</td>
-                    <td className={cn("px-3 py-2 text-right font-mono font-semibold", totais.horas_extras > 0 ? "text-amber-600" : "text-gray-400")}>
-                      {totais.horas_extras > 0 ? `+${fmtHoras(totais.horas_extras)}` : "—"}
-                    </td>
                     <td className="px-3 py-2 text-right font-mono font-bold text-slate-800">{fmtHoras(totais.horas_total)}</td>
+                    <td className={cn("px-3 py-2 text-right font-mono font-semibold",
+                      totais.horas_extras === 0 ? "text-gray-300" :
+                      totais.horas_extras > 0 ? "text-amber-600" : "text-red-500"
+                    )}>
+                      {totais.horas_extras === 0 ? "—" : `${totais.horas_extras > 0 ? "+" : ""}${fmtHoras(totais.horas_extras)}`}
+                    </td>
                   </tr>
                 </tfoot>
               )}
