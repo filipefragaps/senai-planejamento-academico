@@ -233,6 +233,19 @@ async def estatisticas_ofertas(
     }
 
 
+@router.get("/{oferta_id}")
+async def obter_oferta(
+    oferta_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    result = await db.execute(select(OfertaCurso).where(OfertaCurso.id == oferta_id))
+    o = result.scalar_one_or_none()
+    if not o:
+        raise HTTPException(status_code=404, detail="Oferta não encontrada")
+    return _serializar(o)
+
+
 @router.patch("/{oferta_id}")
 async def atualizar_oferta(
     oferta_id: int,

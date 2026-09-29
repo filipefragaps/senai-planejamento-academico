@@ -135,6 +135,7 @@ export const dashboardApi = {
 
 // Ofertas / Eventos SENAI
 export const ofertasApi = {
+  obter: (id: number) => api.get(`/ofertas/${id}`).then((r) => r.data),
   listar: (params?: {
     semestre?: number; status?: string; modalidade?: string;
     area?: string; turno?: string; coordenador?: string; busca?: string; skip?: number; limit?: number;

@@ -45,7 +45,14 @@ async def listar_eventos(
     if ids_oferta:
         res = await db.execute(select(OfertaCurso).where(OfertaCurso.id.in_(ids_oferta)))
         oferta_map = {
-            o.id: {"area": o.area, "modalidade": o.modalidade, "turno": o.turno, "coordenador": o.coordenador}
+            o.id: {
+                "area": o.area,
+                "modalidade": o.modalidade,
+                "turno": o.turno,
+                "coordenador": o.coordenador,
+                "pasta": o.pasta,
+                "carga_horaria": o.carga_horaria,
+            }
             for o in res.scalars().all()
         }
 
@@ -60,6 +67,9 @@ async def listar_eventos(
         d["tipo_curso"] = (oferta_data.get("modalidade") if oferta_data else None) or curso_data.get("tipo")
         d["turno"] = oferta_data.get("turno") if oferta_data else None
         d["coordenador"] = oferta_data.get("coordenador") if oferta_data else None
+        d["tipo_modalidade"] = e.tipo_modalidade
+        d["pasta"] = oferta_data.get("pasta") if oferta_data else None
+        d["carga_horaria_oferta"] = oferta_data.get("carga_horaria") if oferta_data else None
         out.append(d)
     return out
 

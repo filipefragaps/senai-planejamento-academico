@@ -41,6 +41,9 @@ interface Evento {
   modulo_etapa_inicial?: string | null;
   turno?: string | null;
   coordenador?: string | null;
+  tipo_modalidade?: string | null;
+  pasta?: string | null;
+  carga_horaria_oferta?: number | null;
 }
 
 interface Oferta {
@@ -94,6 +97,28 @@ function parsearDiasSemana(texto: string): number[] {
   }
   return dias.sort((a, b) => a - b);
 }
+
+type GrupoModalidade = "fic" | "tecnico" | "ead" | "superior" | "pos" | "outros";
+
+function getGrupoModalidade(tipoModalidade: string | null | undefined): GrupoModalidade {
+  if (!tipoModalidade) return "outros";
+  const codigo = parseInt(tipoModalidade.split(/[\s\-–]/)[0], 10);
+  if ([3, 11, 21, 51, 53, 54].includes(codigo)) return "fic";
+  if (codigo === 31) return "tecnico";
+  if (codigo === 33) return "ead";
+  if ([41, 81].includes(codigo)) return "superior";
+  if (codigo === 91) return "pos";
+  return "outros";
+}
+
+const GRUPO_BADGE: Record<GrupoModalidade, { label: string; cls: string }> = {
+  fic:      { label: "FIC", cls: "bg-green-100 text-green-800 border-green-200" },
+  tecnico:  { label: "Técnico Presencial", cls: "bg-blue-100 text-blue-800 border-blue-200" },
+  ead:      { label: "Técnico EaD", cls: "bg-purple-100 text-purple-800 border-purple-200" },
+  superior: { label: "Superior", cls: "bg-indigo-100 text-indigo-800 border-indigo-200" },
+  pos:      { label: "Pós-Graduação", cls: "bg-rose-100 text-rose-800 border-rose-200" },
+  outros:   { label: "Outra modalidade", cls: "bg-gray-100 text-gray-700 border-gray-200" },
+};
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -1091,6 +1116,13 @@ export default function EventosPage() {
     enabled: abaAtiva === "regencia",
   });
 
+  const { data: ofertaDetalhes } = useQuery({
+    queryKey: ["oferta-detalhes", eventoSelecionado?.oferta_id],
+    queryFn: () => ofertasApi.obter(eventoSelecionado!.oferta_id!),
+    enabled: !!eventoSelecionado?.oferta_id && abaAtiva === "ucs",
+    staleTime: 300_000,
+  });
+
   // ── Mutations ──────────────────────────────────────────────────────────────
 
   const buscarCurso = useMutation({
@@ -1825,11 +1857,56 @@ export default function EventosPage() {
                   {abaAtiva === "ucs" && (
                     <div className="p-5 space-y-4">
 
+                      {/* ── Badge de modalidade ── */}
+                      {(() => {
+                        const grupo = getGrupoModalidade(eventoSelecionado?.tipo_modalidade);
+                        const badge = GRUPO_BADGE[grupo];
+                        const pasta = eventoSelecionado?.pasta;
+                        if (!eventoSelecionado?.tipo_modalidade && !pasta) return null;
+                        return (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {eventoSelecionado?.tipo_modalidade && (
+                              <span className={cn("text-[11px] font-semibold px-2 py-0.5 rounded border", badge.cls)}>
+                                {badge.label}
+                              </span>
+                            )}
+                            {pasta && (
+                              <span className="text-[11px] text-gray-500">
+                                Pasta: <span className="font-mono font-medium text-gray-700">{pasta}</span>
+                              </span>
+                            )}
+                            {eventoSelecionado?.tipo_modalidade && (
+                              <span className="text-[11px] text-gray-400">{eventoSelecionado.tipo_modalidade}</span>
+                            )}
+                            {eventoSelecionado?.carga_horaria_oferta && (
+                              <span className="text-[11px] text-gray-500 ml-auto">
+                                CH total: <span className="font-medium text-gray-700">{eventoSelecionado.carga_horaria_oferta}h</span>
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
+
                       {/* ── Configuração de agendamento ── */}
                       {(() => {
                         const DIAS_NOMES = ["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"];
                         const dias: number[] = eventoSelecionado?.dias_semana ?? [];
                         const semDias = dias.length === 0;
+
+                        function preencherDaOferta() {
+                          if (!ofertaDetalhes) return;
+                          const diasParsed = ofertaDetalhes.dias_semana_texto
+                            ? parsearDiasSemana(ofertaDetalhes.dias_semana_texto)
+                            : [];
+                          setAgendaForm({
+                            data_inicio: ofertaDetalhes.data_inicio ?? "",
+                            data_fim: ofertaDetalhes.data_termino ?? "",
+                            horario_inicio: ofertaDetalhes.hora_inicio ? ofertaDetalhes.hora_inicio.slice(0, 5) : "",
+                            horario_fim: ofertaDetalhes.hora_termino ? ofertaDetalhes.hora_termino.slice(0, 5) : "",
+                            dias_semana: diasParsed,
+                          });
+                        }
+
                         return (
                           <div className={cn(
                             "rounded-lg border px-3 py-2 text-xs",
@@ -1874,7 +1951,18 @@ export default function EventosPage() {
                               </div>
                             ) : (
                               <div className="space-y-3">
-                                <p className="font-semibold text-gray-700">Configurar agendamento do evento</p>
+                                <div className="flex items-center justify-between">
+                                  <p className="font-semibold text-gray-700">Configurar agendamento do evento</p>
+                                  {ofertaDetalhes && (
+                                    <button
+                                      type="button"
+                                      onClick={preencherDaOferta}
+                                      className="text-[11px] text-blue-600 hover:text-blue-800 font-medium border border-blue-200 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded transition-colors"
+                                    >
+                                      ↙ Preencher da oferta
+                                    </button>
+                                  )}
+                                </div>
                                 <div className="grid grid-cols-2 gap-3">
                                   <div>
                                     <label className="block text-gray-500 mb-1">Data início</label>
@@ -1929,6 +2017,11 @@ export default function EventosPage() {
                                       </button>
                                     ))}
                                   </div>
+                                  {ofertaDetalhes?.dias_semana_texto && (
+                                    <p className="text-gray-400 mt-1">
+                                      Oferta: "{ofertaDetalhes.dias_semana_texto}"
+                                    </p>
+                                  )}
                                 </div>
                                 <div className="flex gap-2 justify-end pt-1">
                                   <button onClick={() => setAgendaEditando(false)} className="btn-secondary text-xs py-1">Cancelar</button>
