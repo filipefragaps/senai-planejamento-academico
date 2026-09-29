@@ -1229,7 +1229,7 @@ export default function RegenciaPage() {
   const [regFim, setRegFim] = useState(mesAtual);
   const [busca, setBusca] = useState("");
   const [filtroStatus, setFiltroStatus] = useState("todos");
-  const [filtroQuadro, setFiltroQuadro] = useState<"todos" | "quadro" | "extraquadro">("todos");
+  const [filtroQuadro, setFiltroQuadro] = useState<"todos" | "quadro" | "extraquadro">("quadro");
   const [filtroModalidades, setFiltroModalidades] = useState<string[]>([]);
   const [modalidadeOpen, setModalidadeOpen] = useState(false);
   const modalidadeRef = useRef<HTMLDivElement>(null);
