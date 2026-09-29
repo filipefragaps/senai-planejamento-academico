@@ -176,7 +176,7 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose, importarDiar
   const { data: comparacao, isLoading: loadingComp } = useQuery({
     queryKey: ["diario-comp", prof.professor_id, inicio, fim],
     queryFn: () => diarioApi.comparacao(prof.professor_id, dataInicio, dataFim),
-    enabled: aba === "diario",
+    enabled: aba === "diario" || aba === "ponto",
     staleTime: 60_000,
   });
 
@@ -1159,6 +1159,15 @@ const STATUS_CARD_STYLE: Record<string, { bg: string; text: string; border: stri
   Sobrecarga: { bg: "bg-orange-50", text: "text-orange-700", border: "border-orange-200", icon: Zap },
 };
 
+const STATUS_LABEL: Record<string, string> = { OK: "OK", Alerta: "Alerta", Critico: "Crítico", Sobrecarga: "Sobrecarga" };
+const BAR_COLOR: Record<string, string> = { OK: "bg-green-500", Alerta: "bg-yellow-400", Critico: "bg-red-400", Sobrecarga: "bg-orange-400" };
+
+function calcDisplayStatus(perc: number, meta: number): string {
+  if (perc >= meta) return "OK";
+  if (perc >= Math.max(meta * 0.7, 50)) return "Alerta";
+  return "Critico";
+}
+
 // ── RegenciaDiffTooltip ───────────────────────────────────────────────────────
 
 function RegenciaDiffTooltip({ planejadoProfs, executadoProfs, children }: {
@@ -1729,13 +1738,15 @@ export default function RegenciaPage() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {lista.map((p: any) => {
-            const statusStyle = STATUS_CARD_STYLE[p.status_regencia] ?? STATUS_CARD_STYLE.Alerta;
-            const Icon = statusStyle.icon;
             const isExcluido = excluidos.has(p.professor_id);
             const pontoH = pontoStats ? (pontoStats as any)[String(p.professor_id)] : null;
             const dioH = diarioStats ? (diarioStats as any)[String(p.professor_id)] : null;
             const realPerc = pontoH != null && pontoH > 0 && dioH != null ? (dioH / pontoH) * 100 : null;
             const displayPerc = realPerc ?? p.percentual_regencia ?? 0;
+            const meta = p.meta_regencia ?? 70;
+            const displayStatus = realPerc != null ? calcDisplayStatus(realPerc, meta) : (p.status_regencia ?? "Alerta");
+            const statusStyle = STATUS_CARD_STYLE[displayStatus] ?? STATUS_CARD_STYLE.Alerta;
+            const Icon = statusStyle.icon;
             return (
               <button
                 key={p.professor_id}
@@ -1778,7 +1789,7 @@ export default function RegenciaPage() {
                       statusStyle.bg, statusStyle.text, statusStyle.border
                     )}>
                       <Icon className="h-3 w-3" />
-                      {p.status_regencia}
+                      {STATUS_LABEL[displayStatus] ?? displayStatus}
                     </span>
                   </div>
                 </div>
@@ -1802,12 +1813,7 @@ export default function RegenciaPage() {
                   {/* Barra dupla: preenchida = atual, linha tracejada = meta */}
                   <div className="relative h-3 w-full rounded-full bg-gray-100 overflow-hidden">
                     <div
-                      className={cn(
-                        "h-3 rounded-full transition-all",
-                        p.tipo === "Horista"
-                          ? (displayPerc >= 100 ? "bg-green-500" : displayPerc >= 50 ? "bg-yellow-400" : "bg-red-400")
-                          : (displayPerc >= 90 ? "bg-orange-400" : displayPerc >= 70 ? "bg-green-500" : displayPerc >= 50 ? "bg-yellow-400" : "bg-red-400")
-                      )}
+                      className={cn("h-3 rounded-full transition-all", BAR_COLOR[displayStatus] ?? "bg-yellow-400")}
                       style={{ width: `${Math.min(displayPerc, 100)}%` }}
                     />
                     {/* Marcador da meta na posição correta por tipo */}
