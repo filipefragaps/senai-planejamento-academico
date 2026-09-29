@@ -56,6 +56,21 @@ async def listar_eventos(
             for o in res.scalars().all()
         }
 
+    # Fallback: para eventos sem oferta_id, busca coordenador via codigo_evento = nome_turma
+    codigos_sem_oferta = {
+        e.nome_turma.strip(): e.nome_turma.strip()
+        for e in eventos_list
+        if not e.oferta_id and e.nome_turma
+    }
+    coord_por_codigo: dict[str, str | None] = {}
+    if codigos_sem_oferta:
+        res2 = await db.execute(
+            select(OfertaCurso.codigo_evento, OfertaCurso.coordenador)
+            .where(OfertaCurso.codigo_evento.in_(list(codigos_sem_oferta.keys())))
+        )
+        for codigo, coord in res2.all():
+            coord_por_codigo[codigo] = coord
+
     out = []
     for e in eventos_list:
         d = EventoOut.model_validate(e).model_dump()
@@ -66,7 +81,11 @@ async def listar_eventos(
         # Modalidade vem da oferta (pasta) — fallback para tipo do curso
         d["tipo_curso"] = (oferta_data.get("modalidade") if oferta_data else None) or curso_data.get("tipo")
         d["turno"] = oferta_data.get("turno") if oferta_data else None
-        d["coordenador"] = oferta_data.get("coordenador") if oferta_data else None
+        # Coordenador: tenta via oferta_id, fallback via codigo_evento
+        d["coordenador"] = (
+            oferta_data.get("coordenador") if oferta_data
+            else coord_por_codigo.get((e.nome_turma or "").strip())
+        )
         d["tipo_modalidade"] = e.tipo_modalidade
         d["pasta"] = oferta_data.get("pasta") if oferta_data else None
         d["carga_horaria_oferta"] = oferta_data.get("carga_horaria") if oferta_data else None

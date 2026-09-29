@@ -102,12 +102,25 @@ type GrupoModalidade = "fic" | "tecnico" | "ead" | "superior" | "pos" | "outros"
 
 function getGrupoModalidade(tipoModalidade: string | null | undefined): GrupoModalidade {
   if (!tipoModalidade) return "outros";
-  const codigo = parseInt(tipoModalidade.split(/[\s\-–]/)[0], 10);
-  if ([3, 11, 21, 51, 53, 54].includes(codigo)) return "fic";
-  if (codigo === 31) return "tecnico";
-  if (codigo === 33) return "ead";
-  if ([41, 81].includes(codigo)) return "superior";
-  if (codigo === 91) return "pos";
+  const t = tipoModalidade.toUpperCase();
+
+  // Formato com prefixo numérico: "31 – TÉCNICO PRESENCIAL"
+  const codigo = parseInt(t.split(/[\s\-–]/)[0], 10);
+  if (!isNaN(codigo)) {
+    if ([3, 11, 21, 51, 53, 54].includes(codigo)) return "fic";
+    if (codigo === 31) return "tecnico";
+    if (codigo === 33) return "ead";
+    if ([41, 81].includes(codigo)) return "superior";
+    if (codigo === 91) return "pos";
+  }
+
+  // Fallback por palavras-chave (ex: "QUALIFICAÇÃO PROFISSIONAL", "TÉCNICO PRESENCIAL")
+  if (t.includes("PÓS") || t.includes("POS") || t.includes("ESPECIALIZACAO") || t.includes("ESPECIALIZAÇÃO")) return "pos";
+  if (t.includes("SUPERIOR") || t.includes("GRADUAÇ") || t.includes("GRADUAC") || t.includes("LICENCIATURA") || t.includes("BACHARELADO") || t.includes("TECNOLOG")) return "superior";
+  if (t.includes("EAD") || t.includes("À DISTÂNCIA") || t.includes("A DISTANCIA") || t.includes("DISTÂNCIA") || t.includes("SEMIPRESENCIAL")) return "ead";
+  if (t.includes("TÉCNICO") || t.includes("TECNICO") || t.includes("SUBSEQUENTE") || t.includes("CONCOMITANTE") || t.includes("INTEGRADO")) return "tecnico";
+  if (t.includes("QUALIFICAÇ") || t.includes("QUALIFICAC") || t.includes("FIC") || t.includes("APERFEIÇOAMENTO") || t.includes("APERFEICOAMENTO") || t.includes("FORMAÇ") || t.includes("FORMAC")) return "fic";
+
   return "outros";
 }
 
