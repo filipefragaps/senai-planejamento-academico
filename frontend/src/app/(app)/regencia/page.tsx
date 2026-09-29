@@ -1744,7 +1744,7 @@ export default function RegenciaPage() {
             const realPerc = pontoH != null && pontoH > 0 && dioH != null ? (dioH / pontoH) * 100 : null;
             const displayPerc = realPerc ?? p.percentual_regencia ?? 0;
             const meta = p.meta_regencia ?? 70;
-            const displayStatus = realPerc != null ? calcDisplayStatus(realPerc, meta) : (p.status_regencia ?? "Alerta");
+            const displayStatus = calcDisplayStatus(displayPerc, meta);
             const statusStyle = STATUS_CARD_STYLE[displayStatus] ?? STATUS_CARD_STYLE.Alerta;
             const Icon = statusStyle.icon;
             return (
