@@ -1273,6 +1273,25 @@ export default function RegenciaPage() {
     staleTime: 60_000,
   });
 
+  const { data: diarioInfo } = useQuery({
+    queryKey: ["diario-info"],
+    queryFn: () => diarioApi.info(),
+    staleTime: 30_000,
+  });
+
+  const { data: diarioStats } = useQuery<Record<string, number>>({
+    queryKey: ["diario-stats", regDataInicio, regDataFim],
+    queryFn: () => diarioApi.stats(regDataInicio, regDataFim),
+    staleTime: 60_000,
+    enabled: !!(diarioInfo as any)?.total,
+  });
+
+  const { data: pontoStats } = useQuery<Record<string, number>>({
+    queryKey: ["ponto-stats", regDataInicio, regDataFim],
+    queryFn: () => pontoApi.stats(regDataInicio, regDataFim),
+    staleTime: 60_000,
+  });
+
   // Filtro + busca + ordem
   const lista = useMemo(() => {
     let r = regencias.map((p: any) => ({
@@ -1341,25 +1360,6 @@ export default function RegenciaPage() {
   }, [regencias, excluidos, filtroQuadro, filtroModalidades]);
 
   const qc = useQueryClient();
-
-  const { data: diarioInfo } = useQuery({
-    queryKey: ["diario-info"],
-    queryFn: () => diarioApi.info(),
-    staleTime: 30_000,
-  });
-
-  const { data: diarioStats } = useQuery<Record<string, number>>({
-    queryKey: ["diario-stats", regDataInicio, regDataFim],
-    queryFn: () => diarioApi.stats(regDataInicio, regDataFim),
-    staleTime: 60_000,
-    enabled: !!(diarioInfo as any)?.total,
-  });
-
-  const { data: pontoStats } = useQuery<Record<string, number>>({
-    queryKey: ["ponto-stats", regDataInicio, regDataFim],
-    queryFn: () => pontoApi.stats(regDataInicio, regDataFim),
-    staleTime: 60_000,
-  });
 
   const mediaReal = useMemo(() => {
     if (!diarioStats || !pontoStats || Object.keys(pontoStats).length === 0) return null;
