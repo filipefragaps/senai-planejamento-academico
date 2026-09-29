@@ -511,7 +511,7 @@ async def cronograma_geral(
     status: Optional[str] = None,
     modalidades: Optional[str] = None,  # códigos separados por vírgula: "41,81"
     skip: int = 0,
-    limit: int = 500,
+    limit: int = 5000,
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):

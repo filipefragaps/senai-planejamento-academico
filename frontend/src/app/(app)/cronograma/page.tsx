@@ -145,7 +145,7 @@ export default function CronogramaPage() {
         professor_id: professorFiltro && !semProfessor ? +professorFiltro : undefined,
         evento_id: eventoFiltro ? +eventoFiltro : undefined,
         modalidades: modalidadesParam,
-        limit: 2000,
+        limit: 5000,
       }),
   });
 
