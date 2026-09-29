@@ -1085,6 +1085,7 @@ export default function EventosPage() {
   const [sabadosEad, setSabadosEad] = useState<Record<string, { ativo: boolean; h_inicio: string; h_fim: string }>>({});
   const [posDataPrimeiro, setPosDataPrimeiro] = useState("");
   const [modoDistribuido, setModoDistribuido] = useState(false);
+  const [grupoFiltro, setGrupoFiltro] = useState<GrupoModalidade | null>(null);
 
   // ── Calendário state ────────────────────────────────────────────────────────
   const _hoje = new Date();
@@ -1401,6 +1402,15 @@ export default function EventosPage() {
     return c;
   }, [eventos]);
 
+  const contagemPorGrupo = useMemo(() => {
+    const c: Partial<Record<GrupoModalidade, number>> = {};
+    for (const e of (eventos as Evento[])) {
+      const g = getGrupoModalidade(e.tipo_modalidade);
+      c[g] = (c[g] ?? 0) + 1;
+    }
+    return c;
+  }, [eventos]);
+
   // Ativos e Planejados vêm primeiro; Concluídos e Cancelados ficam no fim.
   // Dentro de cada grupo a ordem original da API é preservada (sem reordenar por nome).
   const STATUS_GROUP: Record<string, number> = { Planejado: 0, Ativo: 0, "Concluído": 1, Cancelado: 1 };
@@ -1429,14 +1439,15 @@ export default function EventosPage() {
         const matchTurno = !turnoFiltro || e.turno === turnoFiltro;
         const matchCoordenador = !coordenadorFiltro
           || (coordenadorFiltro === "__sem__" ? !e.coordenador : e.coordenador === coordenadorFiltro);
-        return matchSearch && matchStatus && matchModalidade && matchTurno && matchCoordenador;
+        const matchGrupo = !grupoFiltro || getGrupoModalidade(e.tipo_modalidade) === grupoFiltro;
+        return matchSearch && matchStatus && matchModalidade && matchTurno && matchCoordenador && matchGrupo;
       })
       .sort((a, b) => {
         const ga = STATUS_GROUP[a.status] ?? 0;
         const gb = STATUS_GROUP[b.status] ?? 0;
         return ga - gb;
       });
-  }, [eventos, search, statusFiltro, modalidadeFiltro, turnoFiltro, coordenadorFiltro]);
+  }, [eventos, search, statusFiltro, modalidadeFiltro, turnoFiltro, coordenadorFiltro, grupoFiltro]);
 
   const ucsParaPlanejar: UCParaPlanejar[] = useMemo(() => {
     if (!modoSuperior) {
@@ -1585,42 +1596,51 @@ export default function EventosPage() {
 
         <input ref={seducInputRef} type="file" accept=".xlsx,.xls" onChange={handleSeducUpload} className="hidden" />
 
-        {/* ── Mini-dashboard de status ────────────────────────────────────── */}
+        {/* ── Sub-janelas por modalidade ──────────────────────────────────── */}
         {!isLoading && statusCounts.total > 0 && (
-          <div className="grid grid-cols-4 gap-3 mt-4">
-            {([
-              { key: "Ativo",     label: "Ativas",     icon: "▶", bg: "bg-green-50",  border: "border-green-200", num: "text-green-700",  sub: "text-green-500"  },
-              { key: "Planejado", label: "Planejadas",  icon: "📋", bg: "bg-blue-50",   border: "border-blue-200",  num: "text-blue-700",   sub: "text-blue-400"   },
-              { key: "Concluído", label: "Concluídas",  icon: "✓",  bg: "bg-gray-50",   border: "border-gray-200",  num: "text-gray-700",   sub: "text-gray-400"   },
-              { key: "Cancelado", label: "Canceladas",  icon: "✕",  bg: "bg-red-50",    border: "border-red-200",   num: "text-red-700",    sub: "text-red-400"    },
-            ] as const).map(({ key, label, icon, bg, border, num, sub }) => {
-              const count = statusCounts[key];
+          <div className="grid grid-cols-5 gap-3 mt-4">
+            {(["fic", "tecnico", "ead", "superior", "pos"] as GrupoModalidade[]).map((grupo) => {
+              const badge = GRUPO_BADGE[grupo];
+              const count = contagemPorGrupo[grupo] ?? 0;
+              const ativo = grupoFiltro === grupo;
               const pct = statusCounts.total > 0 ? Math.round((count / statusCounts.total) * 100) : 0;
-              const ativo = statusFiltro === key;
+              const eventosDoGrupo = (eventos as Evento[])
+                .filter((e) => getGrupoModalidade(e.tipo_modalidade) === grupo)
+                .slice(0, 5);
               return (
                 <button
-                  key={key}
-                  onClick={() => setStatusFiltro(ativo ? "" : key)}
+                  key={grupo}
+                  onClick={() => setGrupoFiltro(ativo ? null : grupo)}
                   className={cn(
-                    "rounded-xl border p-3 text-left transition-all",
-                    bg, border,
-                    ativo ? "ring-2 ring-offset-1 ring-current shadow-sm" : "hover:shadow-sm hover:border-opacity-80",
+                    "rounded-xl border p-3 text-left transition-all flex flex-col gap-2",
+                    badge.cls,
+                    ativo ? "ring-2 ring-offset-1 shadow-md" : "hover:shadow-sm opacity-80 hover:opacity-100",
+                    count === 0 && "opacity-40 cursor-default"
                   )}
+                  disabled={count === 0}
                 >
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start justify-between gap-1">
                     <div>
-                      <p className={cn("text-2xl font-bold leading-none", num)}>{count}</p>
-                      <p className={cn("text-xs font-medium mt-1", sub)}>{label}</p>
+                      <p className="text-2xl font-bold leading-none">{count}</p>
+                      <p className="text-[11px] font-semibold mt-1">{badge.label}</p>
                     </div>
-                    <span className={cn("text-lg opacity-60", num)}>{icon}</span>
+                    {ativo && <span className="text-[9px] font-bold uppercase tracking-wide border rounded px-1 py-0.5 opacity-70">Ativo</span>}
                   </div>
-                  <div className="mt-2.5 h-1 rounded-full bg-black/5 overflow-hidden">
-                    <div
-                      className={cn("h-full rounded-full transition-all", num.replace("text-", "bg-"))}
-                      style={{ width: `${pct}%` }}
-                    />
+                  <div className="h-1 rounded-full bg-black/10 overflow-hidden">
+                    <div className="h-full rounded-full bg-current opacity-40 transition-all" style={{ width: `${pct}%` }} />
                   </div>
-                  <p className={cn("text-[10px] mt-1 tabular-nums", sub)}>{pct}% do total</p>
+                  {eventosDoGrupo.length > 0 && (
+                    <div className="space-y-0.5 w-full">
+                      {eventosDoGrupo.map((e) => (
+                        <p key={e.id} className="text-[9px] leading-tight truncate opacity-70">
+                          {e.nome_curso || e.nome_turma}
+                        </p>
+                      ))}
+                      {(contagemPorGrupo[grupo] ?? 0) > 5 && (
+                        <p className="text-[9px] opacity-50">+{(contagemPorGrupo[grupo] ?? 0) - 5} mais</p>
+                      )}
+                    </div>
+                  )}
                 </button>
               );
             })}
@@ -1688,13 +1708,18 @@ export default function EventosPage() {
                 {coordenadores.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             )}
-            {(search || statusFiltro || modalidadeFiltro || turnoFiltro || coordenadorFiltro) && (
+            {(search || statusFiltro || modalidadeFiltro || turnoFiltro || coordenadorFiltro || grupoFiltro) && (
               <button
-                onClick={() => { setSearch(""); setStatusFiltro(""); setModalidadeFiltro(""); setTurnoFiltro(""); setCoordenadorFiltro(""); }}
+                onClick={() => { setSearch(""); setStatusFiltro(""); setModalidadeFiltro(""); setTurnoFiltro(""); setCoordenadorFiltro(""); setGrupoFiltro(null); }}
                 className="text-xs text-blue-600 hover:text-blue-800 text-left"
               >
                 Limpar filtros
               </button>
+            )}
+            {grupoFiltro && (
+              <div className={cn("text-[11px] font-medium px-2 py-1 rounded border", GRUPO_BADGE[grupoFiltro].cls)}>
+                Filtrando: {GRUPO_BADGE[grupoFiltro].label}
+              </div>
             )}
 
             <div className="flex-1 overflow-y-auto space-y-2 pr-1">
