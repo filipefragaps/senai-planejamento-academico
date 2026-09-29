@@ -63,9 +63,9 @@ def _parse_horas(cell) -> float | None:
     if isinstance(v, datetime.time):
         return v.hour + v.minute / 60.0 + v.second / 3600.0
 
-    # Número (fração de dia, pode ser negativo para banco de horas)
+    # Número já em horas decimais (ex: 149.18 = 149h 11min)
     if isinstance(v, (int, float)):
-        return float(v) * 24.0
+        return float(v)
 
     # String
     s = str(v).strip().lstrip("'").strip()
