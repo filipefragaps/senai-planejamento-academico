@@ -179,6 +179,7 @@ async def gerar_planejamento(
     db: AsyncSession,
     modo_superior: bool = False,
     clipar_semestre: bool = False,
+    datas_excluir: list[str] | None = None,
 ) -> PlanejamentoResult:
     """
     Gera proposta de cronograma sem salvar no banco.
@@ -270,6 +271,11 @@ async def gerar_planejamento(
         datas_letivas = await get_datas_letivas(
             data_inicio_pool, data_fim_efetiva, dias_semana, db
         )
+
+    # Filtra datas explicitamente excluídas (ex: sábados FIC marcados como "sem aula")
+    if datas_excluir:
+        excluir_set = {date.fromisoformat(d) for d in datas_excluir if d}
+        datas_letivas = [d for d in datas_letivas if d not in excluir_set]
 
     if not datas_letivas:
         raise ValueError(

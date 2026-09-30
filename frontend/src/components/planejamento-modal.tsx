@@ -131,6 +131,7 @@ interface Props {
   ucs: UCParaPlanejar[];
   modoSuperior?: boolean;
   cliparSemestre?: boolean;
+  datasExcluir?: string[];
   onClose: () => void;
   onConfirmado?: () => void;
 }
@@ -668,7 +669,7 @@ function ImpactoTab({ impacto, solverStatus }: { impacto: ImpactoData; solverSta
 type Etapa = "idle" | "gerando" | "resultado";
 type Algoritmo = "greedy" | "ortools";
 
-export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = false, cliparSemestre = false, onClose, onConfirmado }: Props) {
+export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = false, cliparSemestre = false, datasExcluir = [], onClose, onConfirmado }: Props) {
   const [etapa, setEtapa] = useState<Etapa>("idle");
   const [algoritmo, setAlgoritmo] = useState<Algoritmo>("greedy");
   const [resultado, setResultado] = useState<ResultadoGerado | null>(null);
@@ -690,9 +691,9 @@ export function PlanejamentoModal({ eventoId, nomeEvento, ucs, modoSuperior = fa
     mutationFn: () => {
       const ucsOrdenadas = buildUCs();
       if (modoOtimizado) {
-        return planejamentoApi.gerarOtimizado(eventoId, ucsOrdenadas, modoSuperior, cliparSemestre);
+        return planejamentoApi.gerarOtimizado(eventoId, ucsOrdenadas, modoSuperior, cliparSemestre, datasExcluir);
       }
-      return planejamentoApi.gerar(eventoId, ucsOrdenadas, modoSuperior, cliparSemestre);
+      return planejamentoApi.gerar(eventoId, ucsOrdenadas, modoSuperior, cliparSemestre, datasExcluir);
     },
     onMutate: () => setEtapa("gerando"),
     onSuccess: (data) => {

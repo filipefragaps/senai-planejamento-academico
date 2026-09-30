@@ -157,6 +157,7 @@ class GerarRequest(BaseModel):
     ucs: list[UCOrdenada]
     modo_superior: bool = False
     clipar_semestre: bool = False
+    datas_excluir: list[str] = []  # datas ISO a excluir do pool (ex: sábados FIC sem aula)
 
 
 class ConfirmarRequest(BaseModel):
@@ -1301,6 +1302,11 @@ async def gerar_otimizado(
     else:
         datas_letivas = await get_datas_letivas(evento.data_inicio, data_fim_efetiva, dias_semana, db)
 
+    # Filtra datas explicitamente excluídas (ex: sábados FIC marcados como "sem aula")
+    if body.datas_excluir:
+        excluir_set = {date.fromisoformat(d) for d in body.datas_excluir if d}
+        datas_letivas = [d for d in datas_letivas if d not in excluir_set]
+
     if not datas_letivas:
         raise HTTPException(
             status_code=422,
@@ -1566,6 +1572,7 @@ async def gerar(
             db=db,
             modo_superior=body.modo_superior,
             clipar_semestre=body.clipar_semestre,
+            datas_excluir=body.datas_excluir,
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

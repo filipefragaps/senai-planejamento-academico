@@ -1100,6 +1100,7 @@ export default function EventosPage() {
   const [agendaEditando, setAgendaEditando] = useState(false);
   const [agendaForm, setAgendaForm] = useState({ data_inicio: "", data_fim: "", horario_inicio: "", horario_fim: "", dias_semana: [] as number[] });
   const [sabadosEad, setSabadosEad] = useState<Record<string, { ativo: boolean; h_inicio: string; h_fim: string }>>({});
+  const [sabadosFic, setSabadosFic] = useState<Record<string, boolean>>({});
   const [posDataPrimeiro, setPosDataPrimeiro] = useState("");
   const [modoDistribuido, setModoDistribuido] = useState(false);
   const [seducSlots, setSeducSlots] = useState<Record<number, { data: string; hora_inicio: string; hora_fim: string }>>({});
@@ -1189,6 +1190,7 @@ export default function EventosPage() {
     setModoSuperior(grupo === "superior");
     setModoDistribuido(false);
     setSabadosEad({});
+    setSabadosFic({});
     setPosDataPrimeiro("");
     setSeducSlots({});
   }, [eventoSelecionado?.id]);
@@ -2140,6 +2142,60 @@ export default function EventosPage() {
                         const dataInicio = eventoSelecionado?.data_inicio ?? "";
                         const dataFim = eventoSelecionado?.data_fim ?? "";
 
+                        // ── FIC (51/54) com Sábado — Sábados consecutivos ─────
+                        const temSabado = (eventoSelecionado?.dias_semana ?? []).includes(5);
+                        if (grupo === "fic" && temSabado) {
+                          const sabados = getSabadosNoPeriodo(dataInicio, dataFim);
+                          const nAtivos = sabados.filter((s) => (sabadosFic[s] ?? true)).length;
+                          const nExcluidos = sabados.length - nAtivos;
+                          return (
+                            <div className="rounded-lg border border-green-200 bg-green-50 p-3 space-y-3">
+                              <div>
+                                <p className="text-xs font-semibold text-green-800">Sábados FIC — Consecutivos</p>
+                                <p className="text-[10px] text-green-600 mt-0.5">
+                                  {sabados.length} sábados no período · {nAtivos} com aula{nExcluidos > 0 && ` · ${nExcluidos} sem aula`}
+                                </p>
+                                <p className="text-[10px] text-green-500 mt-0.5">
+                                  Desmarque os sábados com previsão de não aula.
+                                </p>
+                              </div>
+                              {sabados.length === 0 ? (
+                                <p className="text-xs text-green-600">Configure as datas de início e fim do evento para ver os sábados.</p>
+                              ) : (
+                                <div className="grid grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
+                                  {sabados.map((sab) => {
+                                    const ativo = sabadosFic[sab] ?? true;
+                                    return (
+                                      <div key={sab} className={cn(
+                                        "rounded border p-2 text-xs transition-colors",
+                                        ativo ? "border-green-200 bg-white" : "border-gray-200 bg-gray-50 opacity-60"
+                                      )}>
+                                        <label className="flex items-center gap-1.5 cursor-pointer">
+                                          <input
+                                            type="checkbox"
+                                            checked={ativo}
+                                            onChange={(e) => setSabadosFic((prev) => ({
+                                              ...prev,
+                                              [sab]: e.target.checked,
+                                            }))}
+                                            className="rounded border-green-300 text-green-600 focus:ring-green-500 h-3 w-3"
+                                          />
+                                          <span className={cn("font-medium", ativo ? "text-green-800" : "text-gray-400")}>
+                                            {formatDatePT(sab)} ({DIAS_SEMANA_NOMES[new Date(sab + "T12:00:00").getDay()]})
+                                          </span>
+                                        </label>
+                                        {!ativo && (
+                                          <p className="text-[10px] text-gray-400 mt-0.5 ml-4.5">sem aula</p>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
+
                         // ── Fase 3: EaD — Sábados ─────────────────────────────
                         if (grupo === "ead") {
                           const sabados = getSabadosNoPeriodo(dataInicio, dataFim);
@@ -2824,6 +2880,7 @@ export default function EventosPage() {
           ucs={ucsParaPlanejar}
           modoSuperior={modoSuperior}
           cliparSemestre={cliparSemestre}
+          datasExcluir={Object.entries(sabadosFic).filter(([, ativo]) => !ativo).map(([d]) => d)}
           onClose={() => setGerarAberto(false)}
           onConfirmado={() => {
             qc.invalidateQueries({ queryKey: ["cronograma", eventoSelecionado.id] });
