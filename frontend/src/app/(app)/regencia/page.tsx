@@ -1405,8 +1405,8 @@ export default function RegenciaPage() {
   const hoje = new Date();
   const mesAtual = yyyyMM(hoje.getFullYear(), hoje.getMonth() + 1);
 
-  const [regInicio, setRegInicio] = useState(mesAtual);
-  const [regFim, setRegFim] = useState(mesAtual);
+  const [regInicio, setRegInicio] = useState("");
+  const [regFim, setRegFim] = useState("");
   const [busca, setBusca] = useState("");
   const [filtroStatus, setFiltroStatus] = useState("todos");
   const [filtroQuadro, setFiltroQuadro] = useState<"todos" | "quadro" | "extraquadro">("quadro");
@@ -1444,8 +1444,9 @@ export default function RegenciaPage() {
     });
   }
 
-  const regDataInicio = `${regInicio}-01`;
-  const regDataFim = ultimoDiaMes(regFim);
+  const anoAtual = hoje.getFullYear();
+  const regDataInicio = regInicio ? `${regInicio}-01` : `${anoAtual}-01-01`;
+  const regDataFim = regFim ? ultimoDiaMes(regFim) : `${anoAtual}-12-31`;
 
   const { data: regencias = [], isLoading } = useQuery<any[]>({
     queryKey: ["regencias-pagina", regInicio, regFim],
@@ -1470,6 +1471,14 @@ export default function RegenciaPage() {
     queryKey: ["ponto-stats", regDataInicio, regDataFim],
     queryFn: () => pontoApi.stats(regDataInicio, regDataFim),
     staleTime: 60_000,
+  });
+
+  const periodoMultiMes = !regInicio || !regFim || regInicio !== regFim;
+  const { data: geralMensalPagina = [] } = useQuery<{ mes: string; media_percentual: number; n_professores: number }[]>({
+    queryKey: ["regencia-mensal-geral-pagina", regDataInicio, regDataFim],
+    queryFn: () => professoresApi.regenciaMensal({ data_inicio: regDataInicio, data_fim: regDataFim }),
+    enabled: periodoMultiMes,
+    staleTime: 120_000,
   });
 
   // Filtro + busca + ordem
@@ -1622,7 +1631,7 @@ export default function RegenciaPage() {
   async function exportarExcel() {
     try {
       const res = await relatoriosApi.regencia();
-      downloadBlob(res.data as Blob, `regencia_${regInicio}_${regFim}.xlsx`);
+      downloadBlob(res.data as Blob, `regencia_${regInicio || `${anoAtual}-01`}_${regFim || `${anoAtual}-12`}.xlsx`);
     } catch {
       alert("Erro ao exportar");
     }
@@ -1673,14 +1682,67 @@ export default function RegenciaPage() {
       </PageHeader>
 
       {/* Seletor de período */}
-      <div className="card px-5 py-4 flex items-center gap-4 flex-wrap">
-        <TrendingUp className="h-4 w-4 text-gray-400 shrink-0" />
-        <span className="text-sm font-medium text-gray-700">Período:</span>
-        <input type="month" value={regInicio} onChange={e => setRegInicio(e.target.value)}
-          className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
-        <span className="text-xs text-gray-400">até</span>
-        <input type="month" value={regFim} onChange={e => setRegFim(e.target.value)}
-          className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+      <div className="card px-5 py-4 flex flex-col gap-3">
+        <div className="flex items-center gap-4 flex-wrap">
+          <TrendingUp className="h-4 w-4 text-gray-400 shrink-0" />
+          <span className="text-sm font-medium text-gray-700">Período:</span>
+          <input type="month" value={regInicio} onChange={e => setRegInicio(e.target.value)}
+            className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+          <span className="text-xs text-gray-400">até</span>
+          <input type="month" value={regFim} onChange={e => setRegFim(e.target.value)}
+            className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+          {(regInicio || regFim) && (
+            <button onClick={() => { setRegInicio(""); setRegFim(""); }}
+              className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-600 border border-gray-200 rounded px-2 py-1 hover:border-red-300 transition-colors">
+              <X className="h-3 w-3" /> Limpar
+            </button>
+          )}
+          <div className="flex items-center gap-1 ml-auto">
+            {[
+              { label: "Este mês", ini: mesAtual, fim: mesAtual },
+              { label: "Semestre", ini: yyyyMM(anoAtual, hoje.getMonth() < 6 ? 1 : 7), fim: yyyyMM(anoAtual, hoje.getMonth() < 6 ? 6 : 12) },
+              { label: "Este ano", ini: yyyyMM(anoAtual, 1), fim: yyyyMM(anoAtual, 12) },
+            ].map(({ label, ini, fim }) => (
+              <button key={label}
+                onClick={() => { setRegInicio(ini); setRegFim(fim); }}
+                className={cn(
+                  "text-xs px-2 py-1 rounded border transition-colors",
+                  regInicio === ini && regFim === fim
+                    ? "bg-blue-600 text-white border-blue-600"
+                    : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                )}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Gráfico de linha geral */}
+        {geralMensalPagina.length >= 2 && (
+          <div className="pt-2 border-t">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Evolução Geral da Regência</p>
+              <div className="flex items-center gap-3 text-[11px] text-gray-500">
+                <span className="flex items-center gap-1">
+                  <span className="inline-block w-6 border-t-2 border-dashed border-gray-400" />
+                  Média geral
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block w-6 border-t-2 border-dashed border-amber-400" />
+                  Meta 70%
+                </span>
+              </div>
+            </div>
+            <RegenciaLineChart
+              dados={geralMensalPagina.map((g) => ({
+                mes: g.mes,
+                label: `${MESES_PT[parseInt(g.mes.split("-")[1]) - 1]}/${g.mes.slice(2, 4)}`,
+                profPerc: null,
+                geralPerc: g.media_percentual,
+              }))}
+            />
+          </div>
+        )}
       </div>
 
       {/* Cards de regência média: planejada + executada */}
