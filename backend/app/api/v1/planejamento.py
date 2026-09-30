@@ -1278,8 +1278,10 @@ async def gerar_otimizado(
         data_fim_efetiva = min(evento.data_fim, data_fim_semestre)
 
     # Estender data_fim se total de aulas excede datas letivas no período
+    # Eventos só-sábado (FIC/51/54) nunca estendem: o período é fixo por design.
+    apenas_sabado = set(dias_semana) <= {5}
     ucs_ids = [u.uc_id for u in body.ucs if not u.nao_agendar]
-    if ucs_ids and horas_por_aula > 0:
+    if ucs_ids and horas_por_aula > 0 and not apenas_sabado:
         res_chs = await db.execute(
             select(UnidadeCurricular.carga_horaria).where(UnidadeCurricular.id.in_(ucs_ids))
         )
@@ -1287,7 +1289,11 @@ async def gerar_otimizado(
             math.ceil((row[0] or 0) / horas_por_aula) for row in res_chs.fetchall()
         )
         dias_base = [d for d in dias_semana if d != 5] or dias_semana
-        datas_check = await get_datas_letivas(evento.data_inicio, data_fim_efetiva, dias_base, db)
+        excluir_set_check = {date.fromisoformat(d) for d in (body.datas_excluir or []) if d}
+        datas_check = [
+            d for d in await get_datas_letivas(evento.data_inicio, data_fim_efetiva, dias_base, db)
+            if d not in excluir_set_check
+        ]
         if total_aulas_prev > len(datas_check):
             faltam = total_aulas_prev - len(datas_check)
             extra_cal = int(faltam * 7 / max(len(dias_base), 1)) + 90

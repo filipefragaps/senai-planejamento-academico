@@ -222,7 +222,9 @@ async def gerar_planejamento(
     # Quando não há clip de semestre, garante que o pool cobre toda a CH do curso.
     # Usa contagem REAL de datas letivas (respeitando feriados/recessos do calendário)
     # para decidir se precisa estender além do data_fim do evento.
-    if not (modo_superior and clipar_semestre) and horas_por_aula > 0:
+    # Eventos só-sábado (FIC/51/54) nunca estendem: o período é fixo por design.
+    apenas_sabado = set(dias_semana) <= {5}
+    if not (modo_superior and clipar_semestre) and horas_por_aula > 0 and not apenas_sabado:
         ids_uc_sched = [it["uc_id"] for it in ucs_ordenadas if not it.get("nao_agendar", False)]
         if ids_uc_sched:
             res_chs = await db.execute(
@@ -234,9 +236,11 @@ async def gerar_planejamento(
             )
             # Conta datas letivas REAIS no período atual (sem sábado — sábado é fallback)
             dias_base = [d for d in dias_semana if d != 5] or dias_semana
-            datas_letivas_atuais = await get_datas_letivas(
-                evento.data_inicio, data_fim_efetiva, dias_base, db
-            )
+            excluir_set_ext = {date.fromisoformat(d) for d in (datas_excluir or []) if d}
+            datas_letivas_atuais = [
+                d for d in await get_datas_letivas(evento.data_inicio, data_fim_efetiva, dias_base, db)
+                if d not in excluir_set_ext
+            ]
             if total_aulas_prev > len(datas_letivas_atuais):
                 dias_uteis_semana = max(1, len(dias_base))
                 faltam = total_aulas_prev - len(datas_letivas_atuais)
