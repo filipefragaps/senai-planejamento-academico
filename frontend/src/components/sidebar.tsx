@@ -18,6 +18,7 @@ import {
   UserCircle,
   TrendingUp,
   DoorOpen,
+  CalendarDays,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clearAuth, getCurrentUser } from "@/lib/auth";
@@ -41,6 +42,7 @@ const NAV_PRINCIPAL: NavItem[] = [
   { href: "/ambientes",   label: "Salas e Labs",     icon: DoorOpen,         perfis: ["admin", "coordenador"] },
   { href: "/regencia",    label: "Regência",         icon: TrendingUp,       perfis: ["admin", "coordenador", "analista"] },
   { href: "/relatorios",  label: "Relatórios",       icon: BarChart3,        perfis: ["admin", "coordenador", "analista", "secretario"] },
+  { href: "/calendario",  label: "Calendário",       icon: CalendarDays,     perfis: ["admin", "coordenador"] },
   { href: "/historico",   label: "Histórico",        icon: History,          perfis: ["admin"] },
   { href: "/ia",          label: "Análise com IA",   icon: Brain,            perfis: ["admin", "coordenador"] },
 ];

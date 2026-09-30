@@ -23,6 +23,7 @@ from app.models.unidade_curricular import UnidadeCurricular
 from app.models.curso import Curso
 from app.models.planejamento_snapshot import PlanejamentoSnapshot
 from app.models.grupo_aula import GrupoAula
+from app.models.calendario import CalendarioAcademico
 from app.services.planejamento_service import gerar_planejamento, confirmar_planejamento, analisar_proprio, PlanejamentoResult
 from app.services.regencia import calcular_regencia_professor
 
@@ -1558,6 +1559,64 @@ async def gerar_otimizado(
         "alocacoes": alocacoes_serial,
         "impacto": impacto,
         "alertas": {str(k): v for k, v in alertas_solver.items() if v},
+    }
+
+
+@router.get("/datas-bloqueadas")
+async def datas_bloqueadas(
+    inicio: str,
+    fim: str,
+    dias_semana: str = "5",  # ex: "5" ou "0,2,4"
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """
+    Retorna datas bloqueadas pelo calendário acadêmico em um período.
+    Útil para o frontend mostrar visualmente sábados indisponíveis no painel FIC.
+    """
+    try:
+        data_ini = date.fromisoformat(inicio)
+        data_fim_q = date.fromisoformat(fim)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Datas inválidas. Use formato YYYY-MM-DD.")
+
+    try:
+        dias = [int(d.strip()) for d in dias_semana.split(",") if d.strip()]
+    except ValueError:
+        dias = [5]
+
+    from app.algorithms.constraint_solver import get_datas_letivas
+    from sqlalchemy import or_, func as sqlfunc
+
+    # Busca todas as datas do período nos dias solicitados
+    todas = []
+    current = data_ini
+    while current <= data_fim_q:
+        if current.weekday() in dias:
+            todas.append(current)
+        current += timedelta(days=1)
+
+    # Busca bloqueios do calendário
+    result = await db.execute(
+        select(CalendarioAcademico.data, CalendarioAcademico.tipo, CalendarioAcademico.descricao).where(
+            and_(
+                CalendarioAcademico.data >= data_ini,
+                CalendarioAcademico.data <= data_fim_q,
+                or_(
+                    CalendarioAcademico.letivo == False,
+                    sqlfunc.lower(CalendarioAcademico.tipo).in_([
+                        "feriado", "recesso", "ferias", "férias",
+                        "folga", "compensacao", "compensação", "sem aula",
+                    ]),
+                ),
+            )
+        )
+    )
+    bloqueios = {row[0]: {"tipo": row[1], "descricao": row[2]} for row in result.fetchall()}
+
+    return {
+        "datas": [d.isoformat() for d in todas],
+        "bloqueadas": {d.isoformat(): bloqueios[d] for d in todas if d in bloqueios},
     }
 
 

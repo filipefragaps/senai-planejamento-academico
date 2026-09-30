@@ -179,6 +179,8 @@ export const planejamentoApi = {
     api.get(`/planejamento/ucs/${eventoId}`, { params: { ...(modulo ? { modulo } : {}), ...(todos ? { todos: true } : {}) } }).then((r) => r.data),
   candidatos: (eventoId: number, ucId: number) =>
     api.get(`/planejamento/candidatos/${eventoId}/${ucId}`).then((r) => r.data),
+  datasBloqueadas: (inicio: string, fim: string, diasSemana = "5") =>
+    api.get("/planejamento/datas-bloqueadas", { params: { inicio, fim, dias_semana: diasSemana } }).then((r) => r.data) as Promise<{ datas: string[]; bloqueadas: Record<string, { tipo: string; descricao: string | null }> }>,
   gerar: (eventoId: number, ucs: { uc_id: number; ordem: number; professor_preferido_id?: number; data_inicio?: string }[], modoSuperior = false, cliparSemestre = false, datasExcluir: string[] = []) =>
     api.post(`/planejamento/gerar/${eventoId}`, { ucs, modo_superior: modoSuperior, clipar_semestre: cliparSemestre, datas_excluir: datasExcluir }).then((r) => r.data),
   gerarOtimizado: (eventoId: number, ucs: { uc_id: number; ordem: number; professor_preferido_id?: number; data_inicio?: string; nao_agendar?: boolean; dias_semana?: number[] }[], modoSuperior = false, cliparSemestre = false, datasExcluir: string[] = []) =>
@@ -252,6 +254,20 @@ export const importacaoApi = {
       .then((r) => r.data);
   },
   reverterSeduc: () => api.delete("/importacao/cronograma-seduc").then((r) => r.data),
+};
+
+// Calendário Acadêmico
+export const calendarioApi = {
+  listar: (ano?: number) =>
+    api.get("/calendario/", { params: ano ? { ano } : {} }).then((r) => r.data) as Promise<
+      { id: number; data: string; tipo: string; letivo: boolean; descricao: string | null; periodo: string | null }[]
+    >,
+  criar: (body: { data: string; tipo: string; descricao?: string | null; letivo?: boolean; periodo?: string | null }) =>
+    api.post("/calendario/", body).then((r) => r.data),
+  atualizar: (id: number, body: { data: string; tipo: string; descricao?: string | null; letivo?: boolean; periodo?: string | null }) =>
+    api.put(`/calendario/${id}`, body).then((r) => r.data),
+  deletar: (id: number) =>
+    api.delete(`/calendario/${id}`),
 };
 
 // Relatórios
