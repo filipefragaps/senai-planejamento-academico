@@ -395,6 +395,21 @@ async def adicionar_atuacao(
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Professor não encontrado")
 
+    # Upsert: se já existe (professor_id, disciplina, curso_id), atualiza a modalidade
+    existing = await db.execute(
+        select(Atuacao).where(
+            Atuacao.professor_id == professor_id,
+            Atuacao.disciplina == disciplina,
+            Atuacao.curso_id == curso_id,
+        )
+    )
+    atuacao = existing.scalar_one_or_none()
+    if atuacao:
+        if atuacao.modalidade != modalidade:
+            atuacao.modalidade = modalidade
+            await db.commit()
+        return {"id": atuacao.id, "disciplina": atuacao.disciplina, "modalidade": atuacao.modalidade}
+
     atuacao = Atuacao(
         professor_id=professor_id,
         disciplina=disciplina,
