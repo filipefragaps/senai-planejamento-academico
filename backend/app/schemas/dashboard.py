@@ -33,6 +33,7 @@ class KPIGlobal(BaseModel):
     total_turmas_ativas: int
     total_aulas_semana: int
     taxa_regencia_media: float
+    taxa_regencia_real: float
     professores_criticos: int  # regencia < 50%
     professores_alerta: int    # regencia 50-70%
     professores_ok: int        # regencia >= 70%

@@ -79,6 +79,117 @@ function getTurnoKey(horario_inicio: string | null | undefined): string {
   return "noite";
 }
 
+function semanasUteis(iniISO: string, fimISO: string): number {
+  const d = new Date(iniISO + "T12:00:00");
+  const fim = new Date(fimISO + "T12:00:00");
+  let dias = 0;
+  while (d <= fim) {
+    const dow = d.getDay();
+    if (dow >= 1 && dow <= 5) dias++;
+    d.setDate(d.getDate() + 1);
+  }
+  return Math.max(1, dias) / 5;
+}
+
+// ── RegenciaLineChart ────────────────────────────────────────────────────────
+
+interface MesData { mes: string; label: string; profPerc: number | null; geralPerc: number | null }
+
+function RegenciaLineChart({ dados, meta = 70 }: { dados: MesData[]; meta?: number }) {
+  if (dados.length < 2) return null;
+
+  const W = 600;
+  const H = 130;
+  const PAD_L = 32;
+  const PAD_R = 12;
+  const PAD_T = 16;
+  const PAD_B = 24;
+  const innerW = W - PAD_L - PAD_R;
+  const innerH = H - PAD_T - PAD_B;
+
+  const n = dados.length;
+  const xPos = (i: number) => PAD_L + (i / (n - 1)) * innerW;
+  const yPos = (v: number) => PAD_T + innerH - (Math.min(100, Math.max(0, v)) / 100) * innerH;
+
+  function polyline(points: (number | null)[], color: string, dashed = false) {
+    const segments: string[] = [];
+    let path = "";
+    for (let i = 0; i < points.length; i++) {
+      const v = points[i];
+      if (v === null) { path = ""; continue; }
+      const x = xPos(i);
+      const y = yPos(v);
+      if (!path) path = `M ${x} ${y}`;
+      else path += ` L ${x} ${y}`;
+    }
+    if (!path) return null;
+    return (
+      <path
+        d={path}
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeDasharray={dashed ? "5 3" : undefined}
+      />
+    );
+  }
+
+  const yMeta = yPos(meta);
+
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      width="100%"
+      style={{ display: "block", maxHeight: 130 }}
+    >
+      {/* Grid lines */}
+      {[0, 25, 50, 75, 100].map((v) => {
+        const y = yPos(v);
+        return (
+          <g key={v}>
+            <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke="#e5e7eb" strokeWidth="1" />
+            <text x={PAD_L - 3} y={y + 3.5} textAnchor="end" fontSize="8" fill="#9ca3af">{v}%</text>
+          </g>
+        );
+      })}
+
+      {/* Meta line */}
+      <line x1={PAD_L} y1={yMeta} x2={W - PAD_R} y2={yMeta} stroke="#f59e0b" strokeWidth="1" strokeDasharray="4 3" />
+      <text x={W - PAD_R + 2} y={yMeta + 3.5} fontSize="7.5" fill="#f59e0b">meta</text>
+
+      {/* Geral line (gray, dashed) */}
+      {polyline(dados.map(d => d.geralPerc), "#94a3b8", true)}
+
+      {/* Professor line (blue, solid) */}
+      {polyline(dados.map(d => d.profPerc), "#3b82f6")}
+
+      {/* Dots and labels — professor */}
+      {dados.map((d, i) => {
+        if (d.profPerc === null) return null;
+        const x = xPos(i);
+        const y = yPos(d.profPerc);
+        return (
+          <g key={`dot-p-${i}`}>
+            <circle cx={x} cy={y} r="3.5" fill="#3b82f6" />
+            <text x={x} y={y - 6} textAnchor="middle" fontSize="8" fill="#3b82f6" fontWeight="600">
+              {d.profPerc.toFixed(0)}%
+            </text>
+          </g>
+        );
+      })}
+
+      {/* X axis labels */}
+      {dados.map((d, i) => (
+        <text key={`lbl-${i}`} x={xPos(i)} y={H - 4} textAnchor="middle" fontSize="8.5" fill="#6b7280">
+          {d.label}
+        </text>
+      ))}
+    </svg>
+  );
+}
+
 // ── CalendarioMes ─────────────────────────────────────────────────────────────
 
 function CalendarioMes({ ano, mes, dateMap, turnoFiltro }: {
@@ -180,6 +291,12 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose, importarDiar
     staleTime: 60_000,
   });
 
+  const { data: geralMensal = [] } = useQuery({
+    queryKey: ["regencia-mensal-geral", dataInicio, dataFim],
+    queryFn: () => professoresApi.regenciaMensal({ data_inicio: dataInicio, data_fim: dataFim }),
+    staleTime: 120_000,
+  });
+
   const { data: pontoInfo } = useQuery({
     queryKey: ["ponto-info"],
     queryFn: () => pontoApi.info(),
@@ -211,6 +328,36 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose, importarDiar
   }
 
   const meses = useMemo(() => mesesNaJanela(inicio, fim), [inicio, fim]);
+
+  // Regência mensal do professor — calculada a partir das aulas já carregadas
+  const lineChartDados = useMemo((): MesData[] => {
+    if (meses.length < 2) return [];
+    const geralByMes = Object.fromEntries((geralMensal as any[]).map((g: any) => [g.mes, g.media_percentual]));
+    return meses.map(({ ano, mes }) => {
+      const mesKey = `${ano}-${String(mes).padStart(2, "0")}`;
+      const mesInicio = `${mesKey}-01`;
+      const ultimo = new Date(ano, mes, 0).getDate();
+      const mesFim = `${mesKey}-${String(ultimo).padStart(2, "0")}`;
+      // Deduplica slots do professor neste mês
+      const slots = new Map<string, any>();
+      for (const a of aulasRaw as any[]) {
+        if (!a.data?.startsWith(mesKey)) continue;
+        const k = `${a.data}|${a.horario_inicio}|${a.horario_fim}`;
+        if (!slots.has(k)) slots.set(k, a);
+      }
+      const horasMin = [...slots.values()].reduce((s, a) => s + horasAula(a.horario_inicio, a.horario_fim), 0);
+      const semanas = semanasUteis(mesInicio, mesFim);
+      const horasPer = (prof.horas_contratadas || 0) * semanas;
+      const profPerc = horasPer > 0 ? Math.min(100, (horasMin / horasPer) * 100) : 0;
+      return {
+        mes: mesKey,
+        label: `${MESES_PT[mes - 1]}/${String(ano).slice(2)}`,
+        profPerc,
+        geralPerc: geralByMes[mesKey] ?? null,
+      };
+    });
+  }, [meses, aulasRaw, geralMensal, prof.horas_contratadas]);
+
   const dateMap = useMemo(() => {
     const map = new Map<string, any[]>();
     for (const a of aulasRaw as any[]) {
@@ -412,6 +559,30 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose, importarDiar
               )}
             </div>
           </div>
+
+          {/* Gráfico de linha mensal */}
+          {lineChartDados.length >= 2 && (
+            <div className="border rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-700">Evolução da Regência por Mês</h3>
+                <div className="flex items-center gap-4 text-xs text-gray-500">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-5 border-t-2 border-blue-500 inline-block" />
+                    {prof.nome.split(" ")[0]}
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-5 border-t-2 border-slate-400 border-dashed inline-block" />
+                    Média geral
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-5 border-t border-amber-400 border-dashed inline-block" />
+                    Meta 70%
+                  </span>
+                </div>
+              </div>
+              <RegenciaLineChart dados={lineChartDados} />
+            </div>
+          )}
 
           {/* Observação Horista — horas excedentes */}
           {(regencia as any)?.observacao && (

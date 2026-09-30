@@ -20,7 +20,7 @@ def _dashboard_vazio() -> DashboardData:
     return DashboardData(
         global_kpis=KPIGlobal(
             total_professores_ativos=0, total_turmas_ativas=0,
-            total_aulas_semana=0, taxa_regencia_media=0.0,
+            total_aulas_semana=0, taxa_regencia_media=0.0, taxa_regencia_real=0.0,
             professores_criticos=0, professores_alerta=0, professores_ok=0,
             aulas_proxima_semana=0, conflitos_detectados=0,
         ),
@@ -41,16 +41,22 @@ async def get_dashboard(
         proxima_semana_fim = proxima_semana_inicio + timedelta(days=6)
 
         regencias = await calcular_regencia_todos(db, semana_inicio, semana_fim)
+        regencias_real = await calcular_regencia_todos(db, semana_inicio, semana_fim, apenas_realizadas=True)
 
         # Inclusão em Folha, PJ e RPA excluídos da média de regência e contagens de status
         _TIPOS_EXCLUIDOS_MEDIA = {"Inclusão em Folha", "PJ", "RPA"}
         regencias_quadro = [r for r in regencias if r["tipo"] not in _TIPOS_EXCLUIDOS_MEDIA]
+        regencias_quadro_real = [r for r in regencias_real if r["tipo"] not in _TIPOS_EXCLUIDOS_MEDIA]
         prof_ok = sum(1 for r in regencias_quadro if r["status"] == "OK")
         prof_alerta = sum(1 for r in regencias_quadro if r["status"] == "Alerta")
         prof_critico = sum(1 for r in regencias_quadro if r["status"] == "Critico")
         taxa_media = (
             sum(r["percentual_regencia"] for r in regencias_quadro) / len(regencias_quadro)
             if regencias_quadro else 0
+        )
+        taxa_real = (
+            sum(r["percentual_regencia"] for r in regencias_quadro_real) / len(regencias_quadro_real)
+            if regencias_quadro_real else 0
         )
 
         res_aulas = await db.execute(
@@ -86,6 +92,7 @@ async def get_dashboard(
             total_turmas_ativas=total_turmas,
             total_aulas_semana=total_aulas_semana,
             taxa_regencia_media=round(taxa_media, 1),
+            taxa_regencia_real=round(taxa_real, 1),
             professores_criticos=prof_critico,
             professores_alerta=prof_alerta,
             professores_ok=prof_ok,

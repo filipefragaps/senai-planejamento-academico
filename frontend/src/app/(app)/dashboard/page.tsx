@@ -672,12 +672,13 @@ export default function DashboardPage() {
           color="bg-green-500"
         />
         {(() => {
-          const reg = filtroAtivo && statsFiltrados ? statsFiltrados.regenciaMedia : g.taxa_regencia_media;
+          const reg = filtroAtivo && statsFiltrados ? statsFiltrados.regenciaMedia : g.taxa_regencia_real;
+          const subtitleFiltro = filtroQuadroDb !== "todos" ? (filtroQuadroDb === "quadro" ? "Quadro próprio" : "Extraquadro") : "Filtro ativo";
           return (
             <KpiCard
-              title="Regência Média"
+              title="Regência Real"
               value={`${reg.toFixed(1)}%`}
-              subtitle={filtroAtivo ? (filtroQuadroDb !== "todos" ? filtroQuadroDb === "quadro" ? "Quadro próprio" : "Extraquadro" : "Filtro ativo") : "Meta: 70%"}
+              subtitle={filtroAtivo ? subtitleFiltro : "Aulas realizadas esta semana"}
               icon={TrendingUp}
               color={reg >= 70 ? "bg-green-500" : "bg-yellow-500"}
             />

@@ -66,6 +66,7 @@ async def calcular_regencia_professor(
     db: AsyncSession,
     data_inicio: date | None = None,
     data_fim: date | None = None,
+    apenas_realizadas: bool = False,
 ) -> dict:
     """Calcula regência de um professor em um período."""
     if data_inicio is None:
@@ -74,9 +75,10 @@ async def calcular_regencia_professor(
         data_inicio = hoje - timedelta(days=hoje.weekday())
         data_fim = data_inicio + timedelta(days=6)
 
+    statuses = ["Realizada"] if apenas_realizadas else ["Realizada", "Agendada"]
     filters = [
         Aula.professor_id == professor.id,
-        Aula.status.in_(["Realizada", "Agendada"]),
+        Aula.status.in_(statuses),
         Aula.data >= data_inicio,
         Aula.data <= data_fim,
     ]
@@ -152,6 +154,7 @@ async def calcular_regencia_todos(
     db: AsyncSession,
     data_inicio: date | None = None,
     data_fim: date | None = None,
+    apenas_realizadas: bool = False,
 ) -> list[dict]:
     result = await db.execute(
         select(Professor)
@@ -162,7 +165,7 @@ async def calcular_regencia_todos(
 
     resultados = []
     for prof in professores:
-        reg = await calcular_regencia_professor(prof, db, data_inicio, data_fim)
+        reg = await calcular_regencia_professor(prof, db, data_inicio, data_fim, apenas_realizadas=apenas_realizadas)
         resultados.append(reg)
 
     return sorted(resultados, key=lambda x: x["percentual_regencia"])

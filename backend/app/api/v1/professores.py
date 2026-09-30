@@ -160,6 +160,81 @@ async def listar_regencias(
     return await calcular_regencia_todos(db, data_inicio, data_fim)
 
 
+@router.get("/regencia-mensal")
+async def regencia_mensal_geral(
+    data_inicio: date = Query(...),
+    data_fim: date = Query(...),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """Média de regência por mês para todos os professores ativos (exceto PJ/RPA/Inclusão em Folha)."""
+    import calendar as cal_mod
+    from app.services.regencia import _semanas_uteis, _horas_aula
+    from collections import defaultdict
+
+    # Meses do período
+    meses = []
+    y, m = data_inicio.year, data_inicio.month
+    while (y, m) <= (data_fim.year, data_fim.month):
+        last = cal_mod.monthrange(y, m)[1]
+        m_ini = max(date(y, m, 1), data_inicio)
+        m_fim = min(date(y, m, last), data_fim)
+        meses.append((f"{y}-{str(m).zfill(2)}", m_ini, m_fim))
+        m = m + 1 if m < 12 else 1
+        if m == 1:
+            y += 1
+
+    # Professores ativos
+    profs_result = await db.execute(
+        select(Professor).where(Professor.ativo == True)
+    )
+    profs = {p.id: p for p in profs_result.scalars().all()}
+
+    # Aulas do período (uma só query)
+    aulas_result = await db.execute(
+        select(Aula).where(
+            Aula.status.in_(["Realizada", "Agendada"]),
+            Aula.data >= data_inicio,
+            Aula.data <= data_fim,
+            Aula.professor_id.isnot(None),
+        )
+    )
+    aulas = aulas_result.scalars().all()
+
+    # Agrupa horas por (professor_id, mes) — deduplica slots simultâneos
+    slots_vistos: dict[tuple, set] = defaultdict(set)
+    horas_por: dict[tuple, float] = defaultdict(float)
+    for a in aulas:
+        if a.professor_id not in profs:
+            continue
+        mes_key = f"{a.data.year}-{str(a.data.month).zfill(2)}"
+        slot = (a.data, a.horario_inicio, a.horario_fim)
+        pk = (a.professor_id, mes_key)
+        if slot not in slots_vistos[pk]:
+            slots_vistos[pk].add(slot)
+            horas_por[pk] += _horas_aula(a)
+
+    EXCLUIDOS = {"Inclusão em Folha", "PJ", "RPA"}
+    resultado = []
+    for mes_key, m_ini, m_fim in meses:
+        semanas = _semanas_uteis(m_ini, m_fim)
+        percentuais = []
+        for prof_id, prof in profs.items():
+            if prof.tipo in EXCLUIDOS or not (prof.horas_contratadas or 0):
+                continue
+            horas_min = horas_por.get((prof_id, mes_key), 0.0)
+            horas_periodo = prof.horas_contratadas * semanas
+            perc = min(100.0, horas_min / horas_periodo * 100) if horas_periodo > 0 else 0.0
+            percentuais.append(perc)
+        resultado.append({
+            "mes": mes_key,
+            "media_percentual": round(sum(percentuais) / len(percentuais), 1) if percentuais else 0.0,
+            "n_professores": len(percentuais),
+        })
+
+    return resultado
+
+
 @router.get("/debug-grade")
 async def debug_grade_professor(
     nome: str,
