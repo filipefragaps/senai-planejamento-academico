@@ -34,7 +34,8 @@ function isVisible(horarioInicio: string | null, agora: Date): boolean {
   if (!horarioInicio) return true;
   const classMin = minutesSinceMidnight(horarioInicio);
   const nowMin = nowMinutes(agora);
-  return nowMin < classMin + 30;
+  // Exibe se: ainda não expirou (até 30min após início) E começa em até 4h a partir de agora
+  return nowMin < classMin + 30 && classMin <= nowMin + 240;
 }
 
 function fmtDateLong(d: Date): string {
