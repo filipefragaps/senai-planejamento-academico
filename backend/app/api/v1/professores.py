@@ -165,21 +165,33 @@ async def regencia_mensal_geral(
     data_inicio: date = Query(...),
     data_fim: date = Query(...),
     modalidade: str | None = Query(None),
+    apenas_realizadas: bool = Query(False),
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    """Média de regência por mês para todos os professores ativos (exceto PJ/RPA/Inclusão em Folha)."""
+    """Média de regência por mês para todos os professores do quadro."""
     import calendar as cal_mod
+    from datetime import date as _date
     from app.services.regencia import _semanas_uteis, _horas_aula
     from collections import defaultdict
 
-    # Meses do período
+    hoje = _date.today()
+
+    # Meses do período — quando apenas_realizadas, descarta meses futuros
     meses = []
     y, m = data_inicio.year, data_inicio.month
     while (y, m) <= (data_fim.year, data_fim.month):
         last = cal_mod.monthrange(y, m)[1]
         m_ini = max(date(y, m, 1), data_inicio)
         m_fim = min(date(y, m, last), data_fim)
+        if apenas_realizadas and m_ini > hoje:
+            m = m + 1 if m < 12 else 1
+            if m == 1:
+                y += 1
+            continue
+        # Para o mês atual em modo real, limita data_fim a hoje
+        if apenas_realizadas:
+            m_fim = min(m_fim, hoje)
         meses.append((f"{y}-{str(m).zfill(2)}", m_ini, m_fim))
         m = m + 1 if m < 12 else 1
         if m == 1:
@@ -201,9 +213,10 @@ async def regencia_mensal_geral(
         profs = {pid: p for pid, p in profs.items() if pid in ids_modalidade}
 
     # Aulas do período (uma só query)
+    statuses = ["Realizada"] if apenas_realizadas else ["Realizada", "Agendada"]
     aulas_result = await db.execute(
         select(Aula).where(
-            Aula.status.in_(["Realizada", "Agendada"]),
+            Aula.status.in_(statuses),
             Aula.data >= data_inicio,
             Aula.data <= data_fim,
             Aula.professor_id.isnot(None),

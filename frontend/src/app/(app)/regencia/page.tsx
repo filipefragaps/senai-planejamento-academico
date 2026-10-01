@@ -1505,7 +1505,7 @@ export default function RegenciaPage() {
   const periodoMultiMes = !regInicio || !regFim || regInicio !== regFim;
   const { data: geralMensalPagina = [] } = useQuery<{ mes: string; media_percentual: number; n_professores: number }[]>({
     queryKey: ["regencia-mensal-geral-pagina", regDataInicio, regDataFim],
-    queryFn: () => professoresApi.regenciaMensal({ data_inicio: regDataInicio, data_fim: regDataFim }),
+    queryFn: () => professoresApi.regenciaMensal({ data_inicio: regDataInicio, data_fim: regDataFim, apenas_realizadas: true }),
     enabled: periodoMultiMes,
     staleTime: 120_000,
   });
@@ -1513,7 +1513,7 @@ export default function RegenciaPage() {
   const [modalidadeGrafico, setModalidadeGrafico] = useState<string[]>([]);
   const { data: modalidadeMensal = [] } = useQuery<{ mes: string; media_percentual: number; n_professores: number }[]>({
     queryKey: ["regencia-mensal-modalidade", regDataInicio, regDataFim, modalidadeGrafico.join(",")],
-    queryFn: () => professoresApi.regenciaMensal({ data_inicio: regDataInicio, data_fim: regDataFim, modalidade: modalidadeGrafico.join(",") }),
+    queryFn: () => professoresApi.regenciaMensal({ data_inicio: regDataInicio, data_fim: regDataFim, modalidade: modalidadeGrafico.join(","), apenas_realizadas: true }),
     enabled: periodoMultiMes && modalidadeGrafico.length > 0,
     staleTime: 120_000,
   });
@@ -1766,7 +1766,7 @@ export default function RegenciaPage() {
         {geralMensalPagina.length >= 2 && (
           <div className="pt-2 border-t">
             <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Evolução Geral da Regência</p>
+              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Regência Real — Evolução Mensal</p>
               <div className="flex items-center gap-3 flex-wrap">
                 {/* Dropdown multi-checkbox de modalidade */}
                 {modalidadesDisponiveis.length > 0 && (

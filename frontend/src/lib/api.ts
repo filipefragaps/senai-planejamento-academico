@@ -69,7 +69,7 @@ export const professoresApi = {
     api.put(`/professores/${id}`, data).then((r) => r.data),
   regencias: (params?: { data_inicio?: string; data_fim?: string }) =>
     api.get("/professores/regencia", { params }).then((r) => r.data),
-  regenciaMensal: (params: { data_inicio: string; data_fim: string; modalidade?: string }) =>
+  regenciaMensal: (params: { data_inicio: string; data_fim: string; modalidade?: string; apenas_realizadas?: boolean }) =>
     api.get("/professores/regencia-mensal", { params }).then((r) => r.data) as Promise<
       { mes: string; media_percentual: number; n_professores: number }[]
     >,
