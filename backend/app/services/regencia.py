@@ -134,6 +134,7 @@ async def calcular_regencia_professor(
         "nome": professor.nome,
         "foto": professor.foto,
         "tipo": professor.tipo,
+        "area": professor.area,
         "quadro": professor.tipo in _TIPOS_QUADRO,
         "modalidades": modalidades,
         "horas_contratadas": professor.horas_contratadas,

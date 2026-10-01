@@ -1435,6 +1435,7 @@ export default function RegenciaPage() {
   const [filtroStatus, setFiltroStatus] = useState("todos");
   const [filtroQuadro, setFiltroQuadro] = useState<"todos" | "quadro" | "extraquadro">("quadro");
   const [filtroModalidades, setFiltroModalidades] = useState<string[]>([]);
+  const [filtroArea, setFiltroArea] = useState<string>("");
   const [modalidadeOpen, setModalidadeOpen] = useState(false);
   const modalidadeRef = useRef<HTMLDivElement>(null);
   const [modalidadeGraficoOpen, setModalidadeGraficoOpen] = useState(false);
@@ -1551,6 +1552,7 @@ export default function RegenciaPage() {
         )
       );
     }
+    if (filtroArea) r = r.filter(p => p.area === filtroArea);
     if (busca) r = r.filter(p => p.nome.toLowerCase().includes(busca.toLowerCase()));
     const perc = (p: any) => {
       const pontoH = pontoStats ? (pontoStats as any)[String(p.professor_id)] : null;
@@ -1559,13 +1561,19 @@ export default function RegenciaPage() {
     };
     r.sort((a, b) => ordem === "asc" ? perc(a) - perc(b) : perc(b) - perc(a));
     return r;
-  }, [regencias, filtroStatus, filtroQuadro, filtroModalidades, busca, ordem, pontoStats, diarioStats]);
+  }, [regencias, filtroStatus, filtroQuadro, filtroModalidades, filtroArea, busca, ordem, pontoStats, diarioStats]);
 
   const modalidadesDisponiveis = useMemo(() => {
     const set = new Set<string>();
     (regencias as any[])
       .filter(p => p.tipo === "Mensalista" || p.tipo === "Horista")
       .forEach(p => (p.modalidades as string[] ?? []).forEach((m: string) => { if (m) set.add(m); }));
+    return Array.from(set).sort();
+  }, [regencias]);
+
+  const areasDisponiveis = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of regencias as any[]) { if (p.area) set.add(p.area); }
     return Array.from(set).sort();
   }, [regencias]);
 
@@ -1582,9 +1590,10 @@ export default function RegenciaPage() {
         )
       );
     }
+    if (filtroArea) base = base.filter(p => p.area === filtroArea);
     for (const p of base) c[p.status_regencia] = (c[p.status_regencia] ?? 0) + 1;
     return c;
-  }, [regencias, filtroQuadro, filtroModalidades]);
+  }, [regencias, filtroQuadro, filtroModalidades, filtroArea]);
 
   const mediaRegencia = useMemo(() => {
     let base = (regencias as any[]).map((p: any) => ({ ...p, status_regencia: p.status ?? p.status_regencia }));
@@ -1597,6 +1606,7 @@ export default function RegenciaPage() {
         )
       );
     }
+    if (filtroArea) base = base.filter(p => p.area === filtroArea);
     const total = base.length;
     const incluidos = base.filter(p => !excluidos.has(p.professor_id));
     if (incluidos.length === 0) return null;
@@ -1607,7 +1617,7 @@ export default function RegenciaPage() {
       total,
       profs: incluidos.map((p: any) => ({ id: p.professor_id as number, nome: p.nome as string })),
     };
-  }, [regencias, excluidos, filtroQuadro, filtroModalidades]);
+  }, [regencias, excluidos, filtroQuadro, filtroModalidades, filtroArea]);
 
   const qc = useQueryClient();
 
@@ -1617,6 +1627,7 @@ export default function RegenciaPage() {
     if (filtroQuadro === "quadro")      base = base.filter(p => TIPOS_QUADRO.has(p.tipo));
     if (filtroQuadro === "extraquadro") base = base.filter(p => !TIPOS_QUADRO.has(p.tipo));
     if (filtroModalidades.length > 0)   base = base.filter(p => (p.modalidades as string[] ?? []).some((m: string) => filtroModalidades.some(fm => m.toLowerCase().includes(fm.toLowerCase()))));
+    if (filtroArea) base = base.filter(p => p.area === filtroArea);
     const incluidos = base.filter(p => !excluidos.has(p.professor_id));
     const comAmbos = incluidos.filter(p => {
       const id = String(p.professor_id);
@@ -1628,7 +1639,7 @@ export default function RegenciaPage() {
       return s + ((diarioStats[id] ?? 0) / ((pontoStats as any)[id] ?? 1)) * 100;
     }, 0);
     return { media: soma / comAmbos.length, count: comAmbos.length };
-  }, [diarioStats, pontoStats, regencias, excluidos, filtroQuadro, filtroModalidades]);
+  }, [diarioStats, pontoStats, regencias, excluidos, filtroQuadro, filtroModalidades, filtroArea]);
 
   const mediaExecutada = useMemo(() => {
     if (!diarioStats || Object.keys(diarioStats).length === 0) return null;
@@ -1636,6 +1647,7 @@ export default function RegenciaPage() {
     if (filtroQuadro === "quadro")      base = base.filter(p => TIPOS_QUADRO.has(p.tipo));
     if (filtroQuadro === "extraquadro") base = base.filter(p => !TIPOS_QUADRO.has(p.tipo));
     if (filtroModalidades.length > 0)   base = base.filter(p => (p.modalidades as string[] ?? []).some((m: string) => filtroModalidades.some(fm => m.toLowerCase().includes(fm.toLowerCase()))));
+    if (filtroArea) base = base.filter(p => p.area === filtroArea);
     const incluidos = base.filter(p => !excluidos.has(p.professor_id));
     const comDiario = incluidos.filter(p => diarioStats[String(p.professor_id)] != null);
     if (comDiario.length === 0) return null;
@@ -1649,7 +1661,7 @@ export default function RegenciaPage() {
       count: comDiario.length,
       profs: comDiario.map((p: any) => ({ id: p.professor_id as number, nome: p.nome as string })),
     };
-  }, [diarioStats, regencias, excluidos, filtroQuadro, filtroModalidades]);
+  }, [diarioStats, regencias, excluidos, filtroQuadro, filtroModalidades, filtroArea]);
 
   const importarDiario = useMutation({
     mutationFn: (file: File) => diarioApi.importar(file),
@@ -2054,9 +2066,23 @@ export default function RegenciaPage() {
           )}
         </div>
 
-        {(filtroQuadro !== "todos" || filtroModalidades.length > 0) && (
+        {/* Área — select simples */}
+        {areasDisponiveis.length > 0 && (
+          <select
+            value={filtroArea}
+            onChange={e => setFiltroArea(e.target.value)}
+            className={cn("input text-sm py-1.5 px-3", filtroArea && "border-indigo-400 bg-indigo-50 text-indigo-800")}
+          >
+            <option value="">Todas as áreas</option>
+            {areasDisponiveis.map(a => (
+              <option key={a} value={a}>{a}</option>
+            ))}
+          </select>
+        )}
+
+        {(filtroQuadro !== "todos" || filtroModalidades.length > 0 || filtroArea) && (
           <button
-            onClick={() => { setFiltroQuadro("todos"); setFiltroModalidades([]); }}
+            onClick={() => { setFiltroQuadro("todos"); setFiltroModalidades([]); setFiltroArea(""); }}
             className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700"
           >
             <X className="h-3.5 w-3.5" /> Limpar
@@ -2123,7 +2149,10 @@ export default function RegenciaPage() {
                     )}
                     <div className="min-w-0">
                       <p className="font-semibold text-gray-900 text-sm leading-tight truncate">{p.nome}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">{p.tipo} · {p.horas_contratadas}h/sem</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {p.tipo} · {p.horas_contratadas}h/sem
+                        {p.area && <span className="ml-1.5 text-indigo-600 font-medium">{p.area}</span>}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">

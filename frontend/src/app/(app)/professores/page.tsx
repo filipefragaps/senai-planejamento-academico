@@ -282,6 +282,7 @@ export default function ProfessoresPage() {
   const [aba, setAba] = useState<"lista" | "grade">("lista");
   const [search, setSearch] = useState("");
   const [filtroTipo, setFiltroTipo] = useState<string>("todos");
+  const [filtroArea, setFiltroArea] = useState<string>("");
   const [selected, setSelected] = useState<any | null>(null);
   const [drawer, setDrawer] = useState<null | "new" | any>(null);
   const [pagina, setPagina] = useState(1);
@@ -382,16 +383,27 @@ export default function ProfessoresPage() {
   const regMap: Record<number, any> = {};
   regencias.forEach((r: any) => { regMap[r.professor_id] = r; });
 
+  const areasDisponiveis = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of professores as any[]) {
+      if (p.area) set.add(p.area);
+    }
+    return Array.from(set).sort();
+  }, [professores]);
+
   const filtered = professores
     .filter((p: any) => {
       const matchSearch =
         p.nome.toLowerCase().includes(search.toLowerCase()) ||
         (p.especialidades || "").toLowerCase().includes(search.toLowerCase());
       if (!matchSearch) return false;
-      if (filtroTipo === "todos") return true;
-      if (filtroTipo === "quadro") return TIPOS_QUADRO_PROF.has(p.tipo);
-      if (filtroTipo === "extraquadro") return !TIPOS_QUADRO_PROF.has(p.tipo);
-      return p.tipo === filtroTipo;
+      if (filtroTipo !== "todos") {
+        if (filtroTipo === "quadro" && !TIPOS_QUADRO_PROF.has(p.tipo)) return false;
+        if (filtroTipo === "extraquadro" && TIPOS_QUADRO_PROF.has(p.tipo)) return false;
+        if (filtroTipo !== "quadro" && filtroTipo !== "extraquadro" && p.tipo !== filtroTipo) return false;
+      }
+      if (filtroArea && p.area !== filtroArea) return false;
+      return true;
     })
     .sort((a: any, b: any) => a.nome.localeCompare(b.nome, "pt-BR"));
   const totalPaginas = Math.max(1, Math.ceil(filtered.length / POR_PAGINA));
@@ -493,6 +505,33 @@ export default function ProfessoresPage() {
           })}
         </div>
 
+        {/* Filtro por área */}
+        {areasDisponiveis.length > 0 && (
+          <div className="flex items-center gap-1 flex-wrap mb-4">
+            <span className="text-xs text-gray-400 font-medium mr-1">Área:</span>
+            <button
+              onClick={() => { setFiltroArea(""); setPagina(1); }}
+              className={cn("px-2.5 py-1 rounded-md text-xs font-medium transition-all border",
+                filtroArea === "" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50")}
+            >
+              Todas
+            </button>
+            {areasDisponiveis.map((area) => (
+              <button
+                key={area}
+                onClick={() => { setFiltroArea(area === filtroArea ? "" : area); setPagina(1); }}
+                className={cn("px-2.5 py-1 rounded-md text-xs font-medium transition-all border",
+                  filtroArea === area ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-indigo-700 border-indigo-200 bg-indigo-50 hover:bg-indigo-100")}
+              >
+                {area}
+                <span className="ml-1 text-[10px] font-normal opacity-60">
+                  {(professores as any[]).filter((p: any) => p.area === area).length}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {isLoading ? (
           <div className="text-center py-12 text-gray-400">Carregando...</div>
         ) : (
@@ -534,6 +573,9 @@ export default function ProfessoresPage() {
                               <span className="ml-1 text-[9px] font-normal opacity-70">extraquadro</span>
                             )}
                           </span>
+                          {p.area && (
+                            <span className="badge text-xs bg-indigo-50 text-indigo-700">{p.area}</span>
+                          )}
                           {p.especialidades && (
                             <span className="text-xs text-gray-400 truncate">{p.especialidades}</span>
                           )}
