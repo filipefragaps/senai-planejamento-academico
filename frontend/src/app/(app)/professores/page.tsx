@@ -590,7 +590,9 @@ export default function ProfessoresPage() {
                             <span className="badge text-xs bg-indigo-50 text-indigo-700">{p.area}</span>
                           )}
                           {p.especialidades && (
-                            <span className="text-xs text-gray-400 truncate">{p.especialidades}</span>
+                            <span className="text-xs text-gray-400 truncate">
+                              <span className="font-medium text-gray-300">Esp.</span> {p.especialidades}
+                            </span>
                           )}
                         </div>
                         {reg && (
