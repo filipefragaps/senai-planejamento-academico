@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const ROTAS_PUBLICAS = ["/login", "/totem"];
+// Rotas públicas que redirecionam para home quando já autenticado
+const ROTAS_APENAS_ANONIMAS = ["/login"];
 
 const ALLOWED_ROUTES: Record<string, string[]> = {
   admin:       [], // empty = todas as rotas permitidas
@@ -28,6 +30,7 @@ export function middleware(request: NextRequest) {
   const perfil = request.cookies.get("user_perfil")?.value;
 
   const isPublica = ROTAS_PUBLICAS.some((r) => pathname.startsWith(r));
+  const isApenasAnonima = ROTAS_APENAS_ANONIMAS.some((r) => pathname.startsWith(r));
 
   if (!token) {
     if (isPublica) return NextResponse.next();
@@ -36,11 +39,14 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Autenticado tentando acessar /login → redireciona para home do perfil
-  if (isPublica) {
+  // Autenticado em rota só-anônima (ex: /login) → redireciona para home do perfil
+  if (isApenasAnonima) {
     const home = perfil ? (PERFIL_HOME[perfil] ?? "/dashboard") : "/dashboard";
     return NextResponse.redirect(new URL(home, request.url));
   }
+
+  // Rota pública acessível mesmo autenticado (ex: /totem) → deixa passar
+  if (isPublica) return NextResponse.next();
 
   // Verifica acesso por perfil (só quando o cookie user_perfil está presente)
   if (perfil && perfil in ALLOWED_ROUTES) {
