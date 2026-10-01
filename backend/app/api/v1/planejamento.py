@@ -538,10 +538,19 @@ async def cronograma_geral(
         # consegue distingui-las via tipo_modalidade. Usamos Aula.fonte='seduc' como discriminador.
         include_seduc = "35" in codes
         non_seduc_codes = [c for c in codes if c != "35"]
+        # Apenas o EaD (33) compartilha o mesmo evento com aulas SEDUC (mesma nome_turma).
+        # Para outros códigos (81, 41, etc.) não há essa sobreposição.
+        ead_in_filter = "33" in non_seduc_codes
 
         ev_ids_modal: set[int] = set()
         if non_seduc_codes:
-            modal_conds = [Evento.tipo_modalidade.ilike(f"{code} %") for code in non_seduc_codes]
+            modal_conds = [
+                or_(
+                    Evento.tipo_modalidade.ilike(f"{code} %"),
+                    Evento.tipo_modalidade == code,
+                )
+                for code in non_seduc_codes
+            ]
             res_ev = await db.execute(select(Evento.id).where(or_(*modal_conds)))
             ev_ids_modal = set(res_ev.scalars().all())
 
@@ -552,9 +561,11 @@ async def cronograma_geral(
             # Somente SEDUC
             filters.append(Aula.fonte == "seduc")
         elif ev_ids_modal:
-            # Modalidades não-SEDUC: filtra por evento e exclui aulas SEDUC
             filters.append(Aula.evento_id.in_(list(ev_ids_modal)))
-            filters.append(or_(Aula.fonte.is_(None), Aula.fonte != "seduc"))
+            # Exclui aulas SEDUC somente quando filtrando pelo EaD (33), pois é o único
+            # que divide o mesmo evento com aulas SEDUC
+            if ead_in_filter:
+                filters.append(or_(Aula.fonte.is_(None), Aula.fonte != "seduc"))
         else:
             filters.append(Aula.id < 0)
     if filters:
