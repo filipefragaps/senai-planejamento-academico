@@ -165,6 +165,7 @@ async def regencia_mensal_geral(
     data_inicio: date = Query(...),
     data_fim: date = Query(...),
     modalidade: str | None = Query(None),
+    area: str | None = Query(None),
     apenas_realizadas: bool = Query(False),
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
@@ -208,6 +209,10 @@ async def regencia_mensal_geral(
         )
         ids_modalidade = set(at_result.scalars().all())
         profs = {pid: p for pid, p in profs.items() if pid in ids_modalidade}
+
+    # Filtro por área
+    if area:
+        profs = {pid: p for pid, p in profs.items() if p.area == area}
 
     # Aulas do período (uma só query)
     statuses = ["Realizada"] if apenas_realizadas else ["Realizada", "Agendada"]
@@ -260,6 +265,7 @@ async def regencia_mensal_real(
     data_inicio: date = Query(...),
     data_fim: date = Query(...),
     modalidade: str | None = Query(None),
+    area: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
@@ -305,6 +311,13 @@ async def regencia_mensal_real(
             select(Atuacao.professor_id).where(Atuacao.modalidade.in_(mods)).distinct()
         )
         profs_ids &= set(at_result.scalars().all())
+
+    # Filtro por área
+    if area:
+        area_result = await db.execute(
+            select(Professor.id).where(Professor.ativo == True, Professor.area == area)
+        )
+        profs_ids &= set(area_result.scalars().all())
 
     if not profs_ids:
         return []

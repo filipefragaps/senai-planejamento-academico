@@ -1520,6 +1520,21 @@ export default function RegenciaPage() {
   const geralMensalPagina = geralMensalReal.length >= 2 ? geralMensalReal : geralMensalPlane;
   const usandoDadosReais = geralMensalReal.length >= 2;
 
+  const [areaGrafico, setAreaGrafico] = useState<string>("");
+  const { data: geralMensalRealArea = [] } = useQuery<{ mes: string; media_percentual: number; n_professores: number }[]>({
+    queryKey: ["regencia-mensal-real-pagina-area", regDataInicio, regDataFim, areaGrafico],
+    queryFn: () => professoresApi.regenciaMensalReal({ data_inicio: regDataInicio, data_fim: regDataFim, area: areaGrafico }),
+    enabled: periodoMultiMes && !!areaGrafico,
+    staleTime: 120_000,
+  });
+  const { data: geralMensalPlaneArea = [] } = useQuery<{ mes: string; media_percentual: number; n_professores: number }[]>({
+    queryKey: ["regencia-mensal-geral-pagina-area", regDataInicio, regDataFim, areaGrafico],
+    queryFn: () => professoresApi.regenciaMensal({ data_inicio: regDataInicio, data_fim: regDataFim, area: areaGrafico }),
+    enabled: periodoMultiMes && !!areaGrafico && geralMensalRealArea.length < 2,
+    staleTime: 120_000,
+  });
+  const areaMensal = geralMensalRealArea.length >= 2 ? geralMensalRealArea : geralMensalPlaneArea;
+
   const [modalidadeGrafico, setModalidadeGrafico] = useState<string[]>([]);
   const { data: modalidadeMensalReal = [] } = useQuery<{ mes: string; media_percentual: number; n_professores: number }[]>({
     queryKey: ["regencia-mensal-real-modal", regDataInicio, regDataFim, modalidadeGrafico.join(",")],
@@ -1804,6 +1819,22 @@ export default function RegenciaPage() {
                 {!usandoDadosReais && <span className="normal-case font-normal text-gray-400 ml-1">(sem ponto importado)</span>}
               </p>
               <div className="flex items-center gap-3 flex-wrap">
+                {/* Filtro de área do gráfico */}
+                {areasDisponiveis.length > 0 && (
+                  <select
+                    value={areaGrafico}
+                    onChange={e => setAreaGrafico(e.target.value)}
+                    className={cn(
+                      "border rounded px-2 py-1 text-xs bg-white text-gray-700 hover:bg-gray-50 transition-colors",
+                      areaGrafico && "border-indigo-400 bg-indigo-50 text-indigo-800"
+                    )}
+                  >
+                    <option value="">Todas as áreas</option>
+                    {areasDisponiveis.map(a => (
+                      <option key={a} value={a}>{a}</option>
+                    ))}
+                  </select>
+                )}
                 {/* Dropdown multi-checkbox de modalidade */}
                 {modalidadesDisponiveis.length > 0 && (
                   <div ref={modalidadeGraficoRef} className="relative">
@@ -1852,7 +1883,13 @@ export default function RegenciaPage() {
                     <span className="inline-block w-6 border-t-2 border-dashed border-gray-400" />
                     Geral
                   </span>
-                  {modalidadeGrafico.length > 0 && (
+                  {areaGrafico && (
+                    <span className="flex items-center gap-1">
+                      <span className="inline-block w-6 border-t-2 border-solid border-indigo-500" />
+                      {areaGrafico}
+                    </span>
+                  )}
+                  {!areaGrafico && modalidadeGrafico.length > 0 && (
                     <span className="flex items-center gap-1">
                       <span className="inline-block w-6 border-t-2 border-solid border-teal-600" />
                       {modalidadeGrafico.length === 1 ? modalidadeGrafico[0] : `${modalidadeGrafico.length} modal.`}
@@ -1872,13 +1909,21 @@ export default function RegenciaPage() {
                 profPerc: null,
                 geralPerc: g.media_percentual,
               }))}
-              linhaExtra={modalidadeGrafico.length > 0 && modalidadeMensal.length >= 2 ? {
-                color: "#0d9488",
-                dados: geralMensalPagina.map(g => {
-                  const m = modalidadeMensal.find(x => x.mes === g.mes);
-                  return m ? m.media_percentual : null;
-                }),
-              } : undefined}
+              linhaExtra={
+                areaGrafico && areaMensal.length >= 2 ? {
+                  color: "#6366f1",
+                  dados: geralMensalPagina.map(g => {
+                    const m = areaMensal.find(x => x.mes === g.mes);
+                    return m ? m.media_percentual : null;
+                  }),
+                } : modalidadeGrafico.length > 0 && modalidadeMensal.length >= 2 ? {
+                  color: "#0d9488",
+                  dados: geralMensalPagina.map(g => {
+                    const m = modalidadeMensal.find(x => x.mes === g.mes);
+                    return m ? m.media_percentual : null;
+                  }),
+                } : undefined
+              }
             />
           </div>
         )}
