@@ -261,8 +261,8 @@ function TotemContent() {
       </header>
 
       {/* Column Headers */}
-      <div style={{ background: "#0f2347", borderBottom: "1px solid #1e3a5f", padding: "0 1.5rem", flexShrink: 0, display: "grid", gridTemplateColumns: "130px 1fr 1.4fr 1fr 120px 110px", gap: "0.5rem", alignItems: "center" }}>
-        {["HORÁRIO", "TURMA", "DISCIPLINA / UC", "PROFESSOR", "SALA", "STATUS"].map((h) => (
+      <div style={{ background: "#0f2347", borderBottom: "1px solid #1e3a5f", padding: "0 1.5rem", flexShrink: 0, display: "grid", gridTemplateColumns: "130px 1fr 1.4fr 80px 1fr 120px 110px", gap: "0.5rem", alignItems: "center" }}>
+        {["HORÁRIO", "TURMA", "DISCIPLINA / UC", "ETAPA", "PROFESSOR", "SALA", "STATUS"].map((h) => (
           <div key={h} style={{ padding: "0.55rem 0.5rem", fontSize: "0.7rem", fontWeight: 700, color: "#64748b", letterSpacing: "0.1em", textTransform: "uppercase" }}>
             {h}
           </div>
@@ -319,7 +319,7 @@ function TotemContent() {
                 background: isNow ? "#0d2447" : rowBg,
                 borderLeft: isNow ? "4px solid #f0b429" : "4px solid transparent",
                 display: "grid",
-                gridTemplateColumns: "130px 1fr 1.4fr 1fr 120px 110px",
+                gridTemplateColumns: "130px 1fr 1.4fr 80px 1fr 120px 110px",
                 gap: "0.5rem",
                 padding: "0 1.5rem",
                 alignItems: "center",
@@ -351,11 +351,13 @@ function TotemContent() {
                 <div style={{ fontSize: "0.9rem", color: "#93c5fd", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={a.uc_nome}>
                   {a.uc_nome || "—"}
                 </div>
-                {a.etapa && (
-                  <div style={{ fontSize: "0.72rem", color: "#64748b", marginTop: 2 }}>
-                    Etapa {a.etapa}
-                  </div>
-                )}
+              </div>
+
+              {/* Etapa */}
+              <div style={{ padding: "0 0.5rem", overflow: "hidden" }}>
+                <div style={{ fontSize: "0.9rem", color: "#94a3b8", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {a.etapa || "—"}
+                </div>
               </div>
 
               {/* Professor */}
