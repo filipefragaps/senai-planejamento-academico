@@ -164,6 +164,7 @@ async def listar_regencias(
 async def regencia_mensal_geral(
     data_inicio: date = Query(...),
     data_fim: date = Query(...),
+    modalidade: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
@@ -190,6 +191,14 @@ async def regencia_mensal_geral(
     )
     profs = {p.id: p for p in profs_result.scalars().all()}
 
+    # Filtro por modalidade (atuações)
+    if modalidade:
+        at_result = await db.execute(
+            select(Atuacao.professor_id).where(Atuacao.modalidade == modalidade).distinct()
+        )
+        ids_modalidade = set(at_result.scalars().all())
+        profs = {pid: p for pid, p in profs.items() if pid in ids_modalidade}
+
     # Aulas do período (uma só query)
     aulas_result = await db.execute(
         select(Aula).where(
@@ -214,13 +223,13 @@ async def regencia_mensal_geral(
             slots_vistos[pk].add(slot)
             horas_por[pk] += _horas_aula(a)
 
-    EXCLUIDOS = {"Inclusão em Folha", "PJ", "RPA"}
+    QUADRO = {"Mensalista", "Horista"}
     resultado = []
     for mes_key, m_ini, m_fim in meses:
         semanas = _semanas_uteis(m_ini, m_fim)
         percentuais = []
         for prof_id, prof in profs.items():
-            if prof.tipo in EXCLUIDOS or not (prof.horas_contratadas or 0):
+            if prof.tipo not in QUADRO or not (prof.horas_contratadas or 0):
                 continue
             horas_min = horas_por.get((prof_id, mes_key), 0.0)
             horas_periodo = prof.horas_contratadas * semanas

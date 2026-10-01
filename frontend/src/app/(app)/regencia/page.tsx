@@ -94,15 +94,18 @@ function semanasUteis(iniISO: string, fimISO: string): number {
 // ── RegenciaLineChart ────────────────────────────────────────────────────────
 
 interface MesData { mes: string; label: string; profPerc: number | null; geralPerc: number | null }
+interface LinhaExtra { dados: (number | null)[]; color: string }
 
-function RegenciaLineChart({ dados, meta = 70 }: { dados: MesData[]; meta?: number }) {
+function RegenciaLineChart({ dados, meta = 70, linhaExtra }: {
+  dados: MesData[]; meta?: number; linhaExtra?: LinhaExtra;
+}) {
   if (dados.length < 2) return null;
 
   const W = 600;
-  const H = 130;
+  const H = 145;
   const PAD_L = 32;
-  const PAD_R = 12;
-  const PAD_T = 16;
+  const PAD_R = 16;
+  const PAD_T = 20;
   const PAD_B = 24;
   const innerW = W - PAD_L - PAD_R;
   const innerH = H - PAD_T - PAD_B;
@@ -111,39 +114,27 @@ function RegenciaLineChart({ dados, meta = 70 }: { dados: MesData[]; meta?: numb
   const xPos = (i: number) => PAD_L + (i / (n - 1)) * innerW;
   const yPos = (v: number) => PAD_T + innerH - (Math.min(100, Math.max(0, v)) / 100) * innerH;
 
-  function polyline(points: (number | null)[], color: string, dashed = false) {
-    const segments: string[] = [];
+  function buildPath(points: (number | null)[], color: string, dashed = false, width = 2) {
     let path = "";
     for (let i = 0; i < points.length; i++) {
       const v = points[i];
       if (v === null) { path = ""; continue; }
-      const x = xPos(i);
-      const y = yPos(v);
-      if (!path) path = `M ${x} ${y}`;
-      else path += ` L ${x} ${y}`;
+      const x = xPos(i); const y = yPos(v);
+      path = path ? path + ` L ${x} ${y}` : `M ${x} ${y}`;
     }
     if (!path) return null;
     return (
-      <path
-        d={path}
-        fill="none"
-        stroke={color}
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeDasharray={dashed ? "5 3" : undefined}
-      />
+      <path d={path} fill="none" stroke={color} strokeWidth={width}
+        strokeLinecap="round" strokeLinejoin="round"
+        strokeDasharray={dashed ? "5 3" : undefined} />
     );
   }
 
+  const hasProf = dados.some(d => d.profPerc !== null);
   const yMeta = yPos(meta);
 
   return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      width="100%"
-      style={{ display: "block", maxHeight: 130 }}
-    >
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block", maxHeight: 145 }}>
       {/* Grid lines */}
       {[0, 25, 50, 75, 100].map((v) => {
         const y = yPos(v);
@@ -160,16 +151,49 @@ function RegenciaLineChart({ dados, meta = 70 }: { dados: MesData[]; meta?: numb
       <text x={W - PAD_R + 2} y={yMeta + 3.5} fontSize="7.5" fill="#f59e0b">meta</text>
 
       {/* Geral line (gray, dashed) */}
-      {polyline(dados.map(d => d.geralPerc), "#94a3b8", true)}
+      {buildPath(dados.map(d => d.geralPerc), "#94a3b8", true)}
+
+      {/* Linha extra — modalidade (solid, cor própria) */}
+      {linhaExtra && buildPath(linhaExtra.dados, linhaExtra.color)}
 
       {/* Professor line (blue, solid) */}
-      {polyline(dados.map(d => d.profPerc), "#3b82f6")}
+      {buildPath(dados.map(d => d.profPerc), "#3b82f6")}
 
-      {/* Dots and labels — professor */}
+      {/* Dots + labels — geral (mostrado quando não há linha de professor) */}
+      {dados.map((d, i) => {
+        if (d.geralPerc === null) return null;
+        const x = xPos(i); const y = yPos(d.geralPerc);
+        return (
+          <g key={`dot-g-${i}`}>
+            <circle cx={x} cy={y} r="3" fill="#94a3b8" />
+            {!hasProf && (
+              <text x={x} y={y - 6} textAnchor="middle" fontSize="8" fill="#64748b" fontWeight="600">
+                {d.geralPerc.toFixed(0)}%
+              </text>
+            )}
+          </g>
+        );
+      })}
+
+      {/* Dots + labels — linha extra (modalidade), abaixo dos dots */}
+      {linhaExtra && dados.map((d, i) => {
+        const v = linhaExtra.dados[i];
+        if (v === null) return null;
+        const x = xPos(i); const y = yPos(v);
+        return (
+          <g key={`dot-e-${i}`}>
+            <circle cx={x} cy={y} r="3.5" fill={linhaExtra.color} />
+            <text x={x} y={y + 14} textAnchor="middle" fontSize="8" fill={linhaExtra.color} fontWeight="600">
+              {v.toFixed(0)}%
+            </text>
+          </g>
+        );
+      })}
+
+      {/* Dots + labels — professor (azul, acima) */}
       {dados.map((d, i) => {
         if (d.profPerc === null) return null;
-        const x = xPos(i);
-        const y = yPos(d.profPerc);
+        const x = xPos(i); const y = yPos(d.profPerc);
         return (
           <g key={`dot-p-${i}`}>
             <circle cx={x} cy={y} r="3.5" fill="#3b82f6" />
@@ -1481,6 +1505,14 @@ export default function RegenciaPage() {
     staleTime: 120_000,
   });
 
+  const [modalidadeGrafico, setModalidadeGrafico] = useState("");
+  const { data: modalidadeMensal = [] } = useQuery<{ mes: string; media_percentual: number; n_professores: number }[]>({
+    queryKey: ["regencia-mensal-modalidade", regDataInicio, regDataFim, modalidadeGrafico],
+    queryFn: () => professoresApi.regenciaMensal({ data_inicio: regDataInicio, data_fim: regDataFim, modalidade: modalidadeGrafico }),
+    enabled: periodoMultiMes && !!modalidadeGrafico,
+    staleTime: 120_000,
+  });
+
   // Filtro + busca + ordem
   const lista = useMemo(() => {
     let r = regencias.map((p: any) => ({
@@ -1507,6 +1539,14 @@ export default function RegenciaPage() {
     r.sort((a, b) => ordem === "asc" ? perc(a) - perc(b) : perc(b) - perc(a));
     return r;
   }, [regencias, filtroStatus, filtroQuadro, filtroModalidades, busca, ordem, pontoStats, diarioStats]);
+
+  const modalidadesDisponiveis = useMemo(() => {
+    const set = new Set<string>();
+    (regencias as any[])
+      .filter(p => p.tipo === "Mensalista" || p.tipo === "Horista")
+      .forEach(p => (p.modalidades as string[] ?? []).forEach((m: string) => { if (m) set.add(m); }));
+    return Array.from(set).sort();
+  }, [regencias]);
 
   // Contagem recalculada sobre a lista já filtrada por quadro+modalidade (ignora filtroStatus)
   const contagem = useMemo(() => {
@@ -1720,17 +1760,36 @@ export default function RegenciaPage() {
         {/* Gráfico de linha geral */}
         {geralMensalPagina.length >= 2 && (
           <div className="pt-2 border-t">
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
               <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Evolução Geral da Regência</p>
-              <div className="flex items-center gap-3 text-[11px] text-gray-500">
-                <span className="flex items-center gap-1">
-                  <span className="inline-block w-6 border-t-2 border-dashed border-gray-400" />
-                  Média geral
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="inline-block w-6 border-t-2 border-dashed border-amber-400" />
-                  Meta 70%
-                </span>
+              <div className="flex items-center gap-3 flex-wrap">
+                {/* Dropdown de modalidade */}
+                {modalidadesDisponiveis.length > 0 && (
+                  <select value={modalidadeGrafico} onChange={e => setModalidadeGrafico(e.target.value)}
+                    className="border rounded px-2 py-0.5 text-xs focus:outline-none focus:ring-2 focus:ring-teal-300 text-gray-700">
+                    <option value="">Todas as modalidades</option>
+                    {modalidadesDisponiveis.map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                )}
+                {/* Legenda */}
+                <div className="flex items-center gap-3 text-[11px] text-gray-500">
+                  <span className="flex items-center gap-1">
+                    <span className="inline-block w-6 border-t-2 border-dashed border-gray-400" />
+                    Geral
+                  </span>
+                  {modalidadeGrafico && (
+                    <span className="flex items-center gap-1">
+                      <span className="inline-block w-6 border-t-2 border-solid border-teal-600" />
+                      {modalidadeGrafico}
+                    </span>
+                  )}
+                  <span className="flex items-center gap-1">
+                    <span className="inline-block w-6 border-t-2 border-dashed border-amber-400" />
+                    Meta 70%
+                  </span>
+                </div>
               </div>
             </div>
             <RegenciaLineChart
@@ -1740,6 +1799,13 @@ export default function RegenciaPage() {
                 profPerc: null,
                 geralPerc: g.media_percentual,
               }))}
+              linhaExtra={modalidadeGrafico && modalidadeMensal.length >= 2 ? {
+                color: "#0d9488",
+                dados: geralMensalPagina.map(g => {
+                  const m = modalidadeMensal.find(x => x.mes === g.mes);
+                  return m ? m.media_percentual : null;
+                }),
+              } : undefined}
             />
           </div>
         )}
