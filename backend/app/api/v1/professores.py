@@ -177,21 +177,18 @@ async def regencia_mensal_geral(
 
     hoje = _date.today()
 
-    # Meses do período — quando apenas_realizadas, descarta meses futuros
+    # Meses do período — descarta meses inteiramente no futuro, limita o mês atual a hoje
     meses = []
     y, m = data_inicio.year, data_inicio.month
     while (y, m) <= (data_fim.year, data_fim.month):
         last = cal_mod.monthrange(y, m)[1]
         m_ini = max(date(y, m, 1), data_inicio)
-        m_fim = min(date(y, m, last), data_fim)
-        if apenas_realizadas and m_ini > hoje:
+        m_fim = min(date(y, m, last), data_fim, hoje)
+        if m_ini > hoje:
             m = m + 1 if m < 12 else 1
             if m == 1:
                 y += 1
             continue
-        # Para o mês atual em modo real, limita data_fim a hoje
-        if apenas_realizadas:
-            m_fim = min(m_fim, hoje)
         meses.append((f"{y}-{str(m).zfill(2)}", m_ini, m_fim))
         m = m + 1 if m < 12 else 1
         if m == 1:
