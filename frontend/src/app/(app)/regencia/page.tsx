@@ -1437,12 +1437,17 @@ export default function RegenciaPage() {
   const [filtroModalidades, setFiltroModalidades] = useState<string[]>([]);
   const [modalidadeOpen, setModalidadeOpen] = useState(false);
   const modalidadeRef = useRef<HTMLDivElement>(null);
+  const [modalidadeGraficoOpen, setModalidadeGraficoOpen] = useState(false);
+  const modalidadeGraficoRef = useRef<HTMLDivElement>(null);
   const [ordem, setOrdem] = useState<"asc" | "desc">("desc"); // desc = maior primeiro
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (modalidadeRef.current && !modalidadeRef.current.contains(e.target as Node)) {
         setModalidadeOpen(false);
+      }
+      if (modalidadeGraficoRef.current && !modalidadeGraficoRef.current.contains(e.target as Node)) {
+        setModalidadeGraficoOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -1505,11 +1510,11 @@ export default function RegenciaPage() {
     staleTime: 120_000,
   });
 
-  const [modalidadeGrafico, setModalidadeGrafico] = useState("");
+  const [modalidadeGrafico, setModalidadeGrafico] = useState<string[]>([]);
   const { data: modalidadeMensal = [] } = useQuery<{ mes: string; media_percentual: number; n_professores: number }[]>({
-    queryKey: ["regencia-mensal-modalidade", regDataInicio, regDataFim, modalidadeGrafico],
-    queryFn: () => professoresApi.regenciaMensal({ data_inicio: regDataInicio, data_fim: regDataFim, modalidade: modalidadeGrafico }),
-    enabled: periodoMultiMes && !!modalidadeGrafico,
+    queryKey: ["regencia-mensal-modalidade", regDataInicio, regDataFim, modalidadeGrafico.join(",")],
+    queryFn: () => professoresApi.regenciaMensal({ data_inicio: regDataInicio, data_fim: regDataFim, modalidade: modalidadeGrafico.join(",") }),
+    enabled: periodoMultiMes && modalidadeGrafico.length > 0,
     staleTime: 120_000,
   });
 
@@ -1763,15 +1768,47 @@ export default function RegenciaPage() {
             <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
               <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Evolução Geral da Regência</p>
               <div className="flex items-center gap-3 flex-wrap">
-                {/* Dropdown de modalidade */}
+                {/* Dropdown multi-checkbox de modalidade */}
                 {modalidadesDisponiveis.length > 0 && (
-                  <select value={modalidadeGrafico} onChange={e => setModalidadeGrafico(e.target.value)}
-                    className="border rounded px-2 py-0.5 text-xs focus:outline-none focus:ring-2 focus:ring-teal-300 text-gray-700">
-                    <option value="">Todas as modalidades</option>
-                    {modalidadesDisponiveis.map(m => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
+                  <div ref={modalidadeGraficoRef} className="relative">
+                    <button onClick={() => setModalidadeGraficoOpen(o => !o)}
+                      className={cn(
+                        "border rounded px-2 py-1 text-xs flex items-center gap-1.5 bg-white text-gray-700 hover:bg-gray-50 transition-colors",
+                        modalidadeGrafico.length > 0 && "border-teal-400 bg-teal-50 text-teal-800"
+                      )}>
+                      <span>
+                        {modalidadeGrafico.length === 0
+                          ? "Comparar modalidade"
+                          : modalidadeGrafico.length === 1
+                          ? modalidadeGrafico[0]
+                          : `${modalidadeGrafico.length} modalidades`}
+                      </span>
+                      <ChevronDown className={cn("h-3 w-3 shrink-0 transition-transform", modalidadeGraficoOpen && "rotate-180")} />
+                    </button>
+                    {modalidadeGraficoOpen && (
+                      <div className="absolute top-full right-0 mt-1 z-30 bg-white border rounded-lg shadow-lg w-64 py-1 max-h-60 overflow-y-auto">
+                        <div className="flex items-center justify-between px-3 py-1.5 border-b sticky top-0 bg-white">
+                          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Modalidades</span>
+                          {modalidadeGrafico.length > 0 && (
+                            <button onClick={() => setModalidadeGrafico([])} className="text-xs text-teal-600 hover:text-teal-800">
+                              Limpar
+                            </button>
+                          )}
+                        </div>
+                        {modalidadesDisponiveis.map(m => (
+                          <label key={m} className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                            <input type="checkbox"
+                              checked={modalidadeGrafico.includes(m)}
+                              onChange={e => setModalidadeGrafico(prev =>
+                                e.target.checked ? [...prev, m] : prev.filter(x => x !== m)
+                              )}
+                              className="rounded border-gray-300 text-teal-600 h-3.5 w-3.5 shrink-0" />
+                            <span className="text-xs text-gray-700">{m}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
                 {/* Legenda */}
                 <div className="flex items-center gap-3 text-[11px] text-gray-500">
@@ -1779,10 +1816,10 @@ export default function RegenciaPage() {
                     <span className="inline-block w-6 border-t-2 border-dashed border-gray-400" />
                     Geral
                   </span>
-                  {modalidadeGrafico && (
+                  {modalidadeGrafico.length > 0 && (
                     <span className="flex items-center gap-1">
                       <span className="inline-block w-6 border-t-2 border-solid border-teal-600" />
-                      {modalidadeGrafico}
+                      {modalidadeGrafico.length === 1 ? modalidadeGrafico[0] : `${modalidadeGrafico.length} modal.`}
                     </span>
                   )}
                   <span className="flex items-center gap-1">
@@ -1799,7 +1836,7 @@ export default function RegenciaPage() {
                 profPerc: null,
                 geralPerc: g.media_percentual,
               }))}
-              linhaExtra={modalidadeGrafico && modalidadeMensal.length >= 2 ? {
+              linhaExtra={modalidadeGrafico.length > 0 && modalidadeMensal.length >= 2 ? {
                 color: "#0d9488",
                 dados: geralMensalPagina.map(g => {
                   const m = modalidadeMensal.find(x => x.mes === g.mes);

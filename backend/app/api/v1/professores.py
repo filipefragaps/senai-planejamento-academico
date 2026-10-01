@@ -191,10 +191,11 @@ async def regencia_mensal_geral(
     )
     profs = {p.id: p for p in profs_result.scalars().all()}
 
-    # Filtro por modalidade (atuações)
+    # Filtro por modalidade(s) — aceita comma-separated, ex: "FIC,Habilitação Técnica"
     if modalidade:
+        mods = [m.strip() for m in modalidade.split(",") if m.strip()]
         at_result = await db.execute(
-            select(Atuacao.professor_id).where(Atuacao.modalidade == modalidade).distinct()
+            select(Atuacao.professor_id).where(Atuacao.modalidade.in_(mods)).distinct()
         )
         ids_modalidade = set(at_result.scalars().all())
         profs = {pid: p for pid, p in profs.items() if pid in ids_modalidade}
