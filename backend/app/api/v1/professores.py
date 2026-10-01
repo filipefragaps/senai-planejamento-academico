@@ -379,6 +379,53 @@ async def regencia_mensal_real(
     return resultado
 
 
+class AreaItem(BaseModel):
+    nome: str
+    area: str
+
+
+@router.post("/importar-areas")
+async def importar_areas(
+    itens: list[AreaItem],
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_admin),
+):
+    """Recebe lista {nome, area} e vincula cada professor por match de nome normalizado."""
+    import unicodedata, re
+
+    def norm(s: str) -> str:
+        s = unicodedata.normalize("NFD", s)
+        s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+        return re.sub(r"\s+", " ", s.upper().strip())
+
+    profs_result = await db.execute(select(Professor))
+    profs = profs_result.scalars().all()
+    # índice nome_normalizado → professor
+    idx = {norm(p.nome): p for p in profs}
+
+    vinculados, nao_encontrados = [], []
+
+    for item in itens:
+        n = norm(item.nome)
+        prof = idx.get(n)
+
+        # fallback: match parcial por tokens (todos os tokens do CSV presentes no nome do prof)
+        if not prof:
+            tokens = n.split()
+            candidatos = [p for p in profs if all(t in norm(p.nome) for t in tokens)]
+            if len(candidatos) == 1:
+                prof = candidatos[0]
+
+        if prof:
+            prof.area = item.area
+            vinculados.append({"id": prof.id, "nome": prof.nome, "area": item.area})
+        else:
+            nao_encontrados.append(item.nome)
+
+    await db.commit()
+    return {"vinculados": len(vinculados), "nao_encontrados": nao_encontrados, "detalhes": vinculados}
+
+
 @router.get("/debug-grade")
 async def debug_grade_professor(
     nome: str,
