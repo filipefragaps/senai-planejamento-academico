@@ -255,6 +255,130 @@ async def regencia_mensal_geral(
     return resultado
 
 
+@router.get("/regencia-mensal-real")
+async def regencia_mensal_real(
+    data_inicio: date = Query(...),
+    data_fim: date = Query(...),
+    modalidade: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """Regência real mensal (diário ÷ ponto) — mesma fórmula do card Regência Real."""
+    import calendar as cal_mod
+    from datetime import date as _date
+    from collections import defaultdict
+    from app.models.diario import DiarioAula
+    from app.models.ponto import PontoMensal
+
+    hoje = _date.today()
+
+    # Meses do período — descarta futuros, limita mês atual a hoje
+    meses = []
+    y, m = data_inicio.year, data_inicio.month
+    while (y, m) <= (data_fim.year, data_fim.month):
+        last = cal_mod.monthrange(y, m)[1]
+        m_ini = max(date(y, m, 1), data_inicio)
+        m_fim = min(date(y, m, last), data_fim, hoje)
+        if m_ini > hoje:
+            m = m + 1 if m < 12 else 1
+            if m == 1:
+                y += 1
+            continue
+        meses.append((f"{y}-{str(m).zfill(2)}", m_ini, m_fim))
+        m = m + 1 if m < 12 else 1
+        if m == 1:
+            y += 1
+
+    if not meses:
+        return []
+
+    # Professores do quadro ativos
+    profs_result = await db.execute(
+        select(Professor).where(Professor.ativo == True, Professor.tipo.in_(["Mensalista", "Horista"]))
+    )
+    profs_ids = {p.id for p in profs_result.scalars().all()}
+
+    # Filtro por modalidade(s)
+    if modalidade:
+        mods = [x.strip() for x in modalidade.split(",") if x.strip()]
+        at_result = await db.execute(
+            select(Atuacao.professor_id).where(Atuacao.modalidade.in_(mods)).distinct()
+        )
+        profs_ids &= set(at_result.scalars().all())
+
+    if not profs_ids:
+        return []
+
+    # Diário: horas executadas por (professor_id, mes_key) — deduplica slot data+hora_inicio
+    diario_result = await db.execute(
+        select(
+            DiarioAula.professor_id,
+            DiarioAula.data,
+            DiarioAula.hora_inicio,
+            DiarioAula.hora_termino,
+            DiarioAula.qtde_horas,
+        ).where(
+            DiarioAula.professor_id.in_(profs_ids),
+            DiarioAula.data >= data_inicio,
+            DiarioAula.data <= min(data_fim, hoje),
+        )
+    )
+    slots_vistos: dict[tuple, set] = defaultdict(set)
+    diario_horas: dict[tuple, float] = defaultdict(float)
+    for row in diario_result.all():
+        mes_key = f"{row.data.year}-{str(row.data.month).zfill(2)}"
+        slot = (row.data, row.hora_inicio)
+        pk = (row.professor_id, mes_key)
+        if slot in slots_vistos[pk]:
+            continue
+        slots_vistos[pk].add(slot)
+        h = float(row.qtde_horas) if row.qtde_horas is not None else 0.0
+        if h == 0.0 and row.hora_inicio and row.hora_termino:
+            ini = row.hora_inicio.hour * 60 + row.hora_inicio.minute
+            fim_m = row.hora_termino.hour * 60 + row.hora_termino.minute
+            diff = fim_m - ini
+            if diff > 0:
+                h = diff / 60.0
+        diario_horas[pk] += h
+
+    # Ponto: horas_total por (professor_id, mes_key) — usa data_inicio do registro como chave do mês
+    ponto_result = await db.execute(
+        select(
+            PontoMensal.professor_id,
+            PontoMensal.data_inicio,
+            PontoMensal.horas_total,
+        ).where(
+            PontoMensal.professor_id.in_(profs_ids),
+            PontoMensal.data_inicio <= min(data_fim, hoje),
+            PontoMensal.data_fim >= data_inicio,
+        )
+    )
+    ponto_horas: dict[tuple, float] = defaultdict(float)
+    for row in ponto_result.all():
+        mes_key = f"{row.data_inicio.year}-{str(row.data_inicio.month).zfill(2)}"
+        ponto_horas[(row.professor_id, mes_key)] += float(row.horas_total or 0)
+
+    # Monta resultado por mês
+    resultado = []
+    for mes_key, m_ini, m_fim in meses:
+        percentuais = []
+        for prof_id in profs_ids:
+            ponto_h = ponto_horas.get((prof_id, mes_key), 0.0)
+            if ponto_h <= 0:
+                continue
+            diario_h = diario_horas.get((prof_id, mes_key), 0.0)
+            perc = min(100.0, diario_h / ponto_h * 100)
+            percentuais.append(perc)
+        if percentuais:
+            resultado.append({
+                "mes": mes_key,
+                "media_percentual": round(sum(percentuais) / len(percentuais), 1),
+                "n_professores": len(percentuais),
+            })
+
+    return resultado
+
+
 @router.get("/debug-grade")
 async def debug_grade_professor(
     nome: str,

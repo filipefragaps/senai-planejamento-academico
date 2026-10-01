@@ -1503,20 +1503,36 @@ export default function RegenciaPage() {
   });
 
   const periodoMultiMes = !regInicio || !regFim || regInicio !== regFim;
-  const { data: geralMensalPagina = [] } = useQuery<{ mes: string; media_percentual: number; n_professores: number }[]>({
-    queryKey: ["regencia-mensal-geral-pagina", regDataInicio, regDataFim],
-    queryFn: () => professoresApi.regenciaMensal({ data_inicio: regDataInicio, data_fim: regDataFim }),
+  const { data: geralMensalReal = [] } = useQuery<{ mes: string; media_percentual: number; n_professores: number }[]>({
+    queryKey: ["regencia-mensal-real-pagina", regDataInicio, regDataFim],
+    queryFn: () => professoresApi.regenciaMensalReal({ data_inicio: regDataInicio, data_fim: regDataFim }),
     enabled: periodoMultiMes,
     staleTime: 120_000,
   });
+  const { data: geralMensalPlane = [] } = useQuery<{ mes: string; media_percentual: number; n_professores: number }[]>({
+    queryKey: ["regencia-mensal-geral-pagina", regDataInicio, regDataFim],
+    queryFn: () => professoresApi.regenciaMensal({ data_inicio: regDataInicio, data_fim: regDataFim }),
+    enabled: periodoMultiMes && geralMensalReal.length < 2,
+    staleTime: 120_000,
+  });
+  // usa regência real se disponível, senão fallback para planejada
+  const geralMensalPagina = geralMensalReal.length >= 2 ? geralMensalReal : geralMensalPlane;
+  const usandoDadosReais = geralMensalReal.length >= 2;
 
   const [modalidadeGrafico, setModalidadeGrafico] = useState<string[]>([]);
-  const { data: modalidadeMensal = [] } = useQuery<{ mes: string; media_percentual: number; n_professores: number }[]>({
-    queryKey: ["regencia-mensal-modalidade", regDataInicio, regDataFim, modalidadeGrafico.join(",")],
-    queryFn: () => professoresApi.regenciaMensal({ data_inicio: regDataInicio, data_fim: regDataFim, modalidade: modalidadeGrafico.join(",") }),
+  const { data: modalidadeMensalReal = [] } = useQuery<{ mes: string; media_percentual: number; n_professores: number }[]>({
+    queryKey: ["regencia-mensal-real-modal", regDataInicio, regDataFim, modalidadeGrafico.join(",")],
+    queryFn: () => professoresApi.regenciaMensalReal({ data_inicio: regDataInicio, data_fim: regDataFim, modalidade: modalidadeGrafico.join(",") }),
     enabled: periodoMultiMes && modalidadeGrafico.length > 0,
     staleTime: 120_000,
   });
+  const { data: modalidadeMensalPlane = [] } = useQuery<{ mes: string; media_percentual: number; n_professores: number }[]>({
+    queryKey: ["regencia-mensal-modal-plane", regDataInicio, regDataFim, modalidadeGrafico.join(",")],
+    queryFn: () => professoresApi.regenciaMensal({ data_inicio: regDataInicio, data_fim: regDataFim, modalidade: modalidadeGrafico.join(",") }),
+    enabled: periodoMultiMes && modalidadeGrafico.length > 0 && modalidadeMensalReal.length < 2,
+    staleTime: 120_000,
+  });
+  const modalidadeMensal = modalidadeMensalReal.length >= 2 ? modalidadeMensalReal : modalidadeMensalPlane;
 
   // Filtro + busca + ordem
   const lista = useMemo(() => {
@@ -1766,7 +1782,10 @@ export default function RegenciaPage() {
         {geralMensalPagina.length >= 2 && (
           <div className="pt-2 border-t">
             <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Evolução Mensal da Regência</p>
+              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                {usandoDadosReais ? "Regência Real — Evolução Mensal" : "Regência — Evolução Mensal"}
+                {!usandoDadosReais && <span className="normal-case font-normal text-gray-400 ml-1">(sem ponto importado)</span>}
+              </p>
               <div className="flex items-center gap-3 flex-wrap">
                 {/* Dropdown multi-checkbox de modalidade */}
                 {modalidadesDisponiveis.length > 0 && (

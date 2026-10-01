@@ -73,6 +73,10 @@ export const professoresApi = {
     api.get("/professores/regencia-mensal", { params }).then((r) => r.data) as Promise<
       { mes: string; media_percentual: number; n_professores: number }[]
     >,
+  regenciaMensalReal: (params: { data_inicio: string; data_fim: string; modalidade?: string }) =>
+    api.get("/professores/regencia-mensal-real", { params }).then((r) => r.data) as Promise<
+      { mes: string; media_percentual: number; n_professores: number }[]
+    >,
   ocupacao: (params: { data_inicio: string; data_fim: string }) =>
     api.get("/professores/ocupacao", { params }).then((r) => r.data),
   regencia: (id: number, params?: any) =>
