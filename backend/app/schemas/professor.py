@@ -14,6 +14,7 @@ class ProfessorBase(BaseModel):
     titulacao: str | None = None
     ativo: bool = True
     foto: str | None = None
+    area: str | None = None
 
 
 class ProfessorCreate(ProfessorBase):
@@ -31,6 +32,7 @@ class ProfessorUpdate(BaseModel):
     titulacao: str | None = None
     ativo: bool | None = None
     foto: str | None = None
+    area: str | None = None
 
 
 class AtuacaoOut(BaseModel):
