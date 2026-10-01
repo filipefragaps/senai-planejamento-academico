@@ -586,15 +586,16 @@ export default function ProfessoresPage() {
                               <span className="ml-1 text-[9px] font-normal opacity-70">extraquadro</span>
                             )}
                           </span>
-                          {p.area && (
-                            <span className="badge text-xs bg-indigo-50 text-indigo-700">{p.area}</span>
-                          )}
-                          {p.especialidades && (
-                            <span className="text-xs text-gray-400 truncate">
-                              <span className="font-medium text-gray-300">Esp.</span> {p.especialidades}
-                            </span>
-                          )}
+                          {p.area
+                            ? <span className="badge text-xs bg-indigo-50 text-indigo-700">Área: {p.area}</span>
+                            : <span className="badge text-[10px] bg-gray-100 text-gray-400">sem área</span>
+                          }
                         </div>
+                        {p.especialidades && (
+                          <p className="text-[10px] text-gray-400 mt-0.5 truncate">
+                            Esp.: {p.especialidades}
+                          </p>
+                        )}
                         {reg && (
                           <div className="mt-2 max-w-xs">
                             <RegenciaBar percentual={reg.percentual_regencia} meta={reg.meta_regencia} />
