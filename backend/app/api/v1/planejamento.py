@@ -2091,6 +2091,63 @@ async def confirmar_otimizacao_global_endpoint(
 
 # ── Apagar Planejamento ────────────────────────────────────────────────────────
 
+@router.get("/totem")
+async def totem_display(
+    token: str | None = Query(None),
+    data: date | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Endpoint público para display de cronograma diário (totem). Autenticação por token."""
+    import os
+    totem_token = os.environ.get("TOTEM_TOKEN", "senai-totem-2024")
+    if not token or token != totem_token:
+        raise HTTPException(status_code=401, detail="Token inválido")
+
+    target_date = data or date.today()
+
+    result = await db.execute(
+        select(Aula)
+        .where(Aula.data == target_date, Aula.status != "Cancelada")
+        .order_by(Aula.horario_inicio, Aula.evento_id)
+    )
+    aulas = result.scalars().all()
+
+    prof_ids = {a.professor_id for a in aulas if a.professor_id}
+    uc_ids = {a.unidade_curricular_id for a in aulas if a.unidade_curricular_id}
+    ev_ids = {a.evento_id for a in aulas if a.evento_id}
+
+    profs: dict[int, str] = {}
+    if prof_ids:
+        res = await db.execute(select(Professor.id, Professor.nome).where(Professor.id.in_(prof_ids)))
+        profs = {r[0]: r[1] for r in res.all()}
+
+    ucs: dict[int, str] = {}
+    if uc_ids:
+        res = await db.execute(select(UnidadeCurricular.id, UnidadeCurricular.nome).where(UnidadeCurricular.id.in_(uc_ids)))
+        ucs = {r[0]: r[1] for r in res.all()}
+
+    eventos: dict[int, str] = {}
+    if ev_ids:
+        res = await db.execute(select(Evento.id, Evento.nome_turma).where(Evento.id.in_(ev_ids)))
+        eventos = {r[0]: r[1] for r in res.all()}
+
+    return [
+        {
+            "id": a.id,
+            "horario_inicio": str(a.horario_inicio)[:5] if a.horario_inicio else None,
+            "horario_fim": str(a.horario_fim)[:5] if a.horario_fim else None,
+            "turma": eventos.get(a.evento_id) or "",
+            "uc_nome": ucs.get(a.unidade_curricular_id) or a.uc_nome_original or "",
+            "professor": profs.get(a.professor_id) or "",
+            "ambiente": a.ambiente or a.sala or "",
+            "status": a.status,
+            "subturma": a.subturma,
+            "etapa": a.etapa,
+        }
+        for a in aulas
+    ]
+
+
 @router.delete("/apagar/{evento_id}", status_code=200)
 async def apagar_planejamento(
     evento_id: int,

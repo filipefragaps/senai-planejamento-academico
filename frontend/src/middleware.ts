@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const ROTAS_PUBLICAS = ["/login"];
+const ROTAS_PUBLICAS = ["/login", "/totem"];
 
 const ALLOWED_ROUTES: Record<string, string[]> = {
   admin:       [], // empty = todas as rotas permitidas
