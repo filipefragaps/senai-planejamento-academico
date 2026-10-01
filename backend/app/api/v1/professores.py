@@ -584,6 +584,7 @@ async def obter_professor_detalhes(
         "valor_hora": p.valor_hora,
         "especialidades": p.especialidades,
         "titulacao": p.titulacao,
+        "area": p.area,
         "ativo": p.ativo,
         "disponibilidades": disponibilidades,
         "atuacoes_por_curso": list(cursos_map.values()),

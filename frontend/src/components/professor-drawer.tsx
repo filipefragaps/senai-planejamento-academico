@@ -45,9 +45,13 @@ interface Props {
   onDeleted?: () => void;
 }
 
+const AREAS_OPTIONS = [
+  "AUTOMAÇÃO", "AVIAÇÃO", "ELÉTRICA", "FICTEC", "GESTÃO", "MARCENARIA", "MECÂNICA", "VESTUÁRIO",
+];
+
 const BLANK_BASIC = {
   nome: "", email: "", telefone: "", tipo: "Mensalista",
-  horas_contratadas: 40, valor_hora: "", especialidades: "", titulacao: "", ativo: true,
+  horas_contratadas: 40, valor_hora: "", especialidades: "", titulacao: "", area: "", ativo: true,
 };
 
 const BLANK_DISP = { dia_semana: 0, horario_inicio: "18:30", horario_fim: "22:00", tipo: "Disponível" };
@@ -92,6 +96,7 @@ export function ProfessorDrawer({ professor, onClose, onSaved, onDeleted }: Prop
           valor_hora: professor.valor_hora || "",
           especialidades: professor.especialidades || "",
           titulacao: professor.titulacao || "",
+          area: professor.area || "",
           ativo: professor.ativo ?? true,
         }
       : { ...BLANK_BASIC }
@@ -552,7 +557,22 @@ export function ProfessorDrawer({ professor, onClose, onSaved, onDeleted }: Prop
                   </div>
                 )}
                 <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Especialidades / Área</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Área organizacional
+                  </label>
+                  <select
+                    className="input w-full"
+                    value={basic.area || ""}
+                    onChange={(e) => setBasic({ ...basic, area: e.target.value })}
+                  >
+                    <option value="">— Sem área vinculada —</option>
+                    {AREAS_OPTIONS.map((a) => (
+                      <option key={a} value={a}>{a}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Especialidades técnicas</label>
                   {(() => {
                     const selecionadas = basic.especialidades
                       ? basic.especialidades.split(",").map((s: string) => s.trim()).filter(Boolean)
@@ -618,6 +638,7 @@ export function ProfessorDrawer({ professor, onClose, onSaved, onDeleted }: Prop
                   onClick={() => atualizarProf.mutate({
                     ...basic,
                     valor_hora: basic.valor_hora !== "" ? Number(basic.valor_hora) : null,
+                    area: basic.area || null,
                   })}
                   disabled={atualizarProf.isPending}
                   className="btn-primary mt-4 flex items-center gap-2 text-sm"
