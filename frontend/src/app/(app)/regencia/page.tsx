@@ -1552,7 +1552,8 @@ export default function RegenciaPage() {
         )
       );
     }
-    if (filtroArea) r = r.filter(p => p.area === filtroArea);
+    if (filtroArea === "__sem_area__") r = r.filter(p => !p.area);
+    else if (filtroArea) r = r.filter(p => p.area === filtroArea);
     if (busca) r = r.filter(p => p.nome.toLowerCase().includes(busca.toLowerCase()));
     const perc = (p: any) => {
       const pontoH = pontoStats ? (pontoStats as any)[String(p.professor_id)] : null;
@@ -1590,7 +1591,8 @@ export default function RegenciaPage() {
         )
       );
     }
-    if (filtroArea) base = base.filter(p => p.area === filtroArea);
+    if (filtroArea === "__sem_area__") base = base.filter(p => !p.area);
+    else if (filtroArea) base = base.filter(p => p.area === filtroArea);
     for (const p of base) c[p.status_regencia] = (c[p.status_regencia] ?? 0) + 1;
     return c;
   }, [regencias, filtroQuadro, filtroModalidades, filtroArea]);
@@ -1606,7 +1608,8 @@ export default function RegenciaPage() {
         )
       );
     }
-    if (filtroArea) base = base.filter(p => p.area === filtroArea);
+    if (filtroArea === "__sem_area__") base = base.filter(p => !p.area);
+    else if (filtroArea) base = base.filter(p => p.area === filtroArea);
     const total = base.length;
     const incluidos = base.filter(p => !excluidos.has(p.professor_id));
     if (incluidos.length === 0) return null;
@@ -1627,7 +1630,8 @@ export default function RegenciaPage() {
     if (filtroQuadro === "quadro")      base = base.filter(p => TIPOS_QUADRO.has(p.tipo));
     if (filtroQuadro === "extraquadro") base = base.filter(p => !TIPOS_QUADRO.has(p.tipo));
     if (filtroModalidades.length > 0)   base = base.filter(p => (p.modalidades as string[] ?? []).some((m: string) => filtroModalidades.some(fm => m.toLowerCase().includes(fm.toLowerCase()))));
-    if (filtroArea) base = base.filter(p => p.area === filtroArea);
+    if (filtroArea === "__sem_area__") base = base.filter(p => !p.area);
+    else if (filtroArea) base = base.filter(p => p.area === filtroArea);
     const incluidos = base.filter(p => !excluidos.has(p.professor_id));
     const comAmbos = incluidos.filter(p => {
       const id = String(p.professor_id);
@@ -1647,7 +1651,8 @@ export default function RegenciaPage() {
     if (filtroQuadro === "quadro")      base = base.filter(p => TIPOS_QUADRO.has(p.tipo));
     if (filtroQuadro === "extraquadro") base = base.filter(p => !TIPOS_QUADRO.has(p.tipo));
     if (filtroModalidades.length > 0)   base = base.filter(p => (p.modalidades as string[] ?? []).some((m: string) => filtroModalidades.some(fm => m.toLowerCase().includes(fm.toLowerCase()))));
-    if (filtroArea) base = base.filter(p => p.area === filtroArea);
+    if (filtroArea === "__sem_area__") base = base.filter(p => !p.area);
+    else if (filtroArea) base = base.filter(p => p.area === filtroArea);
     const incluidos = base.filter(p => !excluidos.has(p.professor_id));
     const comDiario = incluidos.filter(p => diarioStats[String(p.professor_id)] != null);
     if (comDiario.length === 0) return null;
@@ -2077,6 +2082,7 @@ export default function RegenciaPage() {
             {areasDisponiveis.map(a => (
               <option key={a} value={a}>{a}</option>
             ))}
+            <option value="__sem_area__">Sem área</option>
           </select>
         )}
 

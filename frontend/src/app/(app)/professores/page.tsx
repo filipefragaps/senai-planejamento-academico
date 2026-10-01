@@ -402,7 +402,8 @@ export default function ProfessoresPage() {
         if (filtroTipo === "extraquadro" && TIPOS_QUADRO_PROF.has(p.tipo)) return false;
         if (filtroTipo !== "quadro" && filtroTipo !== "extraquadro" && p.tipo !== filtroTipo) return false;
       }
-      if (filtroArea && p.area !== filtroArea) return false;
+      if (filtroArea === "__sem_area__" && p.area) return false;
+      if (filtroArea && filtroArea !== "__sem_area__" && p.area !== filtroArea) return false;
       return true;
     })
     .sort((a: any, b: any) => a.nome.localeCompare(b.nome, "pt-BR"));
@@ -529,6 +530,18 @@ export default function ProfessoresPage() {
                 </span>
               </button>
             ))}
+            {(professores as any[]).some((p: any) => !p.area) && (
+              <button
+                onClick={() => { setFiltroArea("__sem_area__"); setPagina(1); }}
+                className={cn("px-2.5 py-1 rounded-md text-xs font-medium transition-all border",
+                  filtroArea === "__sem_area__" ? "bg-gray-600 text-white border-gray-600" : "bg-white text-gray-500 border-gray-300 hover:bg-gray-50")}
+              >
+                Sem área
+                <span className="ml-1 text-[10px] font-normal opacity-60">
+                  {(professores as any[]).filter((p: any) => !p.area).length}
+                </span>
+              </button>
+            )}
           </div>
         )}
 
