@@ -316,12 +316,15 @@ export default function CronogramaPage() {
       weekday: "long", day: "numeric", month: "long", year: "numeric",
     });
     const aulasPrint = aulasNoDia.filter((a: any) => a.status !== "Remarcada");
+    const temEaD = aulasPrint.some((a: any) => a.tipo_modalidade?.startsWith("33"));
     const rows = aulasPrint.map((a: any) => {
       const cor = ucColor(a.unidade_curricular_id, ucColorMap);
+      const isEaD = a.tipo_modalidade?.startsWith("33");
       return `<tr>
         <td style="width:16px;padding:8px 6px 8px 12px">
           <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${cor}"></span>
         </td>
+        ${temEaD ? `<td style="text-align:center;font-weight:700;color:#6d28d9;padding:8px 8px;font-size:12px">${isEaD && a.numero_aula != null ? `Aula ${a.numero_aula}` : "—"}</td>` : ""}
         <td style="font-family:monospace;white-space:nowrap;padding:8px 12px">${(a.horario_inicio ?? "").slice(0, 5)} – ${(a.horario_fim ?? "").slice(0, 5)}</td>
         <td style="padding:8px 12px">${a.nome_evento ?? "—"}</td>
         <td style="padding:8px 12px;font-weight:500">${a.uc_nome ?? "—"}</td>
@@ -342,7 +345,7 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
 @media print{body{padding:0}}</style></head>
 <body><h1>${dataFormatada}</h1>
 <p class="sub">${aulasPrint.length} aula(s) agendada(s)</p>
-<table><thead><tr><th></th><th>Horário</th><th>Evento / Turma</th><th>UC / Disciplina</th><th>Etapa / Período</th><th>Professor</th><th>Ambiente</th></tr></thead>
+<table><thead><tr><th></th>${temEaD ? "<th>Nº</th>" : ""}<th>Horário</th><th>Evento / Turma</th><th>UC / Disciplina</th><th>Etapa / Período</th><th>Professor</th><th>Ambiente</th></tr></thead>
 <tbody>${rows}</tbody></table></body></html>`;
     const win = window.open("", "_blank", "width=950,height=700");
     if (!win) { window.print(); return; }
@@ -947,6 +950,9 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
                 <thead>
                   <tr className="border-b bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
                     <th className="px-4 py-3 text-left font-semibold w-4" />
+                    {aulasNoDia.some((a: any) => a.tipo_modalidade?.startsWith("33")) && (
+                      <th className="px-3 py-3 text-center font-semibold w-12">Nº</th>
+                    )}
                     <th className="px-4 py-3 text-left font-semibold">Horário</th>
                     <th className="px-4 py-3 text-left font-semibold">Evento / Turma</th>
                     <th className="px-4 py-3 text-left font-semibold">UC / Disciplina</th>
@@ -971,6 +977,14 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
                           style={{ backgroundColor: ucColor(a.unidade_curricular_id, ucColorMap) }}
                         />
                       </td>
+                      {aulasNoDia.some((x: any) => x.tipo_modalidade?.startsWith("33")) && (
+                        <td className="px-3 py-3 text-center">
+                          {a.tipo_modalidade?.startsWith("33") && a.numero_aula != null
+                            ? <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-violet-100 text-violet-700 text-xs font-bold">{a.numero_aula}</span>
+                            : <span className="text-gray-200 text-xs">—</span>
+                          }
+                        </td>
+                      )}
                       <td className="px-4 py-3 font-mono text-gray-700 whitespace-nowrap">
                         {(a.horario_inicio ?? "").slice(0, 5)} – {(a.horario_fim ?? "").slice(0, 5)}
                       </td>

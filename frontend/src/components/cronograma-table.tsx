@@ -25,6 +25,7 @@ export interface AulaRow {
   unidade_curricular_id?: number | null;
   professor_id?: number | null;
   grupo_aula_id?: number | null;
+  tipo_modalidade?: string | null;
 }
 
 const STATUS_CLS: Record<string, string> = {

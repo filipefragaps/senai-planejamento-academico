@@ -198,7 +198,7 @@ def _serializar_alocacao(a) -> dict:
     }
 
 
-def _serializar_aula(a: Aula, nome_prof: str | None = None, nome_uc: str | None = None, nome_evento: str | None = None, nome_curso: str | None = None, coordenador: str | None = None) -> dict:
+def _serializar_aula(a: Aula, nome_prof: str | None = None, nome_uc: str | None = None, nome_evento: str | None = None, nome_curso: str | None = None, coordenador: str | None = None, tipo_modalidade: str | None = None) -> dict:
     return {
         "id": a.id,
         "evento_id": a.evento_id,
@@ -222,6 +222,7 @@ def _serializar_aula(a: Aula, nome_prof: str | None = None, nome_uc: str | None 
         "status": a.status,
         "alterada_manualmente": a.alterada_manualmente,
         "grupo_aula_id": a.grupo_aula_id,
+        "tipo_modalidade": tipo_modalidade,
     }
 
 
@@ -628,6 +629,7 @@ async def cronograma_geral(
             nome_evento=nome_evento,
             nome_curso=nome_curso,
             coordenador=coordenador,
+            tipo_modalidade=ev.tipo_modalidade if ev else None,
         ))
 
     return rows
@@ -1098,6 +1100,43 @@ async def remover_aula(
         raise HTTPException(status_code=404, detail="Aula não encontrada")
     await db.delete(aula)
     await db.commit()
+
+
+@router.post("/aulas/{aula_id}/numerar")
+async def numerar_aula(
+    aula_id: int,
+    numero: int = Query(..., ge=1),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """Define o número desta aula dentro da UC e propaga sequencialmente para as demais
+    aulas da mesma UC no mesmo evento, ordenadas por data e horário."""
+    res = await db.execute(select(Aula).where(Aula.id == aula_id))
+    aula = res.scalar_one_or_none()
+    if not aula:
+        raise HTTPException(status_code=404, detail="Aula não encontrada")
+
+    # Todas as aulas da mesma UC no mesmo evento, ordenadas cronologicamente
+    res_todas = await db.execute(
+        select(Aula)
+        .where(
+            Aula.evento_id == aula.evento_id,
+            Aula.unidade_curricular_id == aula.unidade_curricular_id,
+        )
+        .order_by(Aula.data, Aula.horario_inicio)
+    )
+    todas = res_todas.scalars().all()
+
+    idx = next((i for i, a in enumerate(todas) if a.id == aula_id), None)
+    if idx is None:
+        raise HTTPException(status_code=500, detail="Aula não encontrada na sequência")
+
+    for i, a in enumerate(todas):
+        n = numero + (i - idx)
+        a.numero_aula = n if n >= 1 else None
+
+    await db.commit()
+    return {"ok": True, "total": len(todas), "primeiro_numero": numero - idx if (numero - idx) >= 1 else None}
 
 
 class VincularAulaRequest(BaseModel):

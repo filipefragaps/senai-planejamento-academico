@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { aulasApi, professoresApi, planejamentoApi, cursosApi, ambientesApi, eventosApi } from "@/lib/api";
+import { Hash } from "lucide-react";
 import { toast } from "sonner";
 import { X, Save, Loader2, Lock, RefreshCw, UserCheck, Calendar, ChevronDown, ChevronRight, BookOpen, Link2, Unlink } from "lucide-react";
 import type { AulaRow } from "@/components/cronograma-table";
@@ -58,6 +59,10 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
   const [tipoRemanejo, setTipoRemanejo] = useState<"substituicao" | "remarcacao">("substituicao");
   const [profSubstituto, setProfSubstituto] = useState<string>("");
   const [novaData, setNovaData] = useState<string>("");
+
+  // Numeração de aula EaD
+  const [secaoNumeracao, setSecaoNumeracao] = useState(false);
+  const [numeroAulaInput, setNumeroAulaInput] = useState<string>("");
 
   // Vincular eventos
   const [secaoVincular, setSecaoVincular] = useState(false);
@@ -224,6 +229,22 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
     onError: (err: any) => toast.error(extractErrorMsg(err, "Erro ao desvincular")),
   });
 
+  const numerarMutation = useMutation({
+    mutationFn: () => {
+      if (!aula) throw new Error("Sem aula");
+      const n = parseInt(numeroAulaInput);
+      if (!n || n < 1) throw new Error("Número inválido");
+      return planejamentoApi.numerarAula(aula.id, n);
+    },
+    onSuccess: () => {
+      toast.success("Aulas numeradas com sucesso!");
+      qc.invalidateQueries({ queryKey: ["cronograma-global"] });
+      onSaved?.();
+      setSecaoNumeracao(false);
+    },
+    onError: (err: any) => toast.error(extractErrorMsg(err, "Erro ao numerar aulas")),
+  });
+
   const salvar = useMutation({
     mutationFn: () => {
       if (!aula) throw new Error("Nenhuma aula selecionada");
@@ -302,6 +323,11 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
             <span className="font-mono">{aula.data ? `${aula.data.split("-").reverse().join("/")}` : ""}</span>
             {aula.horario_inicio && <span>{aula.horario_inicio}{aula.horario_fim ? ` – ${aula.horario_fim}` : ""}</span>}
             {aula.turno && <span className="badge bg-indigo-50 text-indigo-700">{aula.turno}</span>}
+            {(aula as any).tipo_modalidade?.startsWith("33") && (aula as any).numero_aula != null && (
+              <span className="flex items-center gap-1 badge bg-violet-100 text-violet-700 font-bold">
+                <Hash className="h-3 w-3" /> Aula {(aula as any).numero_aula}
+              </span>
+            )}
           </div>
           {aula.uc_nome && (
             <p className="text-xs text-gray-700 mt-1 font-medium truncate">{aula.uc_nome}</p>
@@ -427,6 +453,61 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
               </div>
             </label>
           </div>
+
+          {/* Numeração EaD */}
+          {(aula as any).tipo_modalidade?.startsWith("33") && (
+            <div className="border border-violet-200 rounded-lg overflow-hidden">
+              <button
+                type="button"
+                className="w-full flex items-center justify-between px-3 py-2.5 bg-violet-50 hover:bg-violet-100 transition-colors"
+                onClick={() => {
+                  setSecaoNumeracao((v) => !v);
+                  if (!secaoNumeracao) {
+                    setNumeroAulaInput(String((aula as any).numero_aula ?? ""));
+                  }
+                }}
+              >
+                <span className="flex items-center gap-2 text-sm font-medium text-violet-700">
+                  <Hash className="h-4 w-4" />
+                  Numeração da aula
+                  {(aula as any).numero_aula != null && (
+                    <span className="ml-1 bg-violet-200 text-violet-800 text-xs px-1.5 py-0.5 rounded-full font-bold">
+                      Aula {(aula as any).numero_aula}
+                    </span>
+                  )}
+                </span>
+                {secaoNumeracao ? <ChevronDown className="h-4 w-4 text-violet-400" /> : <ChevronRight className="h-4 w-4 text-violet-400" />}
+              </button>
+
+              {secaoNumeracao && (
+                <div className="p-3 border-t border-violet-200 space-y-3">
+                  <p className="text-xs text-gray-500">
+                    Defina o número desta aula na UC. As demais aulas da mesma UC neste evento serão numeradas automaticamente em sequência (anterior −1, próxima +1).
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      className="input w-24 text-sm text-center font-mono"
+                      placeholder="Nº"
+                      value={numeroAulaInput}
+                      onChange={(e) => setNumeroAulaInput(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && numerarMutation.mutate()}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => numerarMutation.mutate()}
+                      disabled={numerarMutation.isPending || !numeroAulaInput}
+                      className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1"
+                    >
+                      {numerarMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Hash className="h-3 w-3" />}
+                      Numerar sequência
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Trocar componente curricular */}
           <div className="border rounded-lg overflow-hidden">
