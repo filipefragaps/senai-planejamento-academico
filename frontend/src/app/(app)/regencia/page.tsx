@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { getCurrentUser } from "@/lib/auth";
 import {
   Search, X, TrendingUp, CheckCircle, AlertTriangle, Zap, Download, ArrowUpDown, Info, ChevronDown, EyeOff, Eye,
-  Upload, BookOpen, CalendarCheck, FileQuestion, Clock,
+  Upload, BookOpen, CalendarCheck, FileQuestion, Clock, Maximize2,
 } from "lucide-react";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -96,13 +96,13 @@ function semanasUteis(iniISO: string, fimISO: string): number {
 interface MesData { mes: string; label: string; profPerc: number | null; geralPerc: number | null }
 interface LinhaExtra { dados: (number | null)[]; color: string }
 
-function RegenciaLineChart({ dados, meta = 70, linhaExtra }: {
-  dados: MesData[]; meta?: number; linhaExtra?: LinhaExtra;
+function RegenciaLineChart({ dados, meta = 70, linhaExtra, expanded = false }: {
+  dados: MesData[]; meta?: number; linhaExtra?: LinhaExtra; expanded?: boolean;
 }) {
   if (dados.length < 2) return null;
 
   const W = 600;
-  const H = 145;
+  const H = expanded ? 300 : 145;
   const PAD_L = 32;
   const PAD_R = 16;
   const PAD_T = 20;
@@ -134,7 +134,7 @@ function RegenciaLineChart({ dados, meta = 70, linhaExtra }: {
   const yMeta = yPos(meta);
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block", maxHeight: 145 }}>
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block", maxHeight: expanded ? undefined : 145 }}>
       {/* Grid lines */}
       {[0, 25, 50, 75, 100].map((v) => {
         const y = yPos(v);
@@ -1521,6 +1521,7 @@ export default function RegenciaPage() {
   const usandoDadosReais = geralMensalReal.length >= 2;
 
   const [areaGrafico, setAreaGrafico] = useState<string>("");
+  const [chartExpandido, setChartExpandido] = useState(false);
   const { data: geralMensalRealArea = [] } = useQuery<{ mes: string; media_percentual: number; n_professores: number }[]>({
     queryKey: ["regencia-mensal-real-pagina-area", regDataInicio, regDataFim, areaGrafico],
     queryFn: () => professoresApi.regenciaMensalReal({ data_inicio: regDataInicio, data_fim: regDataFim, area: areaGrafico }),
@@ -1814,10 +1815,19 @@ export default function RegenciaPage() {
         {geralMensalPagina.length >= 2 && (
           <div className="pt-2 border-t">
             <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                {usandoDadosReais ? "Regência Real — Evolução Mensal" : "Regência — Evolução Mensal"}
-                {!usandoDadosReais && <span className="normal-case font-normal text-gray-400 ml-1">(sem ponto importado)</span>}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                  {usandoDadosReais ? "Regência Real — Evolução Mensal" : "Regência — Evolução Mensal"}
+                  {!usandoDadosReais && <span className="normal-case font-normal text-gray-400 ml-1">(sem ponto importado)</span>}
+                </p>
+                <button
+                  onClick={() => setChartExpandido(true)}
+                  title="Ampliar gráfico"
+                  className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                  <Maximize2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
               <div className="flex items-center gap-3 flex-wrap">
                 {/* Filtro de área do gráfico */}
                 {areasDisponiveis.length > 0 && (
@@ -1928,6 +1938,82 @@ export default function RegenciaPage() {
           </div>
         )}
       </div>
+
+      {/* Modal — gráfico ampliado */}
+      {chartExpandido && geralMensalPagina.length >= 2 && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setChartExpandido(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl p-6"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="font-semibold text-gray-800">
+                  {usandoDadosReais ? "Regência Real — Evolução Mensal" : "Regência — Evolução Mensal"}
+                </p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {regDataInicio} a {regDataFim}
+                  {areaGrafico && <span className="ml-2 text-indigo-600 font-medium">{areaGrafico}</span>}
+                  {!areaGrafico && modalidadeGrafico.length > 0 && (
+                    <span className="ml-2 text-teal-600 font-medium">{modalidadeGrafico.join(", ")}</span>
+                  )}
+                </p>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3 text-xs text-gray-500">
+                  <span className="flex items-center gap-1">
+                    <span className="inline-block w-6 border-t-2 border-dashed border-gray-400" /> Geral
+                  </span>
+                  {areaGrafico && (
+                    <span className="flex items-center gap-1">
+                      <span className="inline-block w-6 border-t-2 border-solid border-indigo-500" /> {areaGrafico}
+                    </span>
+                  )}
+                  {!areaGrafico && modalidadeGrafico.length > 0 && (
+                    <span className="flex items-center gap-1">
+                      <span className="inline-block w-6 border-t-2 border-solid border-teal-600" />
+                      {modalidadeGrafico.length === 1 ? modalidadeGrafico[0] : `${modalidadeGrafico.length} modal.`}
+                    </span>
+                  )}
+                  <span className="flex items-center gap-1">
+                    <span className="inline-block w-6 border-t-2 border-dashed border-amber-400" /> Meta 70%
+                  </span>
+                </div>
+                <button onClick={() => setChartExpandido(false)} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+            <RegenciaLineChart
+              expanded
+              dados={geralMensalPagina.map((g) => ({
+                mes: g.mes,
+                label: `${MESES_PT[parseInt(g.mes.split("-")[1]) - 1]}/${g.mes.slice(2, 4)}`,
+                profPerc: null,
+                geralPerc: g.media_percentual,
+              }))}
+              linhaExtra={
+                areaGrafico && areaMensal.length >= 2 ? {
+                  color: "#6366f1",
+                  dados: geralMensalPagina.map(g => {
+                    const m = areaMensal.find(x => x.mes === g.mes);
+                    return m ? m.media_percentual : null;
+                  }),
+                } : modalidadeGrafico.length > 0 && modalidadeMensal.length >= 2 ? {
+                  color: "#0d9488",
+                  dados: geralMensalPagina.map(g => {
+                    const m = modalidadeMensal.find(x => x.mes === g.mes);
+                    return m ? m.media_percentual : null;
+                  }),
+                } : undefined
+              }
+            />
+          </div>
+        </div>
+      )}
 
       {/* Cards de regência média: planejada + executada */}
       {mediaRegencia && (
