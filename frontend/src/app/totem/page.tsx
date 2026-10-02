@@ -154,8 +154,10 @@ function TotemContent() {
     return () => window.removeEventListener("resize", measure);
   }, [orientation, isMobile]);
 
-  // After each render, check if rows overflow → trim last row
+  // After each render, check if rows overflow → trim last row (desktop only)
+  // On mobile the container scrolls, so totalH > clientHeight is always true — skip trim
   useLayoutEffect(() => {
+    if (isMobile) return;
     if (!tableBodyRef.current) return;
     const container = tableBodyRef.current;
     const rowEls = Array.from(container.querySelectorAll<HTMLElement>("[data-totem-row]"));
