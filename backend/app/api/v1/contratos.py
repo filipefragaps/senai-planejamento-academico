@@ -104,6 +104,48 @@ async def _get_contrato(db: AsyncSession, professor_id: int, contrato_id: int) -
     return c
 
 
+@router.get("/contratos/relatorio")
+async def relatorio_contratos(
+    ativo: bool | None = None,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """Relatório consolidado de todos os contratos de docentes."""
+    query = (
+        select(ContratoDocente, Professor.nome.label("professor_nome"), Professor.tipo.label("professor_tipo"))
+        .join(Professor, ContratoDocente.professor_id == Professor.id)
+    )
+    if ativo is not None:
+        query = query.where(ContratoDocente.ativo == ativo)
+    query = query.order_by(Professor.nome, ContratoDocente.criado_em.desc())
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    contratos_out = []
+    for row in rows:
+        c = row.ContratoDocente
+        h_p, h_e = await _stats_contrato(db, c.id)
+        out = _contrato_out(c, h_p, h_e)
+        out["professor_nome"] = row.professor_nome
+        out["professor_tipo"] = row.professor_tipo
+        contratos_out.append(out)
+
+    totais = {
+        "total_contratos": len(contratos_out),
+        "valor_total": round(sum(c["valor_total"] for c in contratos_out), 2),
+        "valor_pago": round(sum(c["valor_pago"] for c in contratos_out), 2),
+        "valor_encaminhado": round(sum(c["valor_encaminhado"] for c in contratos_out), 2),
+        "saldo_financeiro": round(sum(c["saldo_financeiro"] for c in contratos_out), 2),
+        "horas_total": round(sum(c["total_horas_previstas"] for c in contratos_out), 2),
+        "horas_pagas": round(sum(c["horas_pagas"] for c in contratos_out), 2),
+        "horas_encaminhadas": round(sum(c["horas_encaminhadas"] for c in contratos_out), 2),
+        "saldo_horas": round(sum(c["saldo_horas"] for c in contratos_out), 2),
+    }
+
+    return {"contratos": contratos_out, "totais": totais}
+
+
 @router.get("/{professor_id}/contratos")
 async def listar_contratos(
     professor_id: int,

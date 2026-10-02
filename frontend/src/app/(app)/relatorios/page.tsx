@@ -6,7 +6,7 @@ import { relatoriosApi, professoresApi, eventosApi, pagamentosApi, contratosApi,
 import { getCurrentUser } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { toast } from "sonner";
-import { Download, FileSpreadsheet, Users, BookOpen, Database, ShoppingBag, History, Receipt, ListChecks, CreditCard, CheckCircle2, RotateCcw, X, AlertCircle } from "lucide-react";
+import { Download, FileSpreadsheet, Users, BookOpen, Database, ShoppingBag, History, Receipt, ListChecks, CreditCard, CheckCircle2, RotateCcw, X, AlertCircle, TrendingUp, Clock, Wallet } from "lucide-react";
 
 const TIPOS_CONTRATO_PAG = ["PJ", "RPA", "Inclusão em Folha"];
 
@@ -39,6 +39,15 @@ export default function RelatoriosPage() {
   const [selectedProfContrato, setSelectedProfContrato] = useState("");
   const [dateIniContrato, setDateIniContrato] = useState("");
   const [dateFimContrato, setDateFimContrato] = useState("");
+
+  // Relatório de saldos de contratos
+  const [filtroAtivoContrato, setFiltroAtivoContrato] = useState<"todos" | "ativos" | "inativos">("ativos");
+  const [filtroProfContrato, setFiltroProfContrato] = useState("");
+  const { data: relatorioContratos, isLoading: loadingRelContratos } = useQuery({
+    queryKey: ["relatorio-contratos", filtroAtivoContrato],
+    queryFn: () => contratosApi.relatorio(filtroAtivoContrato === "todos" ? undefined : filtroAtivoContrato === "ativos"),
+    staleTime: 60_000,
+  });
 
   const [selectedEventoUC, setSelectedEventoUC] = useState("");
   const [loadingUCExcel, setLoadingUCExcel] = useState(false);
@@ -1240,6 +1249,149 @@ export default function RelatoriosPage() {
             )
           )}
         </div>
+      </section>
+
+      {/* ── Relatório de Saldos de Contratos ──────────────────────────────── */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-800">Saldo de Contratos</h2>
+            <p className="text-sm text-gray-400">Visão financeira consolidada de todos os contratos de docentes</p>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {(["ativos","todos","inativos"] as const).map(f => (
+              <button key={f} onClick={() => setFiltroAtivoContrato(f)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${filtroAtivoContrato === f ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"}`}>
+                {f === "ativos" ? "Ativos" : f === "inativos" ? "Inativos" : "Todos"}
+              </button>
+            ))}
+            <input
+              className="input text-sm w-44"
+              placeholder="Filtrar professor..."
+              value={filtroProfContrato}
+              onChange={e => setFiltroProfContrato(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {loadingRelContratos ? (
+          <div className="card p-8 text-center text-gray-400 text-sm">Carregando...</div>
+        ) : (() => {
+          const todosContratos: any[] = relatorioContratos?.contratos ?? [];
+          const totais: any = relatorioContratos?.totais ?? {};
+          const filtrados = filtroProfContrato.trim()
+            ? todosContratos.filter((c: any) => c.professor_nome?.toLowerCase().includes(filtroProfContrato.toLowerCase()))
+            : todosContratos;
+
+          const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+          const fmtH = (h: number) => `${h.toFixed(1)}h`;
+
+          // Recalcula totais filtrados
+          const t = {
+            contratos: filtrados.length,
+            valor_total: filtrados.reduce((s: number, c: any) => s + c.valor_total, 0),
+            valor_pago: filtrados.reduce((s: number, c: any) => s + c.valor_pago, 0),
+            valor_encaminhado: filtrados.reduce((s: number, c: any) => s + c.valor_encaminhado, 0),
+            saldo: filtrados.reduce((s: number, c: any) => s + c.saldo_financeiro, 0),
+            horas_total: filtrados.reduce((s: number, c: any) => s + c.total_horas_previstas, 0),
+            horas_pagas: filtrados.reduce((s: number, c: any) => s + c.horas_pagas, 0),
+            horas_enc: filtrados.reduce((s: number, c: any) => s + c.horas_encaminhadas, 0),
+            saldo_horas: filtrados.reduce((s: number, c: any) => s + c.saldo_horas, 0),
+          };
+
+          return (
+            <>
+              {/* Cards de resumo */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="card p-4">
+                  <p className="text-xs text-gray-400 mb-1">Valor Total Contratado</p>
+                  <p className="text-xl font-bold text-gray-800">{fmt(t.valor_total)}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{fmtH(t.horas_total)} previstas · {t.contratos} contratos</p>
+                </div>
+                <div className="card p-4 border-green-200">
+                  <p className="text-xs text-gray-400 mb-1 flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-green-500" /> Pago</p>
+                  <p className="text-xl font-bold text-green-700">{fmt(t.valor_pago)}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{fmtH(t.horas_pagas)} executadas</p>
+                </div>
+                <div className="card p-4 border-blue-200">
+                  <p className="text-xs text-gray-400 mb-1 flex items-center gap-1"><Clock className="h-3 w-3 text-blue-500" /> Encaminhado</p>
+                  <p className="text-xl font-bold text-blue-700">{fmt(t.valor_encaminhado)}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{fmtH(t.horas_enc)} a pagar</p>
+                </div>
+                <div className="card p-4 border-orange-200">
+                  <p className="text-xs text-gray-400 mb-1 flex items-center gap-1"><Wallet className="h-3 w-3 text-orange-500" /> Saldo em Aberto</p>
+                  <p className="text-xl font-bold text-orange-700">{fmt(t.saldo)}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{fmtH(t.saldo_horas)} restantes</p>
+                </div>
+              </div>
+
+              {/* Tabela */}
+              {filtrados.length > 0 ? (
+                <div className="card overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-gray-50 border-b">
+                          {["Professor","Tipo","Contrato","Eventos","Valor/h","H. Prev.","H. Pagas","H. Enc.","Saldo H","Valor Total","Pago","Encaminhado","Saldo R$","Status"].map(h => (
+                            <th key={h} className="px-3 py-2 text-left font-semibold text-gray-500 whitespace-nowrap">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filtrados.map((c: any, i: number) => {
+                          const saldoNeg = c.saldo_financeiro < 0;
+                          return (
+                            <tr key={c.id} className={`border-b last:border-0 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/50"}`}>
+                              <td className="px-3 py-2 font-medium text-gray-800 whitespace-nowrap">{c.professor_nome}</td>
+                              <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{c.professor_tipo}</td>
+                              <td className="px-3 py-2 font-mono text-gray-700 whitespace-nowrap">{c.numero_contrato}</td>
+                              <td className="px-3 py-2 text-gray-500 max-w-[140px]">
+                                {(c.eventos || []).length > 0
+                                  ? (c.eventos as any[]).map((e: any) => e.id).join(", ")
+                                  : <span className="text-gray-300">—</span>}
+                              </td>
+                              <td className="px-3 py-2 text-right whitespace-nowrap">{fmt(c.valor_hora)}</td>
+                              <td className="px-3 py-2 text-right whitespace-nowrap">{fmtH(c.total_horas_previstas)}</td>
+                              <td className="px-3 py-2 text-right whitespace-nowrap text-green-700 font-medium">{fmtH(c.horas_pagas)}</td>
+                              <td className="px-3 py-2 text-right whitespace-nowrap text-blue-700 font-medium">{fmtH(c.horas_encaminhadas)}</td>
+                              <td className={`px-3 py-2 text-right whitespace-nowrap font-semibold ${saldoNeg ? "text-red-600" : "text-gray-700"}`}>{fmtH(c.saldo_horas)}</td>
+                              <td className="px-3 py-2 text-right whitespace-nowrap">{fmt(c.valor_total)}</td>
+                              <td className="px-3 py-2 text-right whitespace-nowrap text-green-700">{fmt(c.valor_pago)}</td>
+                              <td className="px-3 py-2 text-right whitespace-nowrap text-blue-700">{fmt(c.valor_encaminhado)}</td>
+                              <td className={`px-3 py-2 text-right whitespace-nowrap font-bold ${saldoNeg ? "text-red-600" : "text-orange-700"}`}>{fmt(c.saldo_financeiro)}</td>
+                              <td className="px-3 py-2 whitespace-nowrap">
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${c.ativo ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                                  {c.ativo ? "Ativo" : "Inativo"}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr className="bg-gray-100 border-t-2 font-bold text-gray-700">
+                          <td colSpan={4} className="px-3 py-2">Total ({t.contratos} contratos)</td>
+                          <td className="px-3 py-2" />
+                          <td className="px-3 py-2 text-right">{fmtH(t.horas_total)}</td>
+                          <td className="px-3 py-2 text-right text-green-700">{fmtH(t.horas_pagas)}</td>
+                          <td className="px-3 py-2 text-right text-blue-700">{fmtH(t.horas_enc)}</td>
+                          <td className="px-3 py-2 text-right">{fmtH(t.saldo_horas)}</td>
+                          <td className="px-3 py-2 text-right">{fmt(t.valor_total)}</td>
+                          <td className="px-3 py-2 text-right text-green-700">{fmt(t.valor_pago)}</td>
+                          <td className="px-3 py-2 text-right text-blue-700">{fmt(t.valor_encaminhado)}</td>
+                          <td className="px-3 py-2 text-right text-orange-700">{fmt(t.saldo)}</td>
+                          <td className="px-3 py-2" />
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="card p-8 text-center text-gray-400 text-sm">Nenhum contrato encontrado.</div>
+              )}
+            </>
+          );
+        })()}
       </section>
 
       {/* Modal reverter */}

@@ -423,6 +423,8 @@ export const ambientesApi = {
 export type ContratoEventoRef = { id: number; nome_turma: string; nome_curso?: string | null };
 
 export const contratosApi = {
+  relatorio: (ativo?: boolean) =>
+    api.get("/professores/contratos/relatorio", { params: ativo != null ? { ativo } : undefined }).then((r) => r.data),
   listar: (professorId: number) =>
     api.get(`/professores/${professorId}/contratos`).then((r) => r.data),
   criar: (professorId: number, data: { numero_contrato: string; valor_hora: number; total_horas_previstas: number; descricao?: string; eventos?: ContratoEventoRef[]; ativo?: boolean }) =>
