@@ -6,7 +6,6 @@ import { useSearchParams } from "next/navigation";
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const REFRESH_MS = 30_000;
 const PAGE_ROTATE_MS = 12_000;
-const ROWS_PER_PAGE_FALLBACK = 8;
 
 interface AulaTotem {
   id: number;
@@ -34,7 +33,6 @@ function isVisible(horarioInicio: string | null, agora: Date): boolean {
   if (!horarioInicio) return true;
   const classMin = minutesSinceMidnight(horarioInicio);
   const nowMin = nowMinutes(agora);
-  // Exibe se: ainda não expirou (até 30min após início) E começa em até 4h a partir de agora
   return nowMin < classMin + 30 && classMin <= nowMin + 240;
 }
 
@@ -56,11 +54,14 @@ function capitalize(s: string): string {
 }
 
 const STATUS_STYLE: Record<string, { bg: string; text: string; label: string }> = {
-  Agendada:    { bg: "#1d4ed8", text: "#fff",     label: "AGENDADA" },
-  Realizada:   { bg: "#15803d", text: "#fff",     label: "REALIZADA" },
-  Substituída: { bg: "#7c3aed", text: "#fff",     label: "SUBSTITUÍDA" },
-  Remarcada:   { bg: "#b45309", text: "#fff",     label: "REMARCADA" },
+  Agendada:    { bg: "#1d4ed8", text: "#fff", label: "AGENDADA" },
+  Realizada:   { bg: "#15803d", text: "#fff", label: "REALIZADA" },
+  Substituída: { bg: "#7c3aed", text: "#fff", label: "SUBSTITUÍDA" },
+  Remarcada:   { bg: "#b45309", text: "#fff", label: "REMARCADA" },
 };
+
+// Responsive grid: HORÁRIO | TURMA | UC | ETAPA | PROFESSOR | SALA | STATUS
+const GRID_COLS = "clamp(100px,9vw,180px) 1fr 1.4fr clamp(55px,5.5vw,105px) 1fr clamp(85px,8vw,155px) clamp(90px,9vw,148px)";
 
 function TotemContent() {
   const params = useSearchParams();
@@ -71,8 +72,7 @@ function TotemContent() {
   const [agora, setAgora] = useState<Date>(new Date());
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE_FALLBACK);
-  // trimCount: rows removed from current page because they overflow the container
+  const [rowsPerPage, setRowsPerPage] = useState(8);
   const [trimCount, setTrimCount] = useState(0);
   const [orientation, setOrientation] = useState<"landscape" | "portrait">("landscape");
   const [error, setError] = useState<string | null>(null);
@@ -116,7 +116,6 @@ function TotemContent() {
     }
   }, []);
 
-  // Initial fetch + periodic refresh
   useEffect(() => {
     if (!token) return;
     fetchAulas(token);
@@ -124,26 +123,22 @@ function TotemContent() {
     return () => clearInterval(id);
   }, [token, fetchAulas]);
 
-  // Clock tick every second
   useEffect(() => {
     const id = setInterval(() => setAgora(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
 
-  // Compute visible aulas (filter by time window)
   const visible = aulas.filter((a) => isVisible(a.horario_inicio, agora));
   const totalPages = Math.ceil(visible.length / rowsPerPage) || 1;
 
-  // Measure container height to set initial rowsPerPage estimate
+  // Initial rowsPerPage: target ~9 rows based on available height
   useEffect(() => {
     function measure() {
       if (!tableBodyRef.current) return;
-      const container = tableBodyRef.current;
-      const availableH = container.clientHeight;
-      // Conservative estimate: 88px landscape, 100px portrait (text can wrap)
-      const rowH = orientation === "portrait" ? 100 : 88;
-      const rows = Math.max(1, Math.floor(availableH / rowH));
-      setRowsPerPage(rows);
+      const avail = tableBodyRef.current.clientHeight;
+      // Target 9 rows initially; trim will reduce if rows are taller
+      const estimated = Math.max(1, Math.floor(avail / 9));
+      setRowsPerPage(Math.max(1, Math.floor(avail / estimated)));
       setTrimCount(0);
     }
     measure();
@@ -151,34 +146,32 @@ function TotemContent() {
     return () => window.removeEventListener("resize", measure);
   }, [orientation]);
 
-  // After rendering rows, measure if they overflow the container — trim if needed
+  // After each render, check if rows overflow → trim last row
   useLayoutEffect(() => {
     if (!tableBodyRef.current) return;
     const container = tableBodyRef.current;
-    const containerH = container.clientHeight;
     const rowEls = Array.from(container.querySelectorAll<HTMLElement>("[data-totem-row]"));
     if (rowEls.length <= 1) return;
     const totalH = rowEls.reduce((sum, el) => sum + el.offsetHeight, 0);
-    if (totalH > containerH) {
+    if (totalH > container.clientHeight) {
       setTrimCount((prev) => prev + 1);
     }
   });
 
-  // Reset trimCount when page changes (new page = new measurement)
   useEffect(() => { setTrimCount(0); }, [page]);
 
-  // Auto-paginate
   useEffect(() => {
     if (totalPages <= 1) { setPage(0); return; }
     const id = setInterval(() => setPage((p) => (p + 1) % totalPages), PAGE_ROTATE_MS);
     return () => clearInterval(id);
   }, [totalPages]);
 
-  // Reset to page 0 when visible list changes
   useEffect(() => { setPage(0); }, [visible.length]);
 
   const rawPageAulas = visible.slice(page * rowsPerPage, (page + 1) * rowsPerPage);
-  const pageAulas = trimCount > 0 ? rawPageAulas.slice(0, Math.max(1, rawPageAulas.length - trimCount)) : rawPageAulas;
+  const pageAulas = trimCount > 0
+    ? rawPageAulas.slice(0, Math.max(1, rawPageAulas.length - trimCount))
+    : rawPageAulas;
 
   const toggleOrientation = () => {
     setOrientation((o) => {
@@ -188,44 +181,29 @@ function TotemContent() {
     });
   };
 
-  // Portrait mode: rotate entire wrapper
   const wrapperStyle: React.CSSProperties =
     orientation === "portrait"
-      ? {
-          position: "fixed",
-          top: 0,
-          left: 0,
-          width: "100vh",
-          height: "100vw",
-          transform: "rotate(90deg)",
-          transformOrigin: "left top",
-          marginLeft: "100vw",
-          overflow: "hidden",
-        }
-      : {
-          position: "fixed",
-          inset: 0,
-          overflow: "hidden",
-        };
+      ? { position: "fixed", top: 0, left: 0, width: "100vh", height: "100vw", transform: "rotate(90deg)", transformOrigin: "left top", marginLeft: "100vw", overflow: "hidden" }
+      : { position: "fixed", inset: 0, overflow: "hidden" };
 
   if (!token) {
     return (
       <div style={{ background: "#050d1c", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif" }}>
-        <div style={{ background: "#0b1e3d", borderRadius: 16, padding: "2.5rem 3rem", maxWidth: 420, width: "100%", textAlign: "center" }}>
-          <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>🖥️</div>
-          <h1 style={{ color: "#e2e8f0", fontSize: "1.4rem", fontWeight: 700, marginBottom: "0.5rem" }}>SENAI — Painel de Aulas</h1>
-          <p style={{ color: "#64748b", fontSize: "0.9rem", marginBottom: "1.5rem" }}>Digite o token de acesso para continuar.</p>
+        <div style={{ background: "#0b1e3d", borderRadius: 16, padding: "clamp(1.5rem,4vh,2.5rem) clamp(1.5rem,4vw,3rem)", maxWidth: "min(420px,90vw)", width: "100%", textAlign: "center" }}>
+          <div style={{ fontSize: "clamp(2rem,5vw,3rem)", marginBottom: "1rem" }}>🖥️</div>
+          <h1 style={{ color: "#e2e8f0", fontSize: "clamp(1rem,2.5vw,1.4rem)", fontWeight: 700, marginBottom: "0.5rem" }}>SENAI — Painel de Aulas</h1>
+          <p style={{ color: "#64748b", fontSize: "clamp(0.8rem,1.5vw,0.9rem)", marginBottom: "1.5rem" }}>Digite o token de acesso para continuar.</p>
           <input
             type="password"
             value={tokenInput}
             onChange={(e) => setTokenInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && tokenInput && setToken(tokenInput)}
             placeholder="Token de acesso"
-            style={{ width: "100%", padding: "0.75rem 1rem", borderRadius: 8, border: "1px solid #1e3a5f", background: "#07122a", color: "#e2e8f0", fontSize: "1rem", boxSizing: "border-box" }}
+            style={{ width: "100%", padding: "0.75rem 1rem", borderRadius: 8, border: "1px solid #1e3a5f", background: "#07122a", color: "#e2e8f0", fontSize: "clamp(0.85rem,1.5vw,1rem)", boxSizing: "border-box" }}
           />
           <button
             onClick={() => tokenInput && setToken(tokenInput)}
-            style={{ marginTop: "1rem", width: "100%", padding: "0.75rem", borderRadius: 8, background: "#1d4ed8", color: "#fff", fontWeight: 700, fontSize: "1rem", border: "none", cursor: "pointer" }}
+            style={{ marginTop: "1rem", width: "100%", padding: "0.75rem", borderRadius: 8, background: "#1d4ed8", color: "#fff", fontWeight: 700, fontSize: "clamp(0.85rem,1.5vw,1rem)", border: "none", cursor: "pointer" }}
           >
             Entrar
           </button>
@@ -241,39 +219,45 @@ function TotemContent() {
 
   return (
     <div style={{ ...wrapperStyle, background: "#050d1c", color: "#e2e8f0", fontFamily: "'Segoe UI', system-ui, sans-serif", display: "flex", flexDirection: "column" }}>
+
       {/* Header */}
-      <header style={{ background: "#0b1e3d", borderBottom: "2px solid #1e3a5f", padding: "0.75rem 1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, gap: "1rem" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          {/* Logo */}
+      <header style={{
+        background: "#0b1e3d",
+        borderBottom: "2px solid #1e3a5f",
+        padding: "clamp(0.5rem,1.2vh,0.9rem) clamp(1rem,2vw,2rem)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        flexShrink: 0,
+        gap: "1rem",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "clamp(0.5rem,1.2vw,1.2rem)" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/senai-logo-white.png" alt="SENAI" style={{ height: 48, width: "auto", objectFit: "contain" }} />
+          <img src="/senai-logo-white.png" alt="SENAI" style={{ height: "clamp(32px,5vh,56px)", width: "auto", objectFit: "contain" }} />
           <div>
-            <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+            <div style={{ fontWeight: 700, fontSize: "clamp(0.7rem,1.1vw,1.1rem)", color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase" }}>
               Painel de Aulas
             </div>
-            <div style={{ fontSize: "0.8rem", color: "#475569", marginTop: "1px" }}>
+            <div style={{ fontSize: "clamp(0.6rem,0.9vw,0.9rem)", color: "#475569", marginTop: "1px" }}>
               {capitalize(fmtDateLong(agora))}
             </div>
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "1.25rem" }}>
-          {/* Live indicator */}
-          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", color: "#22c55e", fontSize: "0.8rem", fontWeight: 600 }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e", display: "inline-block", animation: "pulse 2s infinite" }} />
+        <div style={{ display: "flex", alignItems: "center", gap: "clamp(0.75rem,1.5vw,1.5rem)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", color: "#22c55e", fontSize: "clamp(0.65rem,0.9vw,0.85rem)", fontWeight: 600 }}>
+            <span style={{ width: "clamp(6px,0.5vw,9px)", height: "clamp(6px,0.5vw,9px)", borderRadius: "50%", background: "#22c55e", display: "inline-block", animation: "pulse 2s infinite", flexShrink: 0 }} />
             AO VIVO
           </div>
 
-          {/* Clock */}
-          <div style={{ fontFamily: "'Courier New', monospace", fontSize: "2.2rem", fontWeight: 700, color: "#f0b429", letterSpacing: "0.04em", lineHeight: 1 }}>
+          <div style={{ fontFamily: "'Courier New', monospace", fontSize: "clamp(1.4rem,2.8vw,3rem)", fontWeight: 700, color: "#f0b429", letterSpacing: "0.04em", lineHeight: 1 }}>
             {fmtClock(agora)}
           </div>
 
-          {/* Orientation toggle */}
           <button
             onClick={toggleOrientation}
             title={orientation === "landscape" ? "Modo retrato (90°)" : "Modo paisagem"}
-            style={{ background: "#1e3a5f", border: "none", borderRadius: 6, color: "#94a3b8", padding: "0.4rem 0.6rem", cursor: "pointer", fontSize: "1rem" }}
+            style={{ background: "#1e3a5f", border: "none", borderRadius: 6, color: "#94a3b8", padding: "clamp(0.3rem,0.5vh,0.5rem) clamp(0.4rem,0.6vw,0.7rem)", cursor: "pointer", fontSize: "clamp(0.85rem,1.2vw,1.1rem)" }}
           >
             {orientation === "landscape" ? "⟳" : "⟲"}
           </button>
@@ -281,9 +265,18 @@ function TotemContent() {
       </header>
 
       {/* Column Headers */}
-      <div style={{ background: "#0f2347", borderBottom: "1px solid #1e3a5f", padding: "0 1.5rem", flexShrink: 0, display: "grid", gridTemplateColumns: "130px 1fr 1.4fr 80px 1fr 120px 110px", gap: "0.5rem", alignItems: "center" }}>
+      <div style={{
+        background: "#0f2347",
+        borderBottom: "1px solid #1e3a5f",
+        padding: `0 clamp(1rem,2vw,2rem)`,
+        flexShrink: 0,
+        display: "grid",
+        gridTemplateColumns: GRID_COLS,
+        gap: "clamp(0.3rem,0.5vw,0.75rem)",
+        alignItems: "center",
+      }}>
         {["HORÁRIO", "TURMA", "DISCIPLINA / UC", "ETAPA", "PROFESSOR", "SALA", "STATUS"].map((h) => (
-          <div key={h} style={{ padding: "0.55rem 0.5rem", fontSize: "0.7rem", fontWeight: 700, color: "#64748b", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+          <div key={h} style={{ padding: "clamp(0.4rem,0.7vh,0.65rem) clamp(0.3rem,0.4vw,0.6rem)", fontSize: "clamp(0.55rem,0.7vw,0.75rem)", fontWeight: 700, color: "#64748b", letterSpacing: "0.1em", textTransform: "uppercase" }}>
             {h}
           </div>
         ))}
@@ -291,34 +284,35 @@ function TotemContent() {
 
       {/* Rows area */}
       <div ref={tableBodyRef} style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+
         {error && (
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#f87171", fontSize: "1.1rem", gap: "0.75rem" }}>
-            <span>⚠️</span> {error}
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#f87171", fontSize: "clamp(0.9rem,1.5vw,1.2rem)", gap: "0.75rem" }}>
+            ⚠️ {error}
           </div>
         )}
 
         {!error && waitingForDay && (
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1rem" }}>
-            <div style={{ fontSize: "4rem" }}>🌅</div>
-            <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#94a3b8" }}>Aulas começam em breve</div>
-            <div style={{ fontSize: "1rem", color: "#475569" }}>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "clamp(0.75rem,1.5vh,1.25rem)" }}>
+            <div style={{ fontSize: "clamp(2.5rem,6vw,5rem)" }}>🌅</div>
+            <div style={{ fontSize: "clamp(1rem,2.5vw,1.8rem)", fontWeight: 700, color: "#94a3b8" }}>Aulas começam em breve</div>
+            <div style={{ fontSize: "clamp(0.85rem,1.5vw,1.1rem)", color: "#475569" }}>
               Primeira aula: {aulas[0]?.horario_inicio} – {aulas[0]?.horario_fim}
             </div>
           </div>
         )}
 
         {!error && dayDone && (
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1rem" }}>
-            <div style={{ fontSize: "4rem" }}>✅</div>
-            <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#94a3b8" }}>Aulas encerradas por hoje</div>
-            <div style={{ fontSize: "1rem", color: "#475569" }}>Até amanhã!</div>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "clamp(0.75rem,1.5vh,1.25rem)" }}>
+            <div style={{ fontSize: "clamp(2.5rem,6vw,5rem)" }}>✅</div>
+            <div style={{ fontSize: "clamp(1rem,2.5vw,1.8rem)", fontWeight: 700, color: "#94a3b8" }}>Aulas encerradas por hoje</div>
+            <div style={{ fontSize: "clamp(0.85rem,1.5vw,1.1rem)", color: "#475569" }}>Até amanhã!</div>
           </div>
         )}
 
         {!error && !waitingForDay && !dayDone && visible.length === 0 && aulas.length === 0 && (
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1rem" }}>
-            <div style={{ fontSize: "4rem" }}>📅</div>
-            <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#94a3b8" }}>Sem aulas hoje</div>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "clamp(0.75rem,1.5vh,1.25rem)" }}>
+            <div style={{ fontSize: "clamp(2.5rem,6vw,5rem)" }}>📅</div>
+            <div style={{ fontSize: "clamp(1rem,2.5vw,1.8rem)", fontWeight: 700, color: "#94a3b8" }}>Sem aulas hoje</div>
           </div>
         )}
 
@@ -338,67 +332,64 @@ function TotemContent() {
               data-totem-row="true"
               style={{
                 background: isNow ? "#0d2447" : rowBg,
-                borderLeft: isNow ? "4px solid #f0b429" : "4px solid transparent",
+                borderLeft: isNow ? "clamp(3px,0.3vw,5px) solid #f0b429" : "clamp(3px,0.3vw,5px) solid transparent",
                 display: "grid",
-                gridTemplateColumns: "130px 1fr 1.4fr 80px 1fr 120px 110px",
-                gap: "0.5rem",
-                padding: "0 1.5rem",
+                gridTemplateColumns: GRID_COLS,
+                gap: "clamp(0.3rem,0.5vw,0.75rem)",
+                padding: `clamp(0.4rem,0.9vh,0.7rem) clamp(1rem,2vw,2rem)`,
                 alignItems: "center",
                 borderBottom: "1px solid #0d1f3c",
                 flex: "0 0 auto",
-                minHeight: 64,
-                paddingTop: "0.5rem",
-                paddingBottom: "0.5rem",
               }}
             >
               {/* Horário */}
-              <div style={{ fontFamily: "'Courier New', monospace", fontSize: "1.15rem", fontWeight: 700, color: isNow ? "#f0b429" : "#e2e8f0", padding: "0 0.5rem", letterSpacing: "0.03em" }}>
-                {a.horario_inicio} – {a.horario_fim}
+              <div style={{ fontFamily: "'Courier New', monospace", fontSize: "clamp(0.85rem,1.1vw,1.3rem)", fontWeight: 700, color: isNow ? "#f0b429" : "#e2e8f0", letterSpacing: "0.02em", lineHeight: 1.2 }}>
+                {a.horario_inicio}<br /><span style={{ fontSize: "clamp(0.7rem,0.9vw,1.05rem)", color: isNow ? "#f0b429cc" : "#94a3b8" }}>– {a.horario_fim}</span>
               </div>
 
               {/* Turma */}
-              <div style={{ padding: "0 0.5rem" }}>
-                <div style={{ fontSize: "0.9rem", fontWeight: 600, color: "#e2e8f0", wordBreak: "break-word", lineHeight: 1.3 }}>
+              <div>
+                <div style={{ fontSize: "clamp(0.75rem,1vw,1.15rem)", fontWeight: 600, color: "#e2e8f0", wordBreak: "break-word", lineHeight: 1.3 }}>
                   {a.turma || "—"}
                 </div>
                 {a.subturma && (
-                  <div style={{ fontSize: "0.72rem", color: "#7c3aed", marginTop: 2, fontWeight: 500 }}>
+                  <div style={{ fontSize: "clamp(0.6rem,0.75vw,0.85rem)", color: "#a78bfa", marginTop: 2, fontWeight: 500 }}>
                     Sub: {a.subturma}
                   </div>
                 )}
               </div>
 
               {/* UC */}
-              <div style={{ padding: "0 0.5rem" }}>
-                <div style={{ fontSize: "0.9rem", color: "#93c5fd", wordBreak: "break-word", lineHeight: 1.3 }}>
+              <div>
+                <div style={{ fontSize: "clamp(0.75rem,1vw,1.1rem)", color: "#93c5fd", wordBreak: "break-word", lineHeight: 1.3 }}>
                   {a.uc_nome || "—"}
                 </div>
               </div>
 
               {/* Etapa */}
-              <div style={{ padding: "0 0.5rem" }}>
-                <div style={{ fontSize: "1.05rem", fontWeight: 700, color: "#e2e8f0" }}>
+              <div>
+                <div style={{ fontSize: "clamp(0.85rem,1.1vw,1.3rem)", fontWeight: 700, color: "#e2e8f0" }}>
                   {a.etapa || "—"}
                 </div>
               </div>
 
               {/* Professor */}
-              <div style={{ padding: "0 0.5rem" }}>
-                <div style={{ fontSize: "0.9rem", color: a.professor ? "#e2e8f0" : "#ef4444", fontStyle: a.professor ? "normal" : "italic", wordBreak: "break-word", lineHeight: 1.3 }}>
+              <div>
+                <div style={{ fontSize: "clamp(0.75rem,1vw,1.1rem)", color: a.professor ? "#e2e8f0" : "#ef4444", fontStyle: a.professor ? "normal" : "italic", wordBreak: "break-word", lineHeight: 1.3 }}>
                   {a.professor || "Sem professor"}
                 </div>
               </div>
 
               {/* Sala */}
-              <div style={{ padding: "0 0.5rem" }}>
-                <div style={{ fontSize: "0.9rem", color: "#94a3b8", wordBreak: "break-word" }}>
+              <div>
+                <div style={{ fontSize: "clamp(0.75rem,1vw,1.1rem)", color: "#94a3b8", wordBreak: "break-word", lineHeight: 1.3 }}>
                   {a.ambiente || "—"}
                 </div>
               </div>
 
               {/* Status */}
-              <div style={{ padding: "0 0.5rem" }}>
-                <span style={{ background: st.bg, color: st.text, fontSize: "0.7rem", fontWeight: 700, padding: "3px 8px", borderRadius: 4, letterSpacing: "0.05em", display: "inline-block" }}>
+              <div>
+                <span style={{ background: st.bg, color: st.text, fontSize: "clamp(0.55rem,0.75vw,0.8rem)", fontWeight: 700, padding: "clamp(2px,0.3vh,4px) clamp(5px,0.5vw,9px)", borderRadius: 4, letterSpacing: "0.04em", display: "inline-block", whiteSpace: "nowrap" }}>
                   {st.label}
                 </span>
               </div>
@@ -408,59 +399,51 @@ function TotemContent() {
       </div>
 
       {/* Footer */}
-      <footer style={{ background: "#0b1e3d", borderTop: "1px solid #1e3a5f", padding: "0.5rem 1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-        <div style={{ fontSize: "0.75rem", color: "#475569" }}>
+      <footer style={{
+        background: "#0b1e3d",
+        borderTop: "1px solid #1e3a5f",
+        padding: "clamp(0.35rem,0.8vh,0.6rem) clamp(1rem,2vw,2rem)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        flexShrink: 0,
+        gap: "1rem",
+      }}>
+        <div style={{ fontSize: "clamp(0.6rem,0.8vw,0.8rem)", color: "#475569" }}>
           {lastUpdate ? `Atualizado às ${lastUpdate.toLocaleTimeString("pt-BR")}` : "Carregando..."}
         </div>
 
-        {/* Pagination indicator */}
         {totalPages > 1 ? (
-          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-            {/* Dots */}
+          <div style={{ display: "flex", alignItems: "center", gap: "clamp(0.5rem,0.8vw,0.9rem)" }}>
             <div style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}>
               {Array.from({ length: totalPages }).map((_, i) => (
-                <div
-                  key={i}
-                  style={{
-                    width: i === page ? 20 : 7,
-                    height: 7,
-                    borderRadius: 4,
-                    background: i === page ? "#f0b429" : "#1e3a5f",
-                    transition: "all 0.3s ease",
-                  }}
-                />
+                <div key={i} style={{ width: i === page ? "clamp(14px,1.5vw,22px)" : "clamp(5px,0.6vw,8px)", height: "clamp(5px,0.6vw,8px)", borderRadius: 4, background: i === page ? "#f0b429" : "#1e3a5f", transition: "all 0.3s ease" }} />
               ))}
             </div>
-            <div style={{ fontSize: "0.8rem", color: "#94a3b8", fontWeight: 600 }}>
+            <div style={{ fontSize: "clamp(0.65rem,0.85vw,0.9rem)", color: "#94a3b8", fontWeight: 600 }}>
               {page + 1} / {totalPages}
             </div>
-            {/* How many aulas are on next page */}
             {(() => {
               const nextPage = (page + 1) % totalPages;
               const nextCount = visible.slice(nextPage * rowsPerPage, (nextPage + 1) * rowsPerPage).length;
               return nextPage !== page ? (
-                <div style={{ fontSize: "0.72rem", color: "#64748b" }}>
+                <div style={{ fontSize: "clamp(0.6rem,0.75vw,0.78rem)", color: "#64748b" }}>
                   ▶ {nextCount} aula{nextCount !== 1 ? "s" : ""} na próxima
                 </div>
               ) : null;
             })()}
           </div>
-        ) : (
-          <div />
-        )}
+        ) : <div />}
 
-        <div style={{ fontSize: "0.75rem", color: "#475569" }}>
+        <div style={{ fontSize: "clamp(0.6rem,0.8vw,0.8rem)", color: "#475569" }}>
           {visible.length} aula{visible.length !== 1 ? "s" : ""} {visible.length !== aulas.length ? `de ${aulas.length} no dia` : "hoje"}
         </div>
       </footer>
 
       <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.4; }
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { overflow: hidden; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+        *{box-sizing:border-box;margin:0;padding:0}
+        body{overflow:hidden}
       `}</style>
     </div>
   );
