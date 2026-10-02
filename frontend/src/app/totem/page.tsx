@@ -76,6 +76,7 @@ function TotemContent() {
   const [trimCount, setTrimCount] = useState(0);
   const [orientation, setOrientation] = useState<"landscape" | "portrait">("landscape");
   const [error, setError] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
   const tableBodyRef = useRef<HTMLDivElement>(null);
 
   // Load token from URL → localStorage → empty
@@ -98,6 +99,14 @@ function TotemContent() {
       const saved = localStorage.getItem("totem_orientation") as "landscape" | "portrait" | null;
       if (saved) setOrientation(saved);
     } catch {}
+  }, []);
+
+  // Detect mobile (narrow screen — show card layout instead of grid)
+  useEffect(() => {
+    function check() { setIsMobile(window.innerWidth < 640); }
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
   }, []);
 
   const fetchAulas = useCallback(async (tok: string) => {
@@ -131,20 +140,19 @@ function TotemContent() {
   const visible = aulas.filter((a) => isVisible(a.horario_inicio, agora));
   const totalPages = Math.ceil(visible.length / rowsPerPage) || 1;
 
-  // Initial rowsPerPage: target ~9 rows based on available height
+  // Initial rowsPerPage based on available height
   useEffect(() => {
     function measure() {
       if (!tableBodyRef.current) return;
       const avail = tableBodyRef.current.clientHeight;
-      // Target 9 rows initially; trim will reduce if rows are taller
-      const estimated = Math.max(1, Math.floor(avail / 9));
-      setRowsPerPage(Math.max(1, Math.floor(avail / estimated)));
+      const cardH = window.innerWidth < 640 ? 110 : 88;
+      setRowsPerPage(Math.max(1, Math.floor(avail / cardH)));
       setTrimCount(0);
     }
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
-  }, [orientation]);
+  }, [orientation, isMobile]);
 
   // After each render, check if rows overflow → trim last row
   useLayoutEffect(() => {
@@ -233,15 +241,22 @@ function TotemContent() {
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: "clamp(0.5rem,1.2vw,1.2rem)" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/senai-logo-white.png" alt="SENAI" style={{ height: "clamp(32px,5vh,56px)", width: "auto", objectFit: "contain" }} />
-          <div>
-            <div style={{ fontWeight: 700, fontSize: "clamp(0.7rem,1.1vw,1.1rem)", color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-              Painel de Aulas
+          <img src="/senai-logo-white.png" alt="SENAI" style={{ height: "clamp(28px,5vh,56px)", width: "auto", objectFit: "contain" }} />
+          {!isMobile && (
+            <div>
+              <div style={{ fontWeight: 700, fontSize: "clamp(0.7rem,1.1vw,1.1rem)", color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                Painel de Aulas
+              </div>
+              <div style={{ fontSize: "clamp(0.6rem,0.9vw,0.9rem)", color: "#475569", marginTop: "1px" }}>
+                {capitalize(fmtDateLong(agora))}
+              </div>
             </div>
-            <div style={{ fontSize: "clamp(0.6rem,0.9vw,0.9rem)", color: "#475569", marginTop: "1px" }}>
-              {capitalize(fmtDateLong(agora))}
+          )}
+          {isMobile && (
+            <div style={{ fontSize: "0.75rem", color: "#475569" }}>
+              {agora.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" })}
             </div>
-          </div>
+          )}
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "clamp(0.75rem,1.5vw,1.5rem)" }}>
@@ -250,7 +265,7 @@ function TotemContent() {
             AO VIVO
           </div>
 
-          <div style={{ fontFamily: "'Courier New', monospace", fontSize: "clamp(1.4rem,2.8vw,3rem)", fontWeight: 700, color: "#f0b429", letterSpacing: "0.04em", lineHeight: 1 }}>
+          <div style={{ fontFamily: "'Courier New', monospace", fontSize: isMobile ? "1.3rem" : "clamp(1.4rem,2.8vw,3rem)", fontWeight: 700, color: "#f0b429", letterSpacing: "0.04em", lineHeight: 1 }}>
             {fmtClock(agora)}
           </div>
 
@@ -264,23 +279,25 @@ function TotemContent() {
         </div>
       </header>
 
-      {/* Column Headers */}
-      <div style={{
-        background: "#0f2347",
-        borderBottom: "1px solid #1e3a5f",
-        padding: `0 clamp(1rem,2vw,2rem)`,
-        flexShrink: 0,
-        display: "grid",
-        gridTemplateColumns: GRID_COLS,
-        gap: "clamp(0.3rem,0.5vw,0.75rem)",
-        alignItems: "center",
-      }}>
-        {["HORÁRIO", "TURMA", "DISCIPLINA / UC", "ETAPA", "PROFESSOR", "SALA", "STATUS"].map((h) => (
-          <div key={h} style={{ padding: "clamp(0.4rem,0.7vh,0.65rem) clamp(0.3rem,0.4vw,0.6rem)", fontSize: "clamp(0.55rem,0.7vw,0.75rem)", fontWeight: 700, color: "#64748b", letterSpacing: "0.1em", textTransform: "uppercase" }}>
-            {h}
-          </div>
-        ))}
-      </div>
+      {/* Column Headers — only on tablet/desktop grid */}
+      {!isMobile && (
+        <div style={{
+          background: "#0f2347",
+          borderBottom: "1px solid #1e3a5f",
+          padding: `0 clamp(1rem,2vw,2rem)`,
+          flexShrink: 0,
+          display: "grid",
+          gridTemplateColumns: GRID_COLS,
+          gap: "clamp(0.3rem,0.5vw,0.75rem)",
+          alignItems: "center",
+        }}>
+          {["HORÁRIO", "TURMA", "DISCIPLINA / UC", "ETAPA", "PROFESSOR", "SALA", "STATUS"].map((h) => (
+            <div key={h} style={{ padding: "clamp(0.4rem,0.7vh,0.65rem) clamp(0.3rem,0.4vw,0.6rem)", fontSize: "clamp(0.55rem,0.7vw,0.75rem)", fontWeight: 700, color: "#64748b", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+              {h}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Rows area */}
       <div ref={tableBodyRef} style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
@@ -326,6 +343,55 @@ function TotemContent() {
             return nowMin >= startMin && nowMin < endMin;
           })();
 
+          // ── Mobile: card layout ──────────────────────────────────────────
+          if (isMobile) {
+            return (
+              <div
+                key={a.id}
+                data-totem-row="true"
+                style={{
+                  background: isNow ? "#0d2447" : rowBg,
+                  borderLeft: `4px solid ${isNow ? "#f0b429" : "transparent"}`,
+                  borderBottom: "1px solid #0d1f3c",
+                  padding: "0.65rem 1rem",
+                  flex: "0 0 auto",
+                }}
+              >
+                {/* Row 1: horário + etapa + status */}
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.3rem", flexWrap: "wrap" }}>
+                  <span style={{ fontFamily: "'Courier New', monospace", fontSize: "0.95rem", fontWeight: 700, color: isNow ? "#f0b429" : "#e2e8f0", whiteSpace: "nowrap" }}>
+                    {a.horario_inicio} – {a.horario_fim}
+                  </span>
+                  {a.etapa && (
+                    <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#cbd5e1", background: "#1e3a5f", borderRadius: 4, padding: "1px 6px" }}>
+                      {a.etapa}
+                    </span>
+                  )}
+                  <span style={{ marginLeft: "auto", background: st.bg, color: st.text, fontSize: "0.65rem", fontWeight: 700, padding: "2px 7px", borderRadius: 4, whiteSpace: "nowrap" }}>
+                    {st.label}
+                  </span>
+                </div>
+                {/* Row 2: turma */}
+                <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#e2e8f0", lineHeight: 1.3, marginBottom: "0.2rem" }}>
+                  {a.turma || "—"}
+                  {a.subturma && <span style={{ fontSize: "0.72rem", color: "#a78bfa", marginLeft: "0.4rem" }}>Sub: {a.subturma}</span>}
+                </div>
+                {/* Row 3: UC */}
+                <div style={{ fontSize: "0.82rem", color: "#93c5fd", lineHeight: 1.3, marginBottom: "0.25rem" }}>
+                  {a.uc_nome || "—"}
+                </div>
+                {/* Row 4: professor | sala */}
+                <div style={{ display: "flex", gap: "0.75rem", fontSize: "0.78rem", color: "#94a3b8", flexWrap: "wrap" }}>
+                  <span style={{ color: a.professor ? "#cbd5e1" : "#ef4444", fontStyle: a.professor ? "normal" : "italic" }}>
+                    👤 {a.professor || "Sem professor"}
+                  </span>
+                  {a.ambiente && <span>🚪 {a.ambiente}</span>}
+                </div>
+              </div>
+            );
+          }
+
+          // ── Desktop/tablet: grid layout ──────────────────────────────────
           return (
             <div
               key={a.id}
