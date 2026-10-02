@@ -401,9 +401,10 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
     if (!ev) return "";
     const base = ev.nome_turma || String(ev.id);
     const curso = ev.nome_curso || ev.disciplina || "";
-    return curso && !base.toLowerCase().includes(curso.toLowerCase().slice(0, 15))
+    const label = curso && !base.toLowerCase().includes(curso.toLowerCase().slice(0, 15))
       ? `${base} – ${curso}`
       : base;
+    return label.toUpperCase();
   }, [eventoFiltro, todosEventos]);
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -500,7 +501,7 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
                 const label = curso && !base.toLowerCase().includes(curso.toLowerCase().slice(0, 15))
                   ? `${base} – ${curso}`
                   : base;
-                return <option key={e.id} value={e.id}>{label}</option>;
+                return <option key={e.id} value={e.id}>{label.toUpperCase()}</option>;
               })}
             </select>
           </div>
