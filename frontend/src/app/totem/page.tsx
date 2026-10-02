@@ -223,10 +223,9 @@ function TotemContent() {
       {/* Header */}
       <header style={{ background: "#0b1e3d", borderBottom: "2px solid #1e3a5f", padding: "0.75rem 1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, gap: "1rem" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          {/* Logo area */}
-          <div style={{ background: "#1d4ed8", borderRadius: 8, padding: "0.4rem 0.75rem", fontWeight: 900, fontSize: "1.1rem", letterSpacing: "0.05em", color: "#fff" }}>
-            SENAI
-          </div>
+          {/* Logo */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/senai-logo-white.png" alt="SENAI" style={{ height: 48, width: "auto", objectFit: "contain" }} />
           <div>
             <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "#94a3b8", letterSpacing: "0.08em", textTransform: "uppercase" }}>
               Painel de Aulas
