@@ -1259,23 +1259,22 @@ async def vincular_aula(
         raise HTTPException(status_code=404, detail="Aula não encontrada")
 
     if body.toda_uc:
-        # Vincula TODAS as aulas desta UC no evento ao evento alvo
-        filtros_uc = [Aula.evento_id == aula_a.evento_id]
-        if aula_a.unidade_curricular_id:
-            filtros_uc.append(Aula.unidade_curricular_id == aula_a.unidade_curricular_id)
-        elif aula_a.uc_nome_original:
-            filtros_uc.append(Aula.uc_nome_original == aula_a.uc_nome_original)
-        res_uc = await db.execute(select(Aula).where(and_(*filtros_uc)).order_by(Aula.data, Aula.horario_inicio))
-        aulas_uc = res_uc.scalars().all()
+        # Vincula TODAS as aulas do evento (todas as UCs, todas as datas)
+        res_todas = await db.execute(
+            select(Aula)
+            .where(Aula.evento_id == aula_a.evento_id)
+            .order_by(Aula.data, Aula.horario_inicio, Aula.id)
+        )
+        aulas_todas = res_todas.scalars().all()
         vinculadas = 0
-        for a in aulas_uc:
+        for a in aulas_todas:
             try:
                 await _vincular_par(a, body.evento_id, body.uc_id, db)
                 vinculadas += 1
             except HTTPException:
-                pass  # ignora aulas que já estão no limite ou em grupos distintos
+                pass  # ignora aulas já no limite de grupo ou em grupos distintos
         await db.commit()
-        return {"ok": True, "vinculadas": vinculadas, "total_uc": len(aulas_uc)}
+        return {"ok": True, "vinculadas": vinculadas, "total": len(aulas_todas)}
 
     # Vincula apenas a aula atual
     await _vincular_par(aula_a, body.evento_id, body.uc_id, db)

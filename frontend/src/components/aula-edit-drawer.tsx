@@ -731,10 +731,10 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
                     onClick={() => vincularMutation.mutate(true)}
                     disabled={vincularMutation.isPending || !eventoVincularId}
                     className="flex-1 btn-primary flex items-center justify-center gap-1.5 py-1.5 text-sm"
-                    title="Vincula todas as aulas desta UC no evento"
+                    title="Vincula todas as aulas de todas as UCs do evento (todas as datas)"
                   >
                     {vincularMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
-                    Toda a UC
+                    Todo o evento
                   </button>
                 </div>
               </div>
