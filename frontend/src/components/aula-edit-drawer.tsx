@@ -198,8 +198,8 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
     enabled: !!eventoVincularId,
   });
 
-  const vincularMutation = useMutation({
-    mutationFn: (toda_uc = false) => {
+  const vincularMutation = useMutation<any, any, boolean>({
+    mutationFn: (toda_uc: boolean) => {
       if (!aula || !eventoVincularId) throw new Error("Selecione um evento");
       return planejamentoApi.vincularAula(aula.id, {
         evento_id: Number(eventoVincularId),
@@ -207,7 +207,7 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
         toda_uc,
       });
     },
-    onSuccess: (data: any, toda_uc) => {
+    onSuccess: (data: any, toda_uc: boolean) => {
       if (toda_uc) {
         toast.success(`${data.vinculadas ?? "?"} aulas da UC vinculadas com sucesso.`);
       } else {
