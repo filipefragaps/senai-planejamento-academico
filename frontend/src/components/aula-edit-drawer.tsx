@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { aulasApi, professoresApi, planejamentoApi, cursosApi, ambientesApi, eventosApi } from "@/lib/api";
+import { api, aulasApi, professoresApi, planejamentoApi, cursosApi, ambientesApi, eventosApi } from "@/lib/api";
 import { Hash } from "lucide-react";
 import { toast } from "sonner";
 import { X, Save, Loader2, Lock, RefreshCw, UserCheck, Calendar, ChevronDown, ChevronRight, BookOpen, Link2, Unlink } from "lucide-react";
@@ -53,6 +53,9 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
   const [ucTroca, setUcTroca] = useState<string>("");
   const [profTroca, setProfTroca] = useState<string>("");
   const [trocaReplanejáFuturas, setTrocaReplanejáFuturas] = useState(false);
+  // Correção manual de curso do evento
+  const [cursoManualId, setCursoManualId] = useState<string>("");
+  const [cursoBusca, setCursoBusca] = useState<string>("");
 
   // Remanejo
   const [secaoRemanejo, setSecaoRemanejo] = useState(false);
@@ -129,6 +132,34 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
     queryKey: ["ucs-evento-troca", aula?.evento_id],
     queryFn: () => planejamentoApi.ucs(aula!.evento_id, undefined, true),
     enabled: !!aula && secaoTrocaUC,
+  });
+
+  // Todos os cursos para seleção manual quando evento não tem curso vinculado
+  const { data: todosCursos = [] } = useQuery({
+    queryKey: ["todos-cursos-ativos"],
+    queryFn: () => cursosApi.listar(true),
+    enabled: !!aula && secaoTrocaUC && (ucsEvento as any[]).length === 0,
+    staleTime: 300_000,
+  });
+
+  // UCs do curso selecionado manualmente
+  const { data: ucsCursoManual = [] } = useQuery({
+    queryKey: ["ucs-curso-manual", cursoManualId],
+    queryFn: () =>
+      api.get(`/cursos/${cursoManualId}/ucs`).then((r: any) => r.data),
+    enabled: !!cursoManualId,
+  });
+
+  const corrigirCursoMutation = useMutation({
+    mutationFn: () => {
+      if (!aula || !cursoManualId) throw new Error("Selecione um curso");
+      return planejamentoApi.corrigirCursoEvento(aula.evento_id, Number(cursoManualId));
+    },
+    onSuccess: (data: any) => {
+      toast.success(`Curso "${data.curso_nome}" vinculado ao evento. Agora selecione a UC.`);
+      qc.invalidateQueries({ queryKey: ["ucs-evento-troca", aula?.evento_id] });
+    },
+    onError: (err: any) => toast.error(extractErrorMsg(err, "Erro ao corrigir curso")),
   });
 
   const trocaUcMutation = useMutation({
@@ -534,21 +565,77 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
                   Troca a UC e/ou professor <strong>apenas nesta aula</strong>, sem afetar as demais. Útil para remanejamentos pontuais de conteúdo.
                 </p>
 
-                <div>
-                  <p className="text-[10px] text-gray-400 mb-1 uppercase tracking-wide font-semibold">Nova UC / Componente</p>
-                  <select
-                    className="input w-full text-sm"
-                    value={ucTroca}
-                    onChange={(e) => { setUcTroca(e.target.value); setProfTroca(""); }}
-                  >
-                    <option value="">— Selecione —</option>
-                    {(ucsEvento as any[]).map((u: any) => (
-                      <option key={u.id} value={u.id}>
-                        {u.nome} {u.carga_horaria ? `(${u.carga_horaria}h)` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {/* Correção de curso quando o evento tem nome errado no BD */}
+                {(ucsEvento as any[]).length === 0 && (
+                  <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 space-y-2">
+                    <p className="text-xs font-medium text-orange-800">
+                      Nenhuma UC encontrada para este evento. O curso pode estar errado no banco de dados.
+                    </p>
+                    <p className="text-[10px] text-orange-600">
+                      Selecione o curso correto abaixo para corrigir o vínculo e liberar as UCs.
+                    </p>
+                    <div>
+                      <p className="text-[10px] text-gray-400 mb-1 uppercase tracking-wide font-semibold">Curso correto</p>
+                      <select
+                        className="input w-full text-sm"
+                        value={cursoManualId}
+                        onChange={(e) => { setCursoManualId(e.target.value); setUcTroca(""); }}
+                      >
+                        <option value="">— Selecione o curso —</option>
+                        {(todosCursos as any[])
+                          .filter((c: any) => {
+                            if (!cursoBusca) return true;
+                            return (c.nome || "").toLowerCase().includes(cursoBusca.toLowerCase()) ||
+                              (c.codigo || "").toLowerCase().includes(cursoBusca.toLowerCase());
+                          })
+                          .map((c: any) => (
+                            <option key={c.id} value={c.id}>
+                              {c.codigo ? `${c.codigo} — ` : ""}{c.nome}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => corrigirCursoMutation.mutate()}
+                      disabled={corrigirCursoMutation.isPending || !cursoManualId}
+                      className="w-full btn-primary flex items-center justify-center gap-1.5 py-1.5 text-sm bg-orange-600 hover:bg-orange-700"
+                    >
+                      {corrigirCursoMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                      Corrigir curso do evento
+                    </button>
+                  </div>
+                )}
+
+                {(() => {
+                  const ucsDisponiveis = (ucsEvento as any[]).length > 0
+                    ? ucsEvento as any[]
+                    : ucsCursoManual as any[];
+                  const temUcs = ucsDisponiveis.length > 0;
+                  return (
+                    <div>
+                      <p className="text-[10px] text-gray-400 mb-1 uppercase tracking-wide font-semibold">
+                        Nova UC / Componente
+                        {(ucsEvento as any[]).length === 0 && cursoManualId && (
+                          <span className="ml-1 normal-case font-normal text-orange-500">(do curso selecionado)</span>
+                        )}
+                      </p>
+                      <select
+                        className="input w-full text-sm"
+                        value={ucTroca}
+                        onChange={(e) => { setUcTroca(e.target.value); setProfTroca(""); }}
+                        disabled={!temUcs}
+                      >
+                        <option value="">— Selecione —</option>
+                        {ucsDisponiveis.map((u: any) => (
+                          <option key={u.id} value={u.id}>
+                            {u.nome} {u.carga_horaria ? `(${u.carga_horaria}h)` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })()}
 
                 <div>
                   <p className="text-[10px] text-gray-400 mb-1 uppercase tracking-wide font-semibold">Professor para esta aula</p>

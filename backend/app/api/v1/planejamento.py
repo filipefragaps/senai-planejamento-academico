@@ -758,6 +758,33 @@ async def listar_ucs_evento(
     ]
 
 
+class CorrigirCursoRequest(BaseModel):
+    curso_id: int
+
+
+@router.patch("/eventos/{evento_id}/curso")
+async def corrigir_curso_evento(
+    evento_id: int,
+    body: CorrigirCursoRequest,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """Corrige o curso_id de um evento com nome errado no banco."""
+    result = await db.execute(select(Evento).where(Evento.id == evento_id))
+    evento = result.scalar_one_or_none()
+    if not evento:
+        raise HTTPException(status_code=404, detail="Evento não encontrado")
+
+    curso_result = await db.execute(select(Curso).where(Curso.id == body.curso_id))
+    curso = curso_result.scalar_one_or_none()
+    if not curso:
+        raise HTTPException(status_code=404, detail="Curso não encontrado")
+
+    evento.curso_id = body.curso_id
+    await db.commit()
+    return {"ok": True, "evento_id": evento_id, "curso_id": body.curso_id, "curso_nome": curso.nome}
+
+
 @router.get("/candidatos/{evento_id}/{uc_id}")
 async def candidatos_uc(
     evento_id: int,

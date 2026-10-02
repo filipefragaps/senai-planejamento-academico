@@ -219,6 +219,8 @@ export const planejamentoApi = {
     api.post(`/planejamento/aulas/${aulaId}/vincular`, body).then((r) => r.data),
   desvincularAula: (aulaId: number) =>
     api.delete(`/planejamento/aulas/${aulaId}/vincular`),
+  corrigirCursoEvento: (eventoId: number, cursoId: number) =>
+    api.patch(`/planejamento/eventos/${eventoId}/curso`, { curso_id: cursoId }).then((r) => r.data),
   apagarPlanejamento: (eventoId: number, ucId?: number) =>
     api.delete(`/planejamento/apagar/${eventoId}`, { params: ucId != null ? { uc_id: ucId } : undefined }).then((r) => r.data),
   otimizarGlobal: (incluirRpaPj = false) =>
