@@ -324,9 +324,10 @@ function TotemContent() {
                 padding: "0 1.5rem",
                 alignItems: "center",
                 borderBottom: "1px solid #0d1f3c",
-                flex: "1 0 0",
-                minHeight: 60,
-                maxHeight: 80,
+                flex: "0 0 auto",
+                minHeight: 64,
+                paddingTop: "0.5rem",
+                paddingBottom: "0.5rem",
               }}
             >
               {/* Horário */}
@@ -335,8 +336,8 @@ function TotemContent() {
               </div>
 
               {/* Turma */}
-              <div style={{ padding: "0 0.5rem", overflow: "hidden" }}>
-                <div style={{ fontSize: "0.9rem", fontWeight: 600, color: "#e2e8f0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={a.turma}>
+              <div style={{ padding: "0 0.5rem" }}>
+                <div style={{ fontSize: "0.9rem", fontWeight: 600, color: "#e2e8f0", wordBreak: "break-word", lineHeight: 1.3 }}>
                   {a.turma || "—"}
                 </div>
                 {a.subturma && (
@@ -347,27 +348,31 @@ function TotemContent() {
               </div>
 
               {/* UC */}
-              <div style={{ padding: "0 0.5rem", overflow: "hidden" }}>
-                <div style={{ fontSize: "0.9rem", color: "#93c5fd", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={a.uc_nome}>
+              <div style={{ padding: "0 0.5rem" }}>
+                <div style={{ fontSize: "0.9rem", color: "#93c5fd", wordBreak: "break-word", lineHeight: 1.3 }}>
                   {a.uc_nome || "—"}
                 </div>
               </div>
 
               {/* Etapa */}
-              <div style={{ padding: "0 0.5rem", overflow: "hidden" }}>
-                <div style={{ fontSize: "0.9rem", color: "#94a3b8", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              <div style={{ padding: "0 0.5rem" }}>
+                <div style={{ fontSize: "0.9rem", color: "#94a3b8" }}>
                   {a.etapa || "—"}
                 </div>
               </div>
 
               {/* Professor */}
-              <div style={{ padding: "0 0.5rem", fontSize: "0.9rem", color: a.professor ? "#e2e8f0" : "#ef4444", fontStyle: a.professor ? "normal" : "italic", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={a.professor}>
-                {a.professor || "Sem professor"}
+              <div style={{ padding: "0 0.5rem" }}>
+                <div style={{ fontSize: "0.9rem", color: a.professor ? "#e2e8f0" : "#ef4444", fontStyle: a.professor ? "normal" : "italic", wordBreak: "break-word", lineHeight: 1.3 }}>
+                  {a.professor || "Sem professor"}
+                </div>
               </div>
 
               {/* Sala */}
-              <div style={{ padding: "0 0.5rem", fontSize: "0.9rem", color: "#94a3b8", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {a.ambiente || "—"}
+              <div style={{ padding: "0 0.5rem" }}>
+                <div style={{ fontSize: "0.9rem", color: "#94a3b8", wordBreak: "break-word" }}>
+                  {a.ambiente || "—"}
+                </div>
               </div>
 
               {/* Status */}

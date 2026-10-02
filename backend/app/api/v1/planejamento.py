@@ -2137,17 +2137,23 @@ async def totem_display(
         res = await db.execute(select(UnidadeCurricular.id, UnidadeCurricular.nome).where(UnidadeCurricular.id.in_(uc_ids)))
         ucs = {r[0]: r[1] for r in res.all()}
 
-    eventos: dict[int, str] = {}
+    eventos: dict[int, tuple[str, str]] = {}
     if ev_ids:
-        res = await db.execute(select(Evento.id, Evento.nome_turma).where(Evento.id.in_(ev_ids)))
-        eventos = {r[0]: r[1] for r in res.all()}
+        res = await db.execute(select(Evento.id, Evento.nome_turma, Evento.disciplina).where(Evento.id.in_(ev_ids)))
+        eventos = {r[0]: (r[1] or "", r[2] or "") for r in res.all()}
+
+    def _turma_label(evento_id: int | None) -> str:
+        if not evento_id or evento_id not in eventos:
+            return ""
+        codigo, nome = eventos[evento_id]
+        return f"{codigo} – {nome}" if nome else codigo
 
     return [
         {
             "id": a.id,
             "horario_inicio": str(a.horario_inicio)[:5] if a.horario_inicio else None,
             "horario_fim": str(a.horario_fim)[:5] if a.horario_fim else None,
-            "turma": eventos.get(a.evento_id) or "",
+            "turma": _turma_label(a.evento_id),
             "uc_nome": ucs.get(a.unidade_curricular_id) or a.uc_nome_original or "",
             "professor": profs.get(a.professor_id) or "",
             "ambiente": a.ambiente or a.sala or "",
