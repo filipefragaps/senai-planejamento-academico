@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { professoresApi, contratosApi, eventosApi, type ContratoEventoRef } from "@/lib/api";
+import { professoresApi, contratosApi, eventosApi, ofertasApi, type ContratoEventoRef } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { RegenciaBar } from "@/components/regencia-bar";
 import { ProfessorDrawer } from "@/components/professor-drawer";
@@ -329,6 +329,18 @@ export default function ProfessoresPage() {
     enabled: contratoModal.open,
     staleTime: 120_000,
   });
+
+  const buscaEventoTrimmed = buscaEvento.trim();
+  const buscaEhNumero = /^\d{4,}$/.test(buscaEventoTrimmed);
+  const { data: ofertaValidacao, isFetching: validandoOferta } = useQuery({
+    queryKey: ["oferta-validacao-contrato", buscaEventoTrimmed],
+    queryFn: () => ofertasApi.listar({ busca: buscaEventoTrimmed, limit: 5 }),
+    enabled: contratoModal.open && buscaEhNumero,
+    staleTime: 60_000,
+  });
+  const ofertaEncontrada = (ofertaValidacao as any[])?.find(
+    (o: any) => o.codigo_evento === buscaEventoTrimmed
+  ) ?? null;
 
   const salvarContratoMutation = useMutation({
     mutationFn: (form: typeof CONTRATO_FORM_VAZIO) => {
@@ -1140,22 +1152,31 @@ export default function ProfessoresPage() {
                         })}
                         {sugestoes.length === 0 && (
                           <div className="px-3 py-2 space-y-1.5">
-                            <p className="text-xs text-gray-400 italic">Nenhum evento encontrado no cronograma.</p>
-                            {/^\d+$/.test(q) && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setContratoForm(f => ({
-                                    ...f,
-                                    eventos: [...f.eventos, { id: parseInt(q), nome_turma: q, nome_curso: "" }],
-                                  }));
-                                  setBuscaEvento("");
-                                  setDropdownEventoAberto(false);
-                                }}
-                                className="w-full text-left text-xs text-indigo-700 font-semibold hover:underline"
-                              >
-                                + Vincular evento #{q} manualmente
-                              </button>
+                            {buscaEhNumero && validandoOferta ? (
+                              <p className="text-xs text-gray-400 italic">Verificando na base SENAI...</p>
+                            ) : buscaEhNumero && ofertaEncontrada ? (
+                              <>
+                                <p className="text-xs text-gray-400 italic">Não planejado ainda — encontrado na base SENAI:</p>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setContratoForm(f => ({
+                                      ...f,
+                                      eventos: [...f.eventos, { id: parseInt(q), nome_turma: q, nome_curso: ofertaEncontrada.nome_curso }],
+                                    }));
+                                    setBuscaEvento("");
+                                    setDropdownEventoAberto(false);
+                                  }}
+                                  className="w-full text-left px-2 py-1.5 rounded bg-indigo-50 border border-indigo-200 text-xs hover:bg-indigo-100"
+                                >
+                                  <span className="font-mono font-semibold text-indigo-700 mr-1.5">#{q}</span>
+                                  <span className="text-gray-700">{ofertaEncontrada.nome_curso}</span>
+                                </button>
+                              </>
+                            ) : buscaEhNumero ? (
+                              <p className="text-xs text-red-500 font-medium">Evento #{q} não encontrado na base SENAI. Verifique o número.</p>
+                            ) : (
+                              <p className="text-xs text-gray-400 italic">Nenhum evento encontrado. Digite o código numérico para verificar.</p>
                             )}
                           </div>
                         )}
