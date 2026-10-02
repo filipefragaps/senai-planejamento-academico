@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, Suspense } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -72,6 +72,8 @@ function TotemContent() {
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE_FALLBACK);
+  // trimCount: rows removed from current page because they overflow the container
+  const [trimCount, setTrimCount] = useState(0);
   const [orientation, setOrientation] = useState<"landscape" | "portrait">("landscape");
   const [error, setError] = useState<string | null>(null);
   const tableBodyRef = useRef<HTMLDivElement>(null);
@@ -132,20 +134,38 @@ function TotemContent() {
   const visible = aulas.filter((a) => isVisible(a.horario_inicio, agora));
   const totalPages = Math.ceil(visible.length / rowsPerPage) || 1;
 
-  // Measure row height to determine rowsPerPage
+  // Measure container height to set initial rowsPerPage estimate
   useEffect(() => {
     function measure() {
       if (!tableBodyRef.current) return;
       const container = tableBodyRef.current;
       const availableH = container.clientHeight;
-      const rowH = orientation === "portrait" ? 72 : 64;
+      // Conservative estimate: 88px landscape, 100px portrait (text can wrap)
+      const rowH = orientation === "portrait" ? 100 : 88;
       const rows = Math.max(1, Math.floor(availableH / rowH));
       setRowsPerPage(rows);
+      setTrimCount(0);
     }
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
   }, [orientation]);
+
+  // After rendering rows, measure if they overflow the container — trim if needed
+  useLayoutEffect(() => {
+    if (!tableBodyRef.current) return;
+    const container = tableBodyRef.current;
+    const containerH = container.clientHeight;
+    const rowEls = Array.from(container.querySelectorAll<HTMLElement>("[data-totem-row]"));
+    if (rowEls.length <= 1) return;
+    const totalH = rowEls.reduce((sum, el) => sum + el.offsetHeight, 0);
+    if (totalH > containerH) {
+      setTrimCount((prev) => prev + 1);
+    }
+  });
+
+  // Reset trimCount when page changes (new page = new measurement)
+  useEffect(() => { setTrimCount(0); }, [page]);
 
   // Auto-paginate
   useEffect(() => {
@@ -157,7 +177,8 @@ function TotemContent() {
   // Reset to page 0 when visible list changes
   useEffect(() => { setPage(0); }, [visible.length]);
 
-  const pageAulas = visible.slice(page * rowsPerPage, (page + 1) * rowsPerPage);
+  const rawPageAulas = visible.slice(page * rowsPerPage, (page + 1) * rowsPerPage);
+  const pageAulas = trimCount > 0 ? rawPageAulas.slice(0, Math.max(1, rawPageAulas.length - trimCount)) : rawPageAulas;
 
   const toggleOrientation = () => {
     setOrientation((o) => {
@@ -314,6 +335,7 @@ function TotemContent() {
           return (
             <div
               key={a.id}
+              data-totem-row="true"
               style={{
                 background: isNow ? "#0d2447" : rowBg,
                 borderLeft: isNow ? "4px solid #f0b429" : "4px solid transparent",
@@ -390,14 +412,43 @@ function TotemContent() {
         <div style={{ fontSize: "0.75rem", color: "#475569" }}>
           {lastUpdate ? `Atualizado às ${lastUpdate.toLocaleTimeString("pt-BR")}` : "Carregando..."}
         </div>
-        {totalPages > 1 && (
-          <div style={{ fontSize: "0.75rem", color: "#64748b", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <span>Página</span>
-            <span style={{ color: "#94a3b8", fontWeight: 700 }}>{page + 1}</span>
-            <span>de</span>
-            <span style={{ color: "#94a3b8", fontWeight: 700 }}>{totalPages}</span>
+
+        {/* Pagination indicator */}
+        {totalPages > 1 ? (
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            {/* Dots */}
+            <div style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}>
+              {Array.from({ length: totalPages }).map((_, i) => (
+                <div
+                  key={i}
+                  style={{
+                    width: i === page ? 20 : 7,
+                    height: 7,
+                    borderRadius: 4,
+                    background: i === page ? "#f0b429" : "#1e3a5f",
+                    transition: "all 0.3s ease",
+                  }}
+                />
+              ))}
+            </div>
+            <div style={{ fontSize: "0.8rem", color: "#94a3b8", fontWeight: 600 }}>
+              {page + 1} / {totalPages}
+            </div>
+            {/* How many aulas are on next page */}
+            {(() => {
+              const nextPage = (page + 1) % totalPages;
+              const nextCount = visible.slice(nextPage * rowsPerPage, (nextPage + 1) * rowsPerPage).length;
+              return nextPage !== page ? (
+                <div style={{ fontSize: "0.72rem", color: "#64748b" }}>
+                  ▶ {nextCount} aula{nextCount !== 1 ? "s" : ""} na próxima
+                </div>
+              ) : null;
+            })()}
           </div>
+        ) : (
+          <div />
         )}
+
         <div style={{ fontSize: "0.75rem", color: "#475569" }}>
           {visible.length} aula{visible.length !== 1 ? "s" : ""} {visible.length !== aulas.length ? `de ${aulas.length} no dia` : "hoje"}
         </div>
