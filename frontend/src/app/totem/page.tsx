@@ -168,16 +168,19 @@ function TotemContent() {
 
   useEffect(() => { setTrimCount(0); }, [page]);
 
+  // Auto-paginate only on desktop/kiosk — mobile uses native scroll
   useEffect(() => {
+    if (isMobile) { setPage(0); return; }
     if (totalPages <= 1) { setPage(0); return; }
     const id = setInterval(() => setPage((p) => (p + 1) % totalPages), PAGE_ROTATE_MS);
     return () => clearInterval(id);
-  }, [totalPages]);
+  }, [totalPages, isMobile]);
 
   useEffect(() => { setPage(0); }, [visible.length]);
 
-  const rawPageAulas = visible.slice(page * rowsPerPage, (page + 1) * rowsPerPage);
-  const pageAulas = trimCount > 0
+  // Mobile shows all visible aulas (scrollable); desktop paginates
+  const rawPageAulas = isMobile ? visible : visible.slice(page * rowsPerPage, (page + 1) * rowsPerPage);
+  const pageAulas = (!isMobile && trimCount > 0)
     ? rawPageAulas.slice(0, Math.max(1, rawPageAulas.length - trimCount))
     : rawPageAulas;
 
@@ -189,8 +192,9 @@ function TotemContent() {
     });
   };
 
+  // Portrait rotation only for desktop kiosks — mobile users rotate the physical device
   const wrapperStyle: React.CSSProperties =
-    orientation === "portrait"
+    (!isMobile && orientation === "portrait")
       ? { position: "fixed", top: 0, left: 0, width: "100vh", height: "100vw", transform: "rotate(90deg)", transformOrigin: "left top", marginLeft: "100vw", overflow: "hidden" }
       : { position: "fixed", inset: 0, overflow: "hidden" };
 
@@ -269,13 +273,15 @@ function TotemContent() {
             {fmtClock(agora)}
           </div>
 
-          <button
-            onClick={toggleOrientation}
-            title={orientation === "landscape" ? "Modo retrato (90°)" : "Modo paisagem"}
-            style={{ background: "#1e3a5f", border: "none", borderRadius: 6, color: "#94a3b8", padding: "clamp(0.3rem,0.5vh,0.5rem) clamp(0.4rem,0.6vw,0.7rem)", cursor: "pointer", fontSize: "clamp(0.85rem,1.2vw,1.1rem)" }}
-          >
-            {orientation === "landscape" ? "⟳" : "⟲"}
-          </button>
+          {!isMobile && (
+            <button
+              onClick={toggleOrientation}
+              title={orientation === "landscape" ? "Modo retrato (90°)" : "Modo paisagem"}
+              style={{ background: "#1e3a5f", border: "none", borderRadius: 6, color: "#94a3b8", padding: "clamp(0.3rem,0.5vh,0.5rem) clamp(0.4rem,0.6vw,0.7rem)", cursor: "pointer", fontSize: "clamp(0.85rem,1.2vw,1.1rem)" }}
+            >
+              {orientation === "landscape" ? "⟳" : "⟲"}
+            </button>
+          )}
         </div>
       </header>
 
@@ -299,8 +305,8 @@ function TotemContent() {
         </div>
       )}
 
-      {/* Rows area */}
-      <div ref={tableBodyRef} style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      {/* Rows area — scrollable on mobile, paginated (hidden overflow) on desktop */}
+      <div ref={tableBodyRef} style={{ flex: 1, overflow: isMobile ? "auto" : "hidden", display: "flex", flexDirection: "column", WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
 
         {error && (
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#f87171", fontSize: "clamp(0.9rem,1.5vw,1.2rem)", gap: "0.75rem" }}>
@@ -479,7 +485,7 @@ function TotemContent() {
           {lastUpdate ? `Atualizado às ${lastUpdate.toLocaleTimeString("pt-BR")}` : "Carregando..."}
         </div>
 
-        {totalPages > 1 ? (
+        {!isMobile && totalPages > 1 ? (
           <div style={{ display: "flex", alignItems: "center", gap: "clamp(0.5rem,0.8vw,0.9rem)" }}>
             <div style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}>
               {Array.from({ length: totalPages }).map((_, i) => (
@@ -499,7 +505,11 @@ function TotemContent() {
               ) : null;
             })()}
           </div>
-        ) : <div />}
+        ) : (isMobile ? (
+          <div style={{ fontSize: "0.7rem", color: "#475569" }}>
+            {visible.length} aula{visible.length !== 1 ? "s" : ""} — role para ver todas
+          </div>
+        ) : <div />)}
 
         <div style={{ fontSize: "clamp(0.6rem,0.8vw,0.8rem)", color: "#475569" }}>
           {visible.length} aula{visible.length !== 1 ? "s" : ""} {visible.length !== aulas.length ? `de ${aulas.length} no dia` : "hoje"}
