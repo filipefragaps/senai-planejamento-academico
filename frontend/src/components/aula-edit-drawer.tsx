@@ -199,15 +199,20 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
   });
 
   const vincularMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: (toda_uc = false) => {
       if (!aula || !eventoVincularId) throw new Error("Selecione um evento");
       return planejamentoApi.vincularAula(aula.id, {
         evento_id: Number(eventoVincularId),
         uc_id: ucVincularId ? Number(ucVincularId) : null,
+        toda_uc,
       });
     },
-    onSuccess: () => {
-      toast.success("Eventos vinculados com sucesso.");
+    onSuccess: (data: any, toda_uc) => {
+      if (toda_uc) {
+        toast.success(`${data.vinculadas ?? "?"} aulas da UC vinculadas com sucesso.`);
+      } else {
+        toast.success("Eventos vinculados com sucesso.");
+      }
       qc.invalidateQueries({ queryKey: ["cronograma"] });
       setEventoVincularId("");
       setUcVincularId("");
@@ -710,15 +715,28 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
                   </div>
                 )}
 
-                <button
-                  type="button"
-                  onClick={() => vincularMutation.mutate()}
-                  disabled={vincularMutation.isPending || !eventoVincularId}
-                  className="w-full btn-primary flex items-center justify-center gap-1.5 py-1.5 text-sm"
-                >
-                  {vincularMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
-                  Vincular evento
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => vincularMutation.mutate(false)}
+                    disabled={vincularMutation.isPending || !eventoVincularId}
+                    className="flex-1 btn-primary flex items-center justify-center gap-1.5 py-1.5 text-sm"
+                    title="Vincula apenas a aula deste dia"
+                  >
+                    {vincularMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+                    Este dia
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => vincularMutation.mutate(true)}
+                    disabled={vincularMutation.isPending || !eventoVincularId}
+                    className="flex-1 btn-primary flex items-center justify-center gap-1.5 py-1.5 text-sm"
+                    title="Vincula todas as aulas desta UC no evento"
+                  >
+                    {vincularMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+                    Toda a UC
+                  </button>
+                </div>
               </div>
             )}
           </div>

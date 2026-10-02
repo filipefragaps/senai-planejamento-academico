@@ -1140,60 +1140,60 @@ async def numerar_aula(
         raise HTTPException(status_code=404, detail="Aula não encontrada")
 
     # Todas as aulas da mesma UC no mesmo evento, ordenadas cronologicamente
+    filtros_uc = [Aula.evento_id == aula.evento_id]
+    if aula.unidade_curricular_id:
+        filtros_uc.append(Aula.unidade_curricular_id == aula.unidade_curricular_id)
+    elif aula.uc_nome_original:
+        filtros_uc.append(Aula.uc_nome_original == aula.uc_nome_original)
+
     res_todas = await db.execute(
-        select(Aula)
-        .where(
-            Aula.evento_id == aula.evento_id,
-            Aula.unidade_curricular_id == aula.unidade_curricular_id,
-        )
-        .order_by(Aula.data, Aula.horario_inicio)
+        select(Aula).where(and_(*filtros_uc)).order_by(Aula.data, Aula.horario_inicio, Aula.id)
     )
     todas = res_todas.scalars().all()
 
-    idx = next((i for i, a in enumerate(todas) if a.id == aula_id), None)
-    if idx is None:
+    # Agrupa por data: aulas do mesmo dia recebem o mesmo número
+    # (ex: dois turnos na mesma data = mesma "aula" da sequência)
+    from itertools import groupby as _groupby
+    grupos_data: list[tuple[date, list]] = []
+    for d, grp in _groupby(todas, key=lambda a: a.data):
+        grupos_data.append((d, list(grp)))
+
+    # Descobre o índice do grupo de data da aula selecionada
+    data_alvo = aula.data
+    idx_grupo = next((i for i, (d, _) in enumerate(grupos_data) if d == data_alvo), None)
+    if idx_grupo is None:
         raise HTTPException(status_code=500, detail="Aula não encontrada na sequência")
 
-    for i, a in enumerate(todas):
-        n = numero + (i - idx)
-        a.numero_aula = n if n >= 1 else None
+    total_aulas = sum(len(g) for _, g in grupos_data)
+    for i, (_, grupo) in enumerate(grupos_data):
+        n = numero + (i - idx_grupo)
+        for a in grupo:
+            a.numero_aula = n if n >= 1 else None
 
     await db.commit()
-    return {"ok": True, "total": len(todas), "primeiro_numero": numero - idx if (numero - idx) >= 1 else None}
+    primeiro = numero - idx_grupo
+    return {"ok": True, "total": total_aulas, "primeiro_numero": primeiro if primeiro >= 1 else None}
 
 
 class VincularAulaRequest(BaseModel):
     evento_id: int
     uc_id: Optional[int] = None
+    toda_uc: bool = False  # True = vincular todas as aulas desta UC no evento
 
 
-@router.post("/aulas/{aula_id}/vincular")
-async def vincular_aula(
-    aula_id: int,
-    body: VincularAulaRequest,
-    db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
-):
-    """Vincula esta aula a outra do evento indicado (mesma data/horário). Cria a aula parceira se não existir."""
-    res = await db.execute(select(Aula).where(Aula.id == aula_id))
-    aula_a = res.scalar_one_or_none()
-    if not aula_a:
-        raise HTTPException(status_code=404, detail="Aula não encontrada")
-
-    if aula_a.evento_id == body.evento_id:
+async def _vincular_par(aula_a: Aula, evento_id: int, uc_id: Optional[int], db: AsyncSession) -> dict:
+    """Vincula uma aula a outra do evento indicado (mesma data/horário). Cria parceira se não existir."""
+    if aula_a.evento_id == evento_id:
         raise HTTPException(status_code=422, detail="Não é possível vincular uma aula ao próprio evento")
 
-    # Verifica tamanho do grupo atual de A
     if aula_a.grupo_aula_id:
         res_grp = await db.execute(select(Aula).where(Aula.grupo_aula_id == aula_a.grupo_aula_id))
-        membros_a = res_grp.scalars().all()
-        if len(membros_a) >= 3:
+        if len(res_grp.scalars().all()) >= 3:
             raise HTTPException(status_code=422, detail="Grupo já atingiu o máximo de 3 eventos")
 
-    # Busca ou cria aula B no evento alvo na mesma data/horário
     res_b = await db.execute(
         select(Aula).where(
-            Aula.evento_id == body.evento_id,
+            Aula.evento_id == evento_id,
             Aula.data == aula_a.data,
             Aula.horario_inicio == aula_a.horario_inicio,
         ).limit(1)
@@ -1201,15 +1201,14 @@ async def vincular_aula(
     aula_b = res_b.scalar_one_or_none()
 
     if aula_b is None:
-        res_ev = await db.execute(select(Evento).where(Evento.id == body.evento_id))
+        res_ev = await db.execute(select(Evento).where(Evento.id == evento_id))
         evento_b = res_ev.scalar_one_or_none()
         if not evento_b:
             raise HTTPException(status_code=404, detail="Evento alvo não encontrado")
-
         h = aula_a.horario_inicio.hour if aula_a.horario_inicio else 8
         turno_str = "Tarde" if 12 <= h < 18 else ("Noite" if h >= 18 else "Manhã")
         aula_b = Aula(
-            evento_id=body.evento_id,
+            evento_id=evento_id,
             data=aula_a.data,
             horario_inicio=aula_a.horario_inicio,
             horario_fim=aula_a.horario_fim,
@@ -1217,7 +1216,7 @@ async def vincular_aula(
             ambiente=aula_a.ambiente,
             sala=aula_a.sala,
             turno=turno_str,
-            unidade_curricular_id=body.uc_id,
+            unidade_curricular_id=uc_id,
             tipo_contrato=aula_a.tipo_contrato,
             status="Agendada",
             tipo="Regular",
@@ -1226,7 +1225,6 @@ async def vincular_aula(
         db.add(aula_b)
         await db.flush()
     else:
-        # Synca professor e ambiente se B não tiver grupo próprio
         if aula_a.professor_id and not aula_b.professor_id:
             aula_b.professor_id = aula_a.professor_id
         if aula_a.ambiente and not aula_b.ambiente:
@@ -1235,7 +1233,6 @@ async def vincular_aula(
     if aula_b.grupo_aula_id and aula_a.grupo_aula_id and aula_b.grupo_aula_id != aula_a.grupo_aula_id:
         raise HTTPException(status_code=422, detail="As aulas já pertencem a grupos distintos")
 
-    # Determina o grupo
     grupo_id = aula_a.grupo_aula_id or aula_b.grupo_aula_id
     if grupo_id is None:
         novo_grupo = GrupoAula()
@@ -1245,17 +1242,54 @@ async def vincular_aula(
 
     aula_a.grupo_aula_id = grupo_id
     aula_b.grupo_aula_id = grupo_id
+    return {"grupo_id": grupo_id}
+
+
+@router.post("/aulas/{aula_id}/vincular")
+async def vincular_aula(
+    aula_id: int,
+    body: VincularAulaRequest,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """Vincula esta aula (ou toda a UC) a outra do evento indicado. Cria aulas parceiras se não existirem."""
+    res = await db.execute(select(Aula).where(Aula.id == aula_id))
+    aula_a = res.scalar_one_or_none()
+    if not aula_a:
+        raise HTTPException(status_code=404, detail="Aula não encontrada")
+
+    if body.toda_uc:
+        # Vincula TODAS as aulas desta UC no evento ao evento alvo
+        filtros_uc = [Aula.evento_id == aula_a.evento_id]
+        if aula_a.unidade_curricular_id:
+            filtros_uc.append(Aula.unidade_curricular_id == aula_a.unidade_curricular_id)
+        elif aula_a.uc_nome_original:
+            filtros_uc.append(Aula.uc_nome_original == aula_a.uc_nome_original)
+        res_uc = await db.execute(select(Aula).where(and_(*filtros_uc)).order_by(Aula.data, Aula.horario_inicio))
+        aulas_uc = res_uc.scalars().all()
+        vinculadas = 0
+        for a in aulas_uc:
+            try:
+                await _vincular_par(a, body.evento_id, body.uc_id, db)
+                vinculadas += 1
+            except HTTPException:
+                pass  # ignora aulas que já estão no limite ou em grupos distintos
+        await db.commit()
+        return {"ok": True, "vinculadas": vinculadas, "total_uc": len(aulas_uc)}
+
+    # Vincula apenas a aula atual
+    await _vincular_par(aula_a, body.evento_id, body.uc_id, db)
     await db.commit()
 
-    # Retorna membros do grupo com info do evento
-    res_membros = await db.execute(select(Aula).where(Aula.grupo_aula_id == grupo_id))
+    last_grupo = aula_a.grupo_aula_id
+    res_membros = await db.execute(select(Aula).where(Aula.grupo_aula_id == last_grupo))
     membros = res_membros.scalars().all()
     evento_ids = list({m.evento_id for m in membros})
     res_evs = await db.execute(select(Evento).where(Evento.id.in_(evento_ids)))
     ev_map = {e.id: (e.nome_turma or e.disciplina or str(e.id)) for e in res_evs.scalars().all()}
 
     return {
-        "grupo_id": grupo_id,
+        "grupo_id": last_grupo,
         "membros": [
             {"aula_id": m.id, "evento_id": m.evento_id, "nome_evento": ev_map.get(m.evento_id)}
             for m in membros

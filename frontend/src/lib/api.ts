@@ -215,7 +215,7 @@ export const planejamentoApi = {
     api.delete(`/planejamento/aula/${aulaId}`),
   numerarAula: (aulaId: number, numero: number) =>
     api.post(`/planejamento/aulas/${aulaId}/numerar`, null, { params: { numero } }).then((r) => r.data),
-  vincularAula: (aulaId: number, body: { evento_id: number; uc_id?: number | null }) =>
+  vincularAula: (aulaId: number, body: { evento_id: number; uc_id?: number | null; toda_uc?: boolean }) =>
     api.post(`/planejamento/aulas/${aulaId}/vincular`, body).then((r) => r.data),
   desvincularAula: (aulaId: number) =>
     api.delete(`/planejamento/aulas/${aulaId}/vincular`),
