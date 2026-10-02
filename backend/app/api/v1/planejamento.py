@@ -2137,16 +2137,20 @@ async def totem_display(
         res = await db.execute(select(UnidadeCurricular.id, UnidadeCurricular.nome).where(UnidadeCurricular.id.in_(uc_ids)))
         ucs = {r[0]: r[1] for r in res.all()}
 
-    eventos: dict[int, tuple[str, str]] = {}
+    import re as _re
+    eventos: dict[int, str] = {}
     if ev_ids:
-        res = await db.execute(select(Evento.id, Evento.nome_turma, Evento.disciplina).where(Evento.id.in_(ev_ids)))
-        eventos = {r[0]: (r[1] or "", r[2] or "") for r in res.all()}
+        res = await db.execute(select(Evento.id, Evento.disciplina).where(Evento.id.in_(ev_ids)))
+        # Remove sufixo numérico trailing (ex: "- 18204") para exibir só o nome do curso
+        eventos = {
+            r[0]: _re.sub(r'\s*-\s*\d+\s*$', '', r[1] or '').strip()
+            for r in res.all()
+        }
 
     def _turma_label(evento_id: int | None) -> str:
-        if not evento_id or evento_id not in eventos:
+        if not evento_id:
             return ""
-        codigo, nome = eventos[evento_id]
-        return f"{codigo} – {nome}" if nome else codigo
+        return eventos.get(evento_id) or ""
 
     return [
         {

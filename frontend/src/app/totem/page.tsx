@@ -356,7 +356,7 @@ function TotemContent() {
 
               {/* Etapa */}
               <div style={{ padding: "0 0.5rem" }}>
-                <div style={{ fontSize: "0.9rem", color: "#94a3b8" }}>
+                <div style={{ fontSize: "1.05rem", fontWeight: 700, color: "#e2e8f0" }}>
                   {a.etapa || "—"}
                 </div>
               </div>
