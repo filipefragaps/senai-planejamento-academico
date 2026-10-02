@@ -11,6 +11,7 @@ from app.models.aula import Aula
 from app.models.professor import Professor
 from app.models.evento import Evento
 from app.models.oferta import OfertaCurso
+from app.models.unidade_curricular import UnidadeCurricular
 from app.core.deps import get_current_user, require_admin_ou_coordenador
 from app.config import settings
 
@@ -145,6 +146,15 @@ async def comparacao(
     )
     aulas_planejadas = res_aulas.scalars().all()
 
+    # Batch-fetch UC names for aulas that have unidade_curricular_id linked
+    uc_ids = {a.unidade_curricular_id for a in aulas_planejadas if a.unidade_curricular_id}
+    uc_nome_map: dict[int, str] = {}
+    if uc_ids:
+        res_uc = await db.execute(
+            select(UnidadeCurricular.id, UnidadeCurricular.nome).where(UnidadeCurricular.id.in_(uc_ids))
+        )
+        uc_nome_map = {row.id: row.nome for row in res_uc.all()}
+
     # Batch-fetch event info (codigo + nome_curso) for all planned aulas
     evento_ids = {a.evento_id for a in aulas_planejadas if a.evento_id}
     evento_info: dict[int, dict] = {}
@@ -254,7 +264,7 @@ async def comparacao(
             "evento_id": a.evento_id,
             "evento_codigo": ev.get("codigo"),
             "evento_nome": ev.get("nome_curso"),
-            "uc_nome": a.uc_nome_original,
+            "uc_nome": a.uc_nome_original or uc_nome_map.get(a.unidade_curricular_id or 0),
             "status": a.status,
             "diario": _serializar_diario(diario_match) if diario_match else None,
         })
