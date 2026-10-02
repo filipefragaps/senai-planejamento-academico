@@ -14,7 +14,7 @@ import { OtimizacaoGlobalModal } from "@/components/otimizacao-global-modal";
 import { toast } from "sonner";
 import {
   Search, Plus, Upload, Loader2, RefreshCw, ArrowUp, ArrowDown, X, Download,
-  ChevronLeft, ChevronRight, Trash2, BarChart3,
+  ChevronLeft, ChevronRight, Trash2, BarChart3, ArrowRightLeft,
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 import { downloadModeloBancoDados } from "@/lib/templates";
@@ -1094,6 +1094,9 @@ export default function EventosPage() {
   const [ucForm, setUcForm] = useState({ nome: "", carga_horaria: "" });
   const [limparAberto, setLimparAberto] = useState(false);
   const [excluirEventoConfirm, setExcluirEventoConfirm] = useState(false);
+  const [transferirAberto, setTransferirAberto] = useState(false);
+  const [transferirBusca, setTransferirBusca] = useState("");
+  const [transferirDestinoId, setTransferirDestinoId] = useState<number | null>(null);
   const [codigoVincular, setCodigoVincular] = useState("");
   const [cursosEncontrados, setCursosEncontrados] = useState<any[]>([]);
   const [ofertaBuscada, setOfertaBuscada] = useState<{id: number; codigo: string; nome: string} | null>(null);
@@ -1341,6 +1344,20 @@ export default function EventosPage() {
       qc.invalidateQueries({ queryKey: ["eventos"] });
     },
     onError: (err: any) => toast.error(err?.response?.data?.detail || "Erro ao excluir evento"),
+  });
+
+  const transferirAulasMut = useMutation({
+    mutationFn: () => planejamentoApi.transferirAulas(eventoSelecionado!.id, transferirDestinoId!),
+    onSuccess: (res: any) => {
+      toast.success(`${res.aulas_movidas} aula(s) movida(s) para ${res.destino_nome}. Evento de origem excluído.`);
+      setEventoSelecionado(null);
+      setLimparAberto(false);
+      setTransferirAberto(false);
+      setTransferirBusca("");
+      setTransferirDestinoId(null);
+      qc.invalidateQueries({ queryKey: ["eventos"] });
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.detail || "Erro ao transferir aulas"),
   });
 
   // ── Handlers ───────────────────────────────────────────────────────────────
@@ -1821,7 +1838,7 @@ export default function EventosPage() {
                   </div>
                   <div className="relative shrink-0">
                     <button
-                      onClick={() => { setLimparAberto((v) => !v); setExcluirEventoConfirm(false); }}
+                      onClick={() => { setLimparAberto((v) => !v); setExcluirEventoConfirm(false); setTransferirAberto(false); setTransferirBusca(""); setTransferirDestinoId(null); }}
                       disabled={apagarPlanejamentoMut.isPending}
                       className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-medium border border-red-200 hover:border-red-300 rounded px-2 py-1 bg-red-50 hover:bg-red-100 transition-colors disabled:opacity-50"
                     >
@@ -1855,6 +1872,71 @@ export default function EventosPage() {
                             ))}
                           </>
                         )}
+                        <div className="border-t mt-1 pt-1">
+                          {/* Mover aulas para outro evento */}
+                          {!transferirAberto ? (
+                            <button
+                              onClick={() => { setTransferirAberto(true); setExcluirEventoConfirm(false); }}
+                              className="w-full text-left px-4 py-2.5 text-sm text-blue-700 hover:bg-blue-50 font-medium flex items-center gap-2"
+                            >
+                              <ArrowRightLeft className="h-3.5 w-3.5" />
+                              Mover aulas para outro evento
+                            </button>
+                          ) : (
+                            <div className="px-4 py-2 space-y-2">
+                              <p className="text-xs text-blue-800 font-semibold">Selecionar evento de destino:</p>
+                              <input
+                                className="w-full border rounded px-2 py-1 text-xs"
+                                placeholder="Buscar evento..."
+                                value={transferirBusca}
+                                onChange={(e) => { setTransferirBusca(e.target.value); setTransferirDestinoId(null); }}
+                                autoFocus
+                              />
+                              <div className="max-h-32 overflow-y-auto border rounded text-xs">
+                                {(eventos as any[])
+                                  .filter((e: any) =>
+                                    e.id !== eventoSelecionado?.id &&
+                                    (transferirBusca === "" ||
+                                      String(e.id).includes(transferirBusca) ||
+                                      (e.nome_turma || "").toLowerCase().includes(transferirBusca.toLowerCase()) ||
+                                      (e.nome_curso || "").toLowerCase().includes(transferirBusca.toLowerCase()))
+                                  )
+                                  .slice(0, 10)
+                                  .map((e: any) => (
+                                    <button
+                                      key={e.id}
+                                      onClick={() => setTransferirDestinoId(e.id)}
+                                      className={cn(
+                                        "w-full text-left px-2 py-1.5 hover:bg-blue-50 truncate",
+                                        transferirDestinoId === e.id && "bg-blue-100 font-semibold text-blue-800"
+                                      )}
+                                    >
+                                      <span className="font-mono text-blue-600 mr-1">{e.id}</span>
+                                      {e.nome_turma}
+                                    </button>
+                                  ))}
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => transferirAulasMut.mutate()}
+                                  disabled={!transferirDestinoId || transferirAulasMut.isPending}
+                                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-xs py-1.5 rounded font-semibold flex items-center justify-center gap-1 disabled:opacity-40"
+                                >
+                                  {transferirAulasMut.isPending
+                                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                                    : <ArrowRightLeft className="h-3 w-3" />}
+                                  Mover e excluir origem
+                                </button>
+                                <button
+                                  onClick={() => { setTransferirAberto(false); setTransferirBusca(""); setTransferirDestinoId(null); }}
+                                  className="flex-1 text-xs text-gray-500 hover:text-gray-700 border rounded py-1.5"
+                                >
+                                  Cancelar
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                         <div className="border-t mt-1 pt-1">
                           {excluirEventoConfirm ? (
                             <div className="px-4 py-2 space-y-2">
@@ -1890,7 +1972,7 @@ export default function EventosPage() {
                             </button>
                           )}
                           <button
-                            onClick={() => { setLimparAberto(false); setExcluirEventoConfirm(false); }}
+                            onClick={() => { setLimparAberto(false); setExcluirEventoConfirm(false); setTransferirAberto(false); setTransferirBusca(""); setTransferirDestinoId(null); }}
                             className="w-full text-left px-4 py-2 text-xs text-gray-400 hover:text-gray-600"
                           >
                             Fechar

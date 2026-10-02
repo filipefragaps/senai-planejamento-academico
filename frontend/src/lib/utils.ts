@@ -50,12 +50,12 @@ export function getStatusColor(status: string): string {
 
 export function getRegenciaColor(percentual: number): string {
   if (percentual >= 70) return "text-green-600";
-  if (percentual >= 50) return "text-yellow-600";
+  if (percentual >= 60) return "text-yellow-600";
   return "text-red-600";
 }
 
 export function getRegenciaBarColor(percentual: number): string {
   if (percentual >= 70) return "bg-green-500";
-  if (percentual >= 50) return "bg-yellow-500";
+  if (percentual >= 60) return "bg-yellow-500";
   return "bg-red-500";
 }

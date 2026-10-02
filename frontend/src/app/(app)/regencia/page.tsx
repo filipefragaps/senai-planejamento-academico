@@ -1342,8 +1342,8 @@ const TIPOS_QUADRO = new Set(["Mensalista", "Horista", "Inclusão em Folha"]);
 const FILTROS_STATUS = [
   { key: "todos", label: "Todos" },
   { key: "OK", label: "OK ≥70%", icon: CheckCircle, color: "text-green-700 bg-green-50 border-green-200" },
-  { key: "Alerta", label: "Alerta 50–70%", icon: AlertTriangle, color: "text-yellow-700 bg-yellow-50 border-yellow-200" },
-  { key: "Critico", label: "Crítico <50%", icon: AlertTriangle, color: "text-red-700 bg-red-50 border-red-200" },
+  { key: "Alerta", label: "Alerta 60–70%", icon: AlertTriangle, color: "text-yellow-700 bg-yellow-50 border-yellow-200" },
+  { key: "Critico", label: "Crítico <60%", icon: AlertTriangle, color: "text-red-700 bg-red-50 border-red-200" },
   { key: "Sobrecarga", label: "Sobrecarga >90%", icon: Zap, color: "text-orange-700 bg-orange-50 border-orange-200" },
 ];
 
@@ -1357,9 +1357,9 @@ const STATUS_CARD_STYLE: Record<string, { bg: string; text: string; border: stri
 const STATUS_LABEL: Record<string, string> = { OK: "OK", Alerta: "Alerta", Critico: "Crítico", Sobrecarga: "Sobrecarga" };
 const BAR_COLOR: Record<string, string> = { OK: "bg-green-500", Alerta: "bg-yellow-400", Critico: "bg-red-400", Sobrecarga: "bg-orange-400" };
 
-function calcDisplayStatus(perc: number, meta: number): string {
-  if (perc >= meta) return "OK";
-  if (perc >= Math.max(meta * 0.7, 50)) return "Alerta";
+function calcDisplayStatus(perc: number, _meta: number): string {
+  if (perc >= 70) return "OK";
+  if (perc >= 60) return "Alerta";
   return "Critico";
 }
 
@@ -1572,9 +1572,9 @@ export default function RegenciaPage() {
     else if (filtroArea) r = r.filter(p => p.area === filtroArea);
     if (busca) r = r.filter(p => p.nome.toLowerCase().includes(busca.toLowerCase()));
     const perc = (p: any) => {
-      const pontoH = pontoStats ? (pontoStats as any)[String(p.professor_id)] : null;
       const dioH = diarioStats ? (diarioStats as any)[String(p.professor_id)] : null;
-      return pontoH != null && pontoH > 0 && dioH != null ? (dioH / pontoH) * 100 : p.percentual_regencia;
+      const hp = p.horas_periodo ?? 0;
+      return dioH != null && hp > 0 ? (dioH / hp) * 100 : p.percentual_regencia;
     };
     r.sort((a, b) => ordem === "asc" ? perc(a) - perc(b) : perc(b) - perc(a));
     return r;
@@ -2117,8 +2117,8 @@ export default function RegenciaPage() {
               </p>
               <p className="text-xs text-gray-400 mt-0.5">
                 {status === "OK" && "≥ 70% da meta"}
-                {status === "Alerta" && "50–70% da meta"}
-                {status === "Critico" && "< 50% da meta"}
+                {status === "Alerta" && "60–70%"}
+                {status === "Critico" && "< 60%"}
                 {status === "Sobrecarga" && "> 90% da carga"}
               </p>
             </button>
@@ -2257,9 +2257,9 @@ export default function RegenciaPage() {
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {lista.map((p: any) => {
             const isExcluido = excluidos.has(p.professor_id);
-            const pontoH = pontoStats ? (pontoStats as any)[String(p.professor_id)] : null;
             const dioH = diarioStats ? (diarioStats as any)[String(p.professor_id)] : null;
-            const realPerc = pontoH != null && pontoH > 0 && dioH != null ? (dioH / pontoH) * 100 : null;
+            const hp = p.horas_periodo ?? 0;
+            const realPerc = dioH != null && hp > 0 ? (dioH / hp) * 100 : null;
             const displayPerc = realPerc ?? p.percentual_regencia ?? 0;
             const meta = p.meta_regencia ?? 70;
             const displayStatus = calcDisplayStatus(displayPerc, meta);
@@ -2326,7 +2326,7 @@ export default function RegenciaPage() {
                     </span>
                     <span className="text-gray-400">
                       {realPerc != null
-                        ? `${(dioH ?? 0).toFixed(1)}h diário ÷ ${pontoH?.toFixed(1)}h ponto`
+                        ? `${(dioH ?? 0).toFixed(1)}h diário ÷ ${hp.toFixed(1)}h CH trabalho`
                         : `${(p.horas_ministradas ?? 0).toFixed(1)}h ministradas`}
                     </span>
                   </div>

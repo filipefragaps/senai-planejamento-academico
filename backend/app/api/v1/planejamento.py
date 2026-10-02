@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func
+from sqlalchemy import select, and_, or_, func, update
 
 from app.database import get_db
 from app.core.deps import get_current_user, require_pode_deletar_planejamento
@@ -760,6 +760,52 @@ async def listar_ucs_evento(
 
 class CorrigirCursoRequest(BaseModel):
     curso_id: int
+
+
+class TransferirAulasRequest(BaseModel):
+    destino_evento_id: int
+
+
+@router.post("/eventos/{evento_id}/transferir-aulas")
+async def transferir_aulas_evento(
+    evento_id: int,
+    body: TransferirAulasRequest,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """Move todas as aulas de um evento para outro e exclui o evento de origem."""
+    if evento_id == body.destino_evento_id:
+        raise HTTPException(status_code=400, detail="Evento de origem e destino devem ser diferentes")
+
+    src = (await db.execute(select(Evento).where(Evento.id == evento_id))).scalar_one_or_none()
+    if not src:
+        raise HTTPException(status_code=404, detail="Evento de origem não encontrado")
+
+    dst = (await db.execute(select(Evento).where(Evento.id == body.destino_evento_id))).scalar_one_or_none()
+    if not dst:
+        raise HTTPException(status_code=404, detail="Evento de destino não encontrado")
+
+    res = await db.execute(
+        update(Aula).where(Aula.evento_id == evento_id).values(evento_id=body.destino_evento_id)
+    )
+    aulas_movidas = res.rowcount
+
+    await db.execute(
+        update(PlanejamentoSnapshot)
+        .where(PlanejamentoSnapshot.evento_id == evento_id)
+        .values(evento_id=body.destino_evento_id)
+    )
+
+    await db.delete(src)
+    await db.commit()
+
+    return {
+        "ok": True,
+        "aulas_movidas": aulas_movidas,
+        "origem_id": evento_id,
+        "destino_id": body.destino_evento_id,
+        "destino_nome": dst.nome_turma,
+    }
 
 
 @router.patch("/eventos/{evento_id}/curso")
