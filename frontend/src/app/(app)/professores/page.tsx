@@ -1110,7 +1110,7 @@ export default function ProfessoresPage() {
                     </div>
 
                     {/* Dropdown de sugestões */}
-                    {dropdownEventoAberto && sugestoes.length > 0 && (
+                    {dropdownEventoAberto && q.length > 0 && (
                       <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
                         {sugestoes.map((ev: any) => {
                           const curso = ev.nome_curso || ev.nome_turma.split(" - ")[0];
@@ -1138,8 +1138,26 @@ export default function ProfessoresPage() {
                             </button>
                           );
                         })}
-                        {q && sugestoes.length === 0 && (
-                          <p className="text-xs text-gray-400 px-3 py-2 italic">Nenhum evento encontrado. O número será registrado manualmente.</p>
+                        {sugestoes.length === 0 && (
+                          <div className="px-3 py-2 space-y-1.5">
+                            <p className="text-xs text-gray-400 italic">Nenhum evento encontrado no cronograma.</p>
+                            {/^\d+$/.test(q) && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setContratoForm(f => ({
+                                    ...f,
+                                    eventos: [...f.eventos, { id: parseInt(q), nome_turma: q, nome_curso: "" }],
+                                  }));
+                                  setBuscaEvento("");
+                                  setDropdownEventoAberto(false);
+                                }}
+                                className="w-full text-left text-xs text-indigo-700 font-semibold hover:underline"
+                              >
+                                + Vincular evento #{q} manualmente
+                              </button>
+                            )}
+                          </div>
                         )}
                       </div>
                     )}
