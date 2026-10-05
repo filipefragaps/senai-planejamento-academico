@@ -21,6 +21,7 @@ from app.models.evento import Evento
 from app.models.pagamento import HistoricoPagamento, PagamentoAula
 from app.models.professor import Professor
 from app.models.unidade_curricular import UnidadeCurricular
+from app.models.diario import DiarioAula
 from app.models.usuario import Usuario
 
 router = APIRouter(prefix="/pagamentos", tags=["Controle de Pagamentos"])
@@ -40,6 +41,7 @@ def _aula_out(
     professor: Professor,
     evento: Evento,
     pagamento: Optional[PagamentoAula],
+    tem_diario: bool = False,
 ) -> dict:
     uc_nome = None
     if aula.unidade_curricular:
@@ -70,6 +72,7 @@ def _aula_out(
         "valor_pagamento": float(pagamento.valor) if pagamento else None,
         "encaminhado_em": pagamento.encaminhado_em.isoformat() if pagamento else None,
         "confirmado_em": pagamento.confirmado_em.isoformat() if pagamento and pagamento.confirmado_em else None,
+        "tem_diario": tem_diario,
     }
 
 
@@ -127,7 +130,18 @@ async def listar_aulas_pagamento(
         for p in pag_res.scalars().all():
             pag_map[p.aula_id] = p
 
-    rows = [_aula_out(a, a.professor, a.evento, pag_map.get(a.id)) for a in aulas]
+    # Verifica quais aulas possuem diário vinculado
+    diario_set: set[int] = set()
+    if aula_ids:
+        diario_res = await db.execute(
+            select(DiarioAula.aula_id).where(
+                DiarioAula.aula_id.in_(aula_ids),
+                DiarioAula.aula_id.isnot(None),
+            )
+        )
+        diario_set = {row[0] for row in diario_res.all()}
+
+    rows = [_aula_out(a, a.professor, a.evento, pag_map.get(a.id), a.id in diario_set) for a in aulas]
 
     # Filtro por status de pagamento
     if status and status != "todos":

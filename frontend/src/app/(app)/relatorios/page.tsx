@@ -862,6 +862,7 @@ export default function RelatoriosPage() {
                     <th className="px-3 py-2 border-b text-left">UC / Disciplina</th>
                     <th className="px-3 py-2 border-b text-center">Horário</th>
                     <th className="px-3 py-2 border-b text-right">Horas</th>
+                    <th className="px-3 py-2 border-b text-center">Diário</th>
                     <th className="px-3 py-2 border-b text-center">Status</th>
                     <th className="px-3 py-2 border-b text-left">Contrato</th>
                   </tr>
@@ -906,6 +907,13 @@ export default function RelatoriosPage() {
                         </td>
                         <td className="px-3 py-2 border-b text-right font-semibold text-gray-700 tabular-nums">
                           {a.horas}h
+                        </td>
+                        <td className="px-3 py-2 border-b text-center">
+                          {a.tem_diario ? (
+                            <span className="text-green-600 font-bold text-sm" title="Diário preenchido">✓</span>
+                          ) : (
+                            <span className="text-gray-300 font-bold text-sm" title="Sem diário">✗</span>
+                          )}
                         </td>
                         <td className="px-3 py-2 border-b text-center">
                           <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
