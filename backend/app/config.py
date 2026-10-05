@@ -47,6 +47,13 @@ class Settings(BaseSettings):
     ADMIN_EMAIL: str = ""
     ADMIN_SENHA: str = ""
 
+    # SMTP / E-mail (Outlook corporativo com App Password)
+    SMTP_HOST: str = "smtp.office365.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_NAME: str = "Sistema Acadêmico SENAI"
+
     # Uploads
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE_MB: int = 50

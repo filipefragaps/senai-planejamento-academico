@@ -2,11 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { relatoriosApi, professoresApi, eventosApi, pagamentosApi, contratosApi, diarioApi, downloadBlob } from "@/lib/api";
+import { relatoriosApi, professoresApi, eventosApi, pagamentosApi, contratosApi, diarioApi, notificacoesApi, downloadBlob } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { toast } from "sonner";
-import { Download, FileSpreadsheet, Users, BookOpen, Database, ShoppingBag, History, Receipt, ListChecks, CreditCard, CheckCircle2, RotateCcw, X, AlertCircle, TrendingUp, Clock, Wallet, ChevronDown, ChevronRight, FileX } from "lucide-react";
+import { Download, FileSpreadsheet, Users, BookOpen, Database, ShoppingBag, History, Receipt, ListChecks, CreditCard, CheckCircle2, RotateCcw, X, AlertCircle, TrendingUp, Clock, Wallet, ChevronDown, ChevronRight, FileX, Mail, Loader2 } from "lucide-react";
 
 const TIPOS_CONTRATO_PAG = ["PJ", "RPA", "Inclusão em Folha"];
 
@@ -242,6 +242,14 @@ export default function RelatoriosPage() {
   const [profSemDiario, setProfSemDiario] = useState("");
   const [dateIniSemDiario, setDateIniSemDiario] = useState("");
   const [dateFimSemDiario, setDateFimSemDiario] = useState("");
+
+  // Modal de notificação por e-mail
+  const [notifModalAberto, setNotifModalAberto] = useState(false);
+  const [notifDataIni, setNotifDataIni] = useState("");
+  const [notifDataFim, setNotifDataFim] = useState("");
+  const [notifCCs, setNotifCCs] = useState("");
+  const [notifResultado, setNotifResultado] = useState<any>(null);
+  const [notifEnviando, setNotifEnviando] = useState(false);
   const { data: aulasSemDiario = [], isLoading: loadingSemDiario } = useQuery({
     queryKey: ["aulas-sem-diario", profSemDiario, dateIniSemDiario, dateFimSemDiario],
     queryFn: () => diarioApi.semDiario({
@@ -1305,6 +1313,20 @@ export default function RelatoriosPage() {
                 {(aulasSemDiario as any[]).length}
               </span>
             )}
+            <button
+              onClick={e => {
+                e.stopPropagation();
+                setNotifDataIni(dateIniSemDiario);
+                setNotifDataFim(dateFimSemDiario);
+                setNotifResultado(null);
+                setNotifModalAberto(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors"
+              title="Enviar e-mail para docentes com diários em aberto"
+            >
+              <Mail className="h-3.5 w-3.5" />
+              Notificar Docentes
+            </button>
             {diarioAberto
               ? <ChevronDown className="h-4 w-4 text-gray-400" />
               : <ChevronRight className="h-4 w-4 text-gray-400" />}
@@ -1385,6 +1407,122 @@ export default function RelatoriosPage() {
           </>}
         </div>
       </section>
+
+      {/* ── Modal: Notificar Docentes por E-mail ── */}
+      {notifModalAberto && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setNotifModalAberto(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start gap-3 mb-5">
+              <div className="p-2 bg-blue-100 rounded-lg shrink-0">
+                <Mail className="h-5 w-5 text-blue-600" />
+              </div>
+              <div className="flex-1">
+                <h2 className="font-semibold text-gray-900">Notificar Docentes por E-mail</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Envia e-mail para cada docente com diário em aberto no período selecionado.</p>
+              </div>
+              <button onClick={() => setNotifModalAberto(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {notifResultado ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                    <div className="text-xl font-bold text-green-700">{notifResultado.enviados}</div>
+                    <div className="text-xs text-green-600">Enviados</div>
+                  </div>
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <div className="text-xl font-bold text-amber-700">{notifResultado.sem_email}</div>
+                    <div className="text-xs text-amber-600">Sem e-mail</div>
+                  </div>
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                    <div className="text-xl font-bold text-red-700">{notifResultado.erros}</div>
+                    <div className="text-xs text-red-600">Erros</div>
+                  </div>
+                </div>
+                {notifResultado.detalhes_sem_email?.length > 0 && (
+                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <strong>Sem e-mail cadastrado:</strong>{" "}
+                    {notifResultado.detalhes_sem_email.join(", ")}
+                  </div>
+                )}
+                {notifResultado.detalhes_erros?.length > 0 && (
+                  <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+                    <strong>Falhas:</strong>{" "}
+                    {notifResultado.detalhes_erros.map((e: any) => `${e.nome} (${e.erro})`).join("; ")}
+                  </div>
+                )}
+                <button
+                  onClick={() => setNotifModalAberto(false)}
+                  className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                >
+                  Fechar
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1 font-medium">Data início</label>
+                    <input type="date" className="input w-full" value={notifDataIni} onChange={e => setNotifDataIni(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1 font-medium">Data fim</label>
+                    <input type="date" className="input w-full" value={notifDataFim} onChange={e => setNotifDataFim(e.target.value)} />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1 font-medium">Cópia para (CC) — um e-mail por linha</label>
+                  <textarea
+                    className="input w-full h-20 resize-none text-xs"
+                    placeholder={"coordenacao@senai.org.br\ngerencia@senai.org.br"}
+                    value={notifCCs}
+                    onChange={e => setNotifCCs(e.target.value)}
+                  />
+                </div>
+                <p className="text-xs text-gray-400 -mt-2">
+                  Cada docente receberá um e-mail individual com a lista das suas aulas sem diário.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setNotifModalAberto(false)}
+                    disabled={notifEnviando}
+                    className="flex-1 px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    disabled={notifEnviando || !notifDataIni || !notifDataFim}
+                    onClick={async () => {
+                      setNotifEnviando(true);
+                      try {
+                        const ccs = notifCCs.split("\n").map(s => s.trim()).filter(Boolean);
+                        const res = await notificacoesApi.notificarDiariosAbertos({
+                          data_inicio: notifDataIni,
+                          data_fim: notifDataFim,
+                          ccs,
+                        });
+                        setNotifResultado(res);
+                        toast.success(`${res.enviados} e-mail(s) enviado(s) com sucesso.`);
+                      } catch (err: any) {
+                        toast.error(err?.response?.data?.detail || "Erro ao enviar e-mails");
+                      } finally {
+                        setNotifEnviando(false);
+                      }
+                    }}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                  >
+                    {notifEnviando
+                      ? <><Loader2 className="h-4 w-4 animate-spin" /> Enviando...</>
+                      : <><Mail className="h-4 w-4" /> Disparar E-mails</>}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Relatório de Saldos de Contratos ──────────────────────────────── */}
       <section className="space-y-4">

@@ -338,6 +338,14 @@ export const diarioApi = {
     api.get("/diario/sem-diario", { params }).then((r) => r.data),
 };
 
+export const notificacoesApi = {
+  configEmail: () => api.get("/notificacoes/config").then((r) => r.data),
+  preview: (body: { data_inicio: string; data_fim: string; ccs: string[] }) =>
+    api.post("/notificacoes/diarios-abertos/preview", body).then((r) => r.data),
+  notificarDiariosAbertos: (body: { data_inicio: string; data_fim: string; ccs: string[] }) =>
+    api.post("/notificacoes/diarios-abertos", body).then((r) => r.data),
+};
+
 export const pontoApi = {
   importar: (file: File) => {
     const form = new FormData();
