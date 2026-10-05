@@ -5,8 +5,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { adminApi } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
 import { toast } from "sonner";
-import { Trash2, Loader2, AlertTriangle } from "lucide-react";
+import { Trash2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ConfirmSenhaModal } from "@/components/confirm-senha-modal";
 
 type Tipo = "aulas" | "planejamento" | "ofertas" | "importacao" | "tudo";
 
@@ -35,60 +36,45 @@ interface Props {
 
 export function LimparBdButton({ tipo, label, className, onLimpou }: Props) {
   const qc = useQueryClient();
-  const [confirmando, setConfirmando] = useState(false);
+  const [modalAberto, setModalAberto] = useState(false);
 
   const limpar = useMutation({
     mutationFn: () => adminApi.limpar(tipo),
     onSuccess: (res: any) => {
       toast.success(`Limpeza concluída — ${res.total} registro(s) removido(s).`);
       INVALIDA_QUERIES[tipo].forEach((q) => qc.invalidateQueries({ queryKey: [q] }));
-      setConfirmando(false);
       onLimpou?.();
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.detail || "Erro ao limpar banco de dados");
-      setConfirmando(false);
     },
   });
 
   const me = getCurrentUser();
   if (me?.perfil !== "admin") return null;
 
-  if (confirmando) {
-    return (
-      <div className="flex items-center gap-2 border border-red-200 bg-red-50 rounded-lg px-3 py-1.5">
-        <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0" />
-        <span className="text-xs text-red-700">
-          Apagar {DESCRICOES[tipo]}?
-        </span>
-        <button
-          onClick={() => limpar.mutate()}
-          disabled={limpar.isPending}
-          className="ml-1 text-xs font-semibold text-red-700 hover:text-red-900 flex items-center gap-1"
-        >
-          {limpar.isPending && <Loader2 className="h-3 w-3 animate-spin" />}
-          Confirmar
-        </button>
-        <button
-          onClick={() => setConfirmando(false)}
-          className="text-xs text-gray-500 hover:text-gray-700"
-        >
-          Cancelar
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <button
-      onClick={() => setConfirmando(true)}
-      className={cn(
-        "flex items-center gap-1.5 text-sm text-red-600 border border-red-200 rounded-lg px-3 py-1.5 hover:bg-red-50 transition-colors",
-        className
+    <>
+      <button
+        onClick={() => setModalAberto(true)}
+        disabled={limpar.isPending}
+        className={cn(
+          "flex items-center gap-1.5 text-sm text-red-600 border border-red-200 rounded-lg px-3 py-1.5 hover:bg-red-50 transition-colors disabled:opacity-50",
+          className
+        )}
+      >
+        {limpar.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+        {label ?? "Limpar BD"}
+      </button>
+
+      {modalAberto && (
+        <ConfirmSenhaModal
+          titulo={`Limpar ${DESCRICOES[tipo]}?`}
+          descricao="Todos os registros serão permanentemente removidos do banco de dados."
+          onConfirm={() => { setModalAberto(false); limpar.mutate(); }}
+          onCancel={() => setModalAberto(false)}
+        />
       )}
-    >
-      <Trash2 className="h-4 w-4" />
-      {label ?? "Limpar BD"}
-    </button>
+    </>
   );
 }

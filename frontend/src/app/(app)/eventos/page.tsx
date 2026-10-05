@@ -11,6 +11,7 @@ import { AulaEditDrawer } from "@/components/aula-edit-drawer";
 import { AulaManualModal } from "@/components/aula-manual-modal";
 import { PlanejamentoModal, UCParaPlanejar } from "@/components/planejamento-modal";
 import { OtimizacaoGlobalModal } from "@/components/otimizacao-global-modal";
+import { ConfirmSenhaModal } from "@/components/confirm-senha-modal";
 import { toast } from "sonner";
 import {
   Search, Plus, Upload, Loader2, RefreshCw, ArrowUp, ArrowDown, X, Download,
@@ -1095,6 +1096,10 @@ export default function EventosPage() {
   const [limparAberto, setLimparAberto] = useState(false);
   const [excluirEventoConfirm, setExcluirEventoConfirm] = useState(false);
   const [transferirAberto, setTransferirAberto] = useState(false);
+  const [confirmSenha, setConfirmSenha] = useState<{ aberto: boolean; titulo: string; descricao?: string; callback: () => void }>({ aberto: false, titulo: "", callback: () => {} });
+  function abrirConfirmSenha(titulo: string, callback: () => void, descricao?: string) {
+    setConfirmSenha({ aberto: true, titulo, descricao, callback });
+  }
   const [transferirBusca, setTransferirBusca] = useState("");
   const [transferirDestinoId, setTransferirDestinoId] = useState<number | null>(null);
   const [codigoVincular, setCodigoVincular] = useState("");
@@ -1422,13 +1427,18 @@ export default function EventosPage() {
   }, [cronograma]);
 
   function handleApagarTudo() {
-    if (!window.confirm(`Remover TODAS as aulas do planejamento de "${eventoSelecionado?.nome_turma}"?\n\nEsta ação não pode ser desfeita.`)) return;
-    apagarPlanejamentoMut.mutate({});
+    abrirConfirmSenha(
+      `Remover TODAS as aulas de "${eventoSelecionado?.nome_turma}"?`,
+      () => apagarPlanejamentoMut.mutate({})
+    );
   }
 
   function handleApagarUc(ucId: number, ucNome: string) {
-    if (!window.confirm(`Remover as aulas de "${ucNome}" do evento "${eventoSelecionado?.nome_turma}"?\n\nEsta ação não pode ser desfeita.`)) return;
-    apagarPlanejamentoMut.mutate({ ucId });
+    abrirConfirmSenha(
+      `Remover aulas de "${ucNome}"?`,
+      () => apagarPlanejamentoMut.mutate({ ucId }),
+      `Evento: ${eventoSelecionado?.nome_turma}`
+    );
   }
 
   const statusCounts = useMemo(() => {
@@ -1918,7 +1928,11 @@ export default function EventosPage() {
                               </div>
                               <div className="flex gap-2">
                                 <button
-                                  onClick={() => transferirAulasMut.mutate()}
+                                  onClick={() => abrirConfirmSenha(
+                                    "Mover aulas e excluir evento de origem?",
+                                    () => transferirAulasMut.mutate(),
+                                    "As aulas serão movidas e o evento atual será excluído permanentemente."
+                                  )}
                                   disabled={!transferirDestinoId || transferirAulasMut.isPending}
                                   className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-xs py-1.5 rounded font-semibold flex items-center justify-center gap-1 disabled:opacity-40"
                                 >
@@ -1938,39 +1952,17 @@ export default function EventosPage() {
                           )}
                         </div>
                         <div className="border-t mt-1 pt-1">
-                          {excluirEventoConfirm ? (
-                            <div className="px-4 py-2 space-y-2">
-                              <p className="text-xs text-red-700 font-semibold">
-                                Excluir o evento e todas as aulas permanentemente?
-                              </p>
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => excluirEventoMut.mutate()}
-                                  disabled={excluirEventoMut.isPending}
-                                  className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs py-1.5 rounded font-semibold flex items-center justify-center gap-1 disabled:opacity-50"
-                                >
-                                  {excluirEventoMut.isPending
-                                    ? <Loader2 className="h-3 w-3 animate-spin" />
-                                    : <Trash2 className="h-3 w-3" />}
-                                  Sim, excluir tudo
-                                </button>
-                                <button
-                                  onClick={() => setExcluirEventoConfirm(false)}
-                                  className="flex-1 text-xs text-gray-500 hover:text-gray-700 border rounded py-1.5"
-                                >
-                                  Cancelar
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => setExcluirEventoConfirm(true)}
-                              className="w-full text-left px-4 py-2.5 text-sm text-red-700 hover:bg-red-50 font-semibold flex items-center gap-2"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                              Excluir evento completamente
-                            </button>
-                          )}
+                          <button
+                            onClick={() => abrirConfirmSenha(
+                              `Excluir "${eventoSelecionado?.nome_turma}" permanentemente?`,
+                              () => excluirEventoMut.mutate(),
+                              "O evento e todas as aulas serão removidos do banco de dados."
+                            )}
+                            className="w-full text-left px-4 py-2.5 text-sm text-red-700 hover:bg-red-50 font-semibold flex items-center gap-2"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Excluir evento completamente
+                          </button>
                           <button
                             onClick={() => { setLimparAberto(false); setExcluirEventoConfirm(false); setTransferirAberto(false); setTransferirBusca(""); setTransferirDestinoId(null); }}
                             className="w-full text-left px-4 py-2 text-xs text-gray-400 hover:text-gray-600"
@@ -2984,6 +2976,15 @@ export default function EventosPage() {
         <OtimizacaoGlobalModal
           onClose={() => setOtimizacaoAberta(false)}
           onConfirmado={() => qc.invalidateQueries({ queryKey: ["cronograma"] })}
+        />
+      )}
+
+      {confirmSenha.aberto && (
+        <ConfirmSenhaModal
+          titulo={confirmSenha.titulo}
+          descricao={confirmSenha.descricao}
+          onConfirm={() => { setConfirmSenha(s => ({ ...s, aberto: false })); confirmSenha.callback(); }}
+          onCancel={() => setConfirmSenha(s => ({ ...s, aberto: false }))}
         />
       )}
     </>
