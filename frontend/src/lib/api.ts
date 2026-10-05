@@ -334,6 +334,8 @@ export const diarioApi = {
     api.get(`/diario/comparacao/${professorId}`, { params: { data_inicio: dataInicio, data_fim: dataFim } }).then((r) => r.data),
   stats: (dataInicio: string, dataFim: string) =>
     api.get("/diario/stats", { params: { data_inicio: dataInicio, data_fim: dataFim } }).then((r) => r.data),
+  semDiario: (params?: { professor_id?: number; data_inicio?: string; data_fim?: string }) =>
+    api.get("/diario/sem-diario", { params }).then((r) => r.data),
 };
 
 export const pontoApi = {

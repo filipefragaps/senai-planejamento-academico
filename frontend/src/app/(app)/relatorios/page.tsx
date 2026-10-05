@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { relatoriosApi, professoresApi, eventosApi, pagamentosApi, contratosApi, downloadBlob } from "@/lib/api";
+import { relatoriosApi, professoresApi, eventosApi, pagamentosApi, contratosApi, diarioApi, downloadBlob } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { toast } from "sonner";
@@ -244,15 +244,11 @@ export default function RelatoriosPage() {
   const [dateFimSemDiario, setDateFimSemDiario] = useState("");
   const { data: aulasSemDiario = [], isLoading: loadingSemDiario } = useQuery({
     queryKey: ["aulas-sem-diario", profSemDiario, dateIniSemDiario, dateFimSemDiario],
-    queryFn: async () => {
-      const rows = await pagamentosApi.aulas({
-        ...(profSemDiario && { professor_id: +profSemDiario }),
-        ...(dateIniSemDiario && { data_inicio: dateIniSemDiario }),
-        ...(dateFimSemDiario && { data_fim: dateFimSemDiario }),
-        status: "todos",
-      }) as any[];
-      return rows.filter((a: any) => !a.tem_diario);
-    },
+    queryFn: () => diarioApi.semDiario({
+      ...(profSemDiario && { professor_id: +profSemDiario }),
+      ...(dateIniSemDiario && { data_inicio: dateIniSemDiario }),
+      ...(dateFimSemDiario && { data_fim: dateFimSemDiario }),
+    }),
     staleTime: 30_000,
   });
 
@@ -939,7 +935,10 @@ export default function RelatoriosPage() {
                         </td>
                         <td className="px-3 py-2 border-b text-center">
                           {a.tem_diario ? (
-                            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-green-100 text-green-700 font-bold text-xs" title="Diário preenchido">✓</span>
+                            <span
+                              className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-green-100 text-green-700 font-bold text-xs cursor-help"
+                              title={a.diario_conteudo ? `Conteúdo: ${a.diario_conteudo}` : "Diário preenchido"}
+                            >✓</span>
                           ) : (
                             <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-red-100 text-red-500 font-bold text-xs" title="Diário não preenchido">✗</span>
                           )}
@@ -1024,104 +1023,6 @@ export default function RelatoriosPage() {
               )}
             </div>
           )}
-          </>}
-        </div>
-
-        {/* ── Diários não preenchidos ── */}
-        <div className="card p-6 mb-6">
-          <div
-            className="flex items-center gap-3 cursor-pointer select-none"
-            onClick={() => setDiarioAberto(o => !o)}
-          >
-            <div className="p-2 bg-red-100 rounded-lg">
-              <FileX className="h-5 w-5 text-red-600" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-gray-800">Diários não Preenchidos</h3>
-              <p className="text-xs text-gray-400">Aulas PJ / RPA / Inclusão em Folha sem diário importado</p>
-            </div>
-            {(aulasSemDiario as any[]).length > 0 && (
-              <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-semibold rounded-full mr-1">
-                {(aulasSemDiario as any[]).length}
-              </span>
-            )}
-            {diarioAberto
-              ? <ChevronDown className="h-4 w-4 text-gray-400" />
-              : <ChevronRight className="h-4 w-4 text-gray-400" />}
-          </div>
-
-          {diarioAberto && <>
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mt-4 mb-4">
-              <div>
-                <label className="block text-xs text-gray-500 mb-1 font-medium">Professor</label>
-                <select className="input w-full" value={profSemDiario} onChange={e => setProfSemDiario(e.target.value)}>
-                  <option value="">Todos</option>
-                  {professoresPag.map((p: any) => (
-                    <option key={p.id} value={p.id}>{p.nome} ({p.tipo})</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1 font-medium">Data início</label>
-                <input type="date" className="input w-full" value={dateIniSemDiario} onChange={e => setDateIniSemDiario(e.target.value)} />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1 font-medium">Data fim</label>
-                <input type="date" className="input w-full" value={dateFimSemDiario} onChange={e => setDateFimSemDiario(e.target.value)} />
-              </div>
-            </div>
-
-            {loadingSemDiario ? (
-              <p className="text-sm text-gray-400 py-4">Carregando...</p>
-            ) : (aulasSemDiario as any[]).length === 0 ? (
-              <p className="text-sm text-green-600 py-4 italic flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4" /> Nenhuma aula sem diário nos filtros selecionados.
-              </p>
-            ) : (
-              <div className="overflow-x-auto rounded-lg border border-gray-200">
-                <table className="w-full text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-gray-50 text-gray-500 uppercase text-[10px]">
-                      <th className="px-3 py-2 border-b text-left">Data</th>
-                      <th className="px-3 py-2 border-b text-left">Professor</th>
-                      <th className="px-3 py-2 border-b text-left">Evento / Turma</th>
-                      <th className="px-3 py-2 border-b text-left">UC / Disciplina</th>
-                      <th className="px-3 py-2 border-b text-center">Horário</th>
-                      <th className="px-3 py-2 border-b text-right">Horas</th>
-                      <th className="px-3 py-2 border-b text-center">Status Pgto</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(aulasSemDiario as any[]).map((a: any, idx: number) => (
-                      <tr key={a.id} className={idx % 2 === 0 ? "bg-white" : "bg-red-50"}>
-                        <td className="px-3 py-2 border-b whitespace-nowrap font-mono text-gray-600">
-                          {a.data?.replace(/(\d{4})-(\d{2})-(\d{2})/, "$3/$2/$1")}
-                        </td>
-                        <td className="px-3 py-2 border-b max-w-[120px] truncate">
-                          <span className="font-medium text-gray-800">{a.professor_nome}</span>
-                          <span className="ml-1 text-[10px] text-gray-400">({a.professor_tipo})</span>
-                        </td>
-                        <td className="px-3 py-2 border-b max-w-[130px] truncate text-gray-600">{a.evento_nome}</td>
-                        <td className="px-3 py-2 border-b max-w-[130px] truncate text-gray-500">{a.uc_nome}</td>
-                        <td className="px-3 py-2 border-b text-center text-gray-500 whitespace-nowrap">
-                          {a.horario_inicio}–{a.horario_fim}
-                        </td>
-                        <td className="px-3 py-2 border-b text-right font-semibold text-gray-700 tabular-nums">{a.horas}h</td>
-                        <td className="px-3 py-2 border-b text-center">
-                          <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                            a.status_pagamento === "pago" ? "bg-green-100 text-green-700"
-                            : a.status_pagamento === "encaminhado" ? "bg-amber-100 text-amber-700"
-                            : "bg-gray-100 text-gray-500"
-                          }`}>
-                            {a.status_pagamento === "pago" ? "Pago" : a.status_pagamento === "encaminhado" ? "Encaminhado" : "Pendente"}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </>}
         </div>
 
@@ -1384,6 +1285,104 @@ export default function RelatoriosPage() {
               </div>
             )
           )}
+        </div>
+
+        {/* ── Diários não preenchidos ── */}
+        <div className="card p-6 mt-6">
+          <div
+            className="flex items-center gap-3 cursor-pointer select-none"
+            onClick={() => setDiarioAberto(o => !o)}
+          >
+            <div className="p-2 bg-red-100 rounded-lg">
+              <FileX className="h-5 w-5 text-red-600" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-gray-800">Diários não Preenchidos</h3>
+              <p className="text-xs text-gray-400">Aulas de todos os docentes sem diário importado</p>
+            </div>
+            {(aulasSemDiario as any[]).length > 0 && (
+              <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-semibold rounded-full mr-1">
+                {(aulasSemDiario as any[]).length}
+              </span>
+            )}
+            {diarioAberto
+              ? <ChevronDown className="h-4 w-4 text-gray-400" />
+              : <ChevronRight className="h-4 w-4 text-gray-400" />}
+          </div>
+
+          {diarioAberto && <>
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mt-4 mb-4">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1 font-medium">Professor</label>
+                <select className="input w-full" value={profSemDiario} onChange={e => setProfSemDiario(e.target.value)}>
+                  <option value="">Todos</option>
+                  {(professores as any[]).map((p: any) => (
+                    <option key={p.id} value={p.id}>{p.nome} ({p.tipo})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1 font-medium">Data início</label>
+                <input type="date" className="input w-full" value={dateIniSemDiario} onChange={e => setDateIniSemDiario(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1 font-medium">Data fim</label>
+                <input type="date" className="input w-full" value={dateFimSemDiario} onChange={e => setDateFimSemDiario(e.target.value)} />
+              </div>
+            </div>
+
+            {loadingSemDiario ? (
+              <p className="text-sm text-gray-400 py-4">Carregando...</p>
+            ) : (aulasSemDiario as any[]).length === 0 ? (
+              <p className="text-sm text-green-600 py-4 italic flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4" /> Nenhuma aula sem diário nos filtros selecionados.
+              </p>
+            ) : (
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50 text-gray-500 uppercase text-[10px]">
+                      <th className="px-3 py-2 border-b text-left">Data</th>
+                      <th className="px-3 py-2 border-b text-left">Professor</th>
+                      <th className="px-3 py-2 border-b text-left">Evento / Turma</th>
+                      <th className="px-3 py-2 border-b text-left">UC / Disciplina</th>
+                      <th className="px-3 py-2 border-b text-center">Horário</th>
+                      <th className="px-3 py-2 border-b text-right">Horas</th>
+                      <th className="px-3 py-2 border-b text-center">Status Pgto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(aulasSemDiario as any[]).map((a: any, idx: number) => (
+                      <tr key={a.id} className={idx % 2 === 0 ? "bg-white" : "bg-red-50"}>
+                        <td className="px-3 py-2 border-b whitespace-nowrap font-mono text-gray-600">
+                          {a.data?.replace(/(\d{4})-(\d{2})-(\d{2})/, "$3/$2/$1")}
+                        </td>
+                        <td className="px-3 py-2 border-b max-w-[120px] truncate">
+                          <span className="font-medium text-gray-800">{a.professor_nome}</span>
+                          <span className="ml-1 text-[10px] text-gray-400">({a.professor_tipo})</span>
+                        </td>
+                        <td className="px-3 py-2 border-b max-w-[130px] truncate text-gray-600">{a.evento_nome}</td>
+                        <td className="px-3 py-2 border-b max-w-[130px] truncate text-gray-500">{a.uc_nome}</td>
+                        <td className="px-3 py-2 border-b text-center text-gray-500 whitespace-nowrap">
+                          {a.horario_inicio}–{a.horario_fim}
+                        </td>
+                        <td className="px-3 py-2 border-b text-right font-semibold text-gray-700 tabular-nums">{a.horas}h</td>
+                        <td className="px-3 py-2 border-b text-center">
+                          <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                            a.status_pagamento === "pago" ? "bg-green-100 text-green-700"
+                            : a.status_pagamento === "encaminhado" ? "bg-amber-100 text-amber-700"
+                            : "bg-gray-100 text-gray-500"
+                          }`}>
+                            {a.status_pagamento === "pago" ? "Pago" : a.status_pagamento === "encaminhado" ? "Encaminhado" : "Pendente"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>}
         </div>
       </section>
 

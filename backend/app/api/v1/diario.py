@@ -1,9 +1,11 @@
 import re
 import unicodedata
 from datetime import date, time
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, not_, exists
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.diario import DiarioAula
@@ -298,3 +300,81 @@ def _serializar_diario(d: DiarioAula) -> dict:
         "conteudo": d.conteudo,
         "importado_em": d.importado_em.isoformat() if d.importado_em else None,
     }
+
+
+@router.get("/sem-diario")
+async def aulas_sem_diario(
+    professor_id: Optional[int] = Query(default=None),
+    data_inicio: Optional[date] = Query(default=None),
+    data_fim: Optional[date] = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """Lista todas as aulas (todos os tipos de professor) sem diário vinculado."""
+    from app.models.pagamento import PagamentoAula
+
+    q = (
+        select(Aula)
+        .join(Professor, Aula.professor_id == Professor.id)
+        .join(Evento, Aula.evento_id == Evento.id)
+        .options(
+            selectinload(Aula.professor),
+            selectinload(Aula.evento),
+            selectinload(Aula.unidade_curricular),
+        )
+        .where(Aula.status.notin_(["Cancelada", "Remarcada"]))
+        .where(not_(exists().where(DiarioAula.aula_id == Aula.id)))
+    )
+    if professor_id:
+        q = q.where(Aula.professor_id == professor_id)
+    if data_inicio:
+        q = q.where(Aula.data >= data_inicio)
+    if data_fim:
+        q = q.where(Aula.data <= data_fim)
+    q = q.order_by(Aula.data.asc())
+
+    result = await db.execute(q)
+    aulas = result.scalars().all()
+
+    # UC names para aulas planejadas (sem uc_nome_original)
+    uc_ids = {a.unidade_curricular_id for a in aulas if a.unidade_curricular_id}
+    uc_nome_map: dict[int, str] = {}
+    if uc_ids:
+        res_uc = await db.execute(
+            select(UnidadeCurricular.id, UnidadeCurricular.nome).where(UnidadeCurricular.id.in_(uc_ids))
+        )
+        uc_nome_map = {row.id: row.nome for row in res_uc.all()}
+
+    # Status de pagamento
+    aula_ids = [a.id for a in aulas]
+    pag_map: dict[int, str] = {}
+    if aula_ids:
+        pag_res = await db.execute(
+            select(PagamentoAula.aula_id, PagamentoAula.status).where(
+                PagamentoAula.aula_id.in_(aula_ids),
+                PagamentoAula.status.in_(["encaminhado", "pago"]),
+            )
+        )
+        pag_map = {row.aula_id: row.status for row in pag_res.all()}
+
+    def _h(ini: time, fim: time) -> float:
+        mins = (fim.hour * 60 + fim.minute) - (ini.hour * 60 + ini.minute)
+        return round(max(mins, 0) / 60, 2)
+
+    return [
+        {
+            "id": a.id,
+            "data": a.data.isoformat(),
+            "horario_inicio": a.horario_inicio.strftime("%H:%M"),
+            "horario_fim": a.horario_fim.strftime("%H:%M"),
+            "horas": _h(a.horario_inicio, a.horario_fim),
+            "professor_id": a.professor_id,
+            "professor_nome": a.professor.nome if a.professor else "—",
+            "professor_tipo": a.professor.tipo if a.professor else "—",
+            "evento_id": a.evento_id,
+            "evento_nome": a.evento.nome_turma if a.evento else "—",
+            "uc_nome": a.uc_nome_original or uc_nome_map.get(a.unidade_curricular_id or 0) or "—",
+            "status_pagamento": pag_map.get(a.id, "pendente"),
+        }
+        for a in aulas
+    ]

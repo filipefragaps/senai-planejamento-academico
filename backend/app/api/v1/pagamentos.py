@@ -42,6 +42,7 @@ def _aula_out(
     evento: Evento,
     pagamento: Optional[PagamentoAula],
     tem_diario: bool = False,
+    diario_conteudo: Optional[str] = None,
 ) -> dict:
     uc_nome = None
     if aula.unidade_curricular:
@@ -73,6 +74,7 @@ def _aula_out(
         "encaminhado_em": pagamento.encaminhado_em.isoformat() if pagamento else None,
         "confirmado_em": pagamento.confirmado_em.isoformat() if pagamento and pagamento.confirmado_em else None,
         "tem_diario": tem_diario,
+        "diario_conteudo": diario_conteudo,
     }
 
 
@@ -130,18 +132,18 @@ async def listar_aulas_pagamento(
         for p in pag_res.scalars().all():
             pag_map[p.aula_id] = p
 
-    # Verifica quais aulas possuem diário vinculado
-    diario_set: set[int] = set()
+    # Verifica quais aulas possuem diário vinculado e busca conteúdo (col. I)
+    diario_map: dict[int, str | None] = {}
     if aula_ids:
         diario_res = await db.execute(
-            select(DiarioAula.aula_id).where(
+            select(DiarioAula.aula_id, DiarioAula.conteudo).where(
                 DiarioAula.aula_id.in_(aula_ids),
                 DiarioAula.aula_id.isnot(None),
             )
         )
-        diario_set = {row[0] for row in diario_res.all()}
+        diario_map = {row[0]: row[1] for row in diario_res.all()}
 
-    rows = [_aula_out(a, a.professor, a.evento, pag_map.get(a.id), a.id in diario_set) for a in aulas]
+    rows = [_aula_out(a, a.professor, a.evento, pag_map.get(a.id), a.id in diario_map, diario_map.get(a.id)) for a in aulas]
 
     # Filtro por status de pagamento
     if status and status != "todos":
