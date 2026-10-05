@@ -29,6 +29,7 @@ class NotificarRequest(BaseModel):
     data_inicio: date
     data_fim: date
     ccs: list[str] = []
+    professor_ids: list[int] | None = None  # se preenchido, envia apenas para estes IDs
 
 
 def _email_html(professor_nome: str, aulas: list[dict], periodo: str) -> str:
@@ -108,6 +109,8 @@ async def notificar_diarios_abertos(
         .where(not_(exists().where(DiarioAula.aula_id == Aula.id)))
         .order_by(Aula.professor_id, Aula.data, Aula.horario_inicio)
     )
+    if body.professor_ids is not None:
+        q = q.where(Aula.professor_id.in_(body.professor_ids))
     result = await db.execute(q)
     aulas = result.scalars().all()
 
@@ -204,7 +207,7 @@ async def preview_notificacao(
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    """Retorna o número de docentes e aulas que seriam notificados, sem enviar e-mails."""
+    """Retorna a lista de docentes e contagem de aulas que seriam notificados, sem enviar e-mails."""
     q = (
         select(Aula)
         .join(Professor, Aula.professor_id == Professor.id)
@@ -213,6 +216,7 @@ async def preview_notificacao(
         .where(Aula.data >= body.data_inicio)
         .where(Aula.data <= body.data_fim)
         .where(not_(exists().where(DiarioAula.aula_id == Aula.id)))
+        .order_by(Aula.professor_id)
     )
     result = await db.execute(q)
     aulas = result.scalars().all()
@@ -221,18 +225,19 @@ async def preview_notificacao(
     for a in aulas:
         pid = a.professor_id
         if pid not in profs:
+            email = (a.professor.email or "").strip() if a.professor else ""
             profs[pid] = {
+                "id": pid,
                 "nome": a.professor.nome if a.professor else "—",
-                "tem_email": bool(a.professor and a.professor.email and a.professor.email.strip()),
+                "email": email,
+                "tem_email": bool(email),
+                "total_aulas": 0,
             }
+        profs[pid]["total_aulas"] += 1
 
-    com_email = [p for p in profs.values() if p["tem_email"]]
-    sem_email = [p for p in profs.values() if not p["tem_email"]]
-
+    lista = sorted(profs.values(), key=lambda p: p["nome"])
     return {
         "total_aulas": len(aulas),
         "total_docentes": len(profs),
-        "com_email": len(com_email),
-        "sem_email": len(sem_email),
-        "nomes_sem_email": [p["nome"] for p in sem_email],
+        "professores": lista,
     }

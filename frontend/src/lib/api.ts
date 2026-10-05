@@ -342,7 +342,7 @@ export const notificacoesApi = {
   configEmail: () => api.get("/notificacoes/config").then((r) => r.data),
   preview: (body: { data_inicio: string; data_fim: string; ccs: string[] }) =>
     api.post("/notificacoes/diarios-abertos/preview", body).then((r) => r.data),
-  notificarDiariosAbertos: (body: { data_inicio: string; data_fim: string; ccs: string[] }) =>
+  notificarDiariosAbertos: (body: { data_inicio: string; data_fim: string; ccs: string[]; professor_ids?: number[] }) =>
     api.post("/notificacoes/diarios-abertos", body).then((r) => r.data),
 };
 

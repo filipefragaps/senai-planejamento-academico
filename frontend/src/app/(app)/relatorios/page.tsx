@@ -250,6 +250,22 @@ export default function RelatoriosPage() {
   const [notifCCs, setNotifCCs] = useState("");
   const [notifResultado, setNotifResultado] = useState<any>(null);
   const [notifEnviando, setNotifEnviando] = useState(false);
+  const [notifCarregando, setNotifCarregando] = useState(false);
+  const [notifLista, setNotifLista] = useState<any[]>([]); // lista de docentes para envio
+  const [notifRemovidosIds, setNotifRemovidosIds] = useState<Set<number>>(new Set());
+
+  async function carregarPreviewNotif(dataIni: string, dataFim: string) {
+    if (!dataIni || !dataFim) return;
+    setNotifCarregando(true);
+    try {
+      const res = await notificacoesApi.preview({ data_inicio: dataIni, data_fim: dataFim, ccs: [] });
+      setNotifLista(res.professores || []);
+    } catch {
+      setNotifLista([]);
+    } finally {
+      setNotifCarregando(false);
+    }
+  }
   const { data: aulasSemDiario = [], isLoading: loadingSemDiario } = useQuery({
     queryKey: ["aulas-sem-diario", profSemDiario, dateIniSemDiario, dateFimSemDiario],
     queryFn: () => diarioApi.semDiario({
@@ -1316,10 +1332,15 @@ export default function RelatoriosPage() {
             <button
               onClick={e => {
                 e.stopPropagation();
-                setNotifDataIni(dateIniSemDiario);
-                setNotifDataFim(dateFimSemDiario);
+                const ini = dateIniSemDiario;
+                const fim = dateFimSemDiario;
+                setNotifDataIni(ini);
+                setNotifDataFim(fim);
                 setNotifResultado(null);
+                setNotifLista([]);
+                setNotifRemovidosIds(new Set());
                 setNotifModalAberto(true);
+                carregarPreviewNotif(ini, fim);
               }}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors"
               title="Enviar e-mail para docentes com diários em aberto"
@@ -1462,28 +1483,86 @@ export default function RelatoriosPage() {
               </div>
             ) : (
               <div className="space-y-4">
+                {/* Período */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs text-gray-500 mb-1 font-medium">Data início</label>
-                    <input type="date" className="input w-full" value={notifDataIni} onChange={e => setNotifDataIni(e.target.value)} />
+                    <input type="date" className="input w-full" value={notifDataIni}
+                      onChange={e => { setNotifDataIni(e.target.value); setNotifLista([]); carregarPreviewNotif(e.target.value, notifDataFim); }} />
                   </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-1 font-medium">Data fim</label>
-                    <input type="date" className="input w-full" value={notifDataFim} onChange={e => setNotifDataFim(e.target.value)} />
+                    <input type="date" className="input w-full" value={notifDataFim}
+                      onChange={e => { setNotifDataFim(e.target.value); setNotifLista([]); carregarPreviewNotif(notifDataIni, e.target.value); }} />
                   </div>
                 </div>
+
+                {/* Lista de docentes */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs text-gray-500 font-medium">Docentes com diários pendentes</label>
+                    {notifLista.length > 0 && (
+                      <span className="text-xs text-gray-400">
+                        {notifLista.filter(p => !notifRemovidosIds.has(p.id)).length} de {notifLista.length} selecionados
+                      </span>
+                    )}
+                  </div>
+                  <div className="border border-gray-200 rounded-lg overflow-hidden max-h-52 overflow-y-auto">
+                    {notifCarregando ? (
+                      <div className="flex items-center justify-center gap-2 py-6 text-gray-400 text-xs">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Carregando docentes...
+                      </div>
+                    ) : !notifDataIni || !notifDataFim ? (
+                      <p className="text-center text-xs text-gray-400 py-6">Selecione o período para ver os docentes</p>
+                    ) : notifLista.length === 0 ? (
+                      <p className="text-center text-xs text-green-600 py-6">Nenhum docente com diário pendente neste período</p>
+                    ) : (
+                      <table className="w-full text-xs">
+                        <tbody>
+                          {notifLista.map((prof: any) => {
+                            const removido = notifRemovidosIds.has(prof.id);
+                            return (
+                              <tr key={prof.id} className={`border-b last:border-0 ${removido ? "opacity-40 bg-gray-50" : "bg-white"}`}>
+                                <td className="px-3 py-2 font-medium text-gray-800 truncate max-w-[180px]">{prof.nome}</td>
+                                <td className="px-2 py-2 text-gray-400 truncate max-w-[140px]">
+                                  {prof.tem_email ? prof.email : <span className="text-amber-500 italic">sem e-mail</span>}
+                                </td>
+                                <td className="px-2 py-2 text-center tabular-nums">
+                                  <span className="px-1.5 py-0.5 bg-red-50 text-red-600 rounded font-semibold">{prof.total_aulas}</span>
+                                </td>
+                                <td className="px-2 py-2 text-center">
+                                  <button
+                                    title={removido ? "Incluir novamente" : "Remover deste disparo"}
+                                    onClick={() => setNotifRemovidosIds(prev => {
+                                      const next = new Set(prev);
+                                      if (removido) next.delete(prof.id); else next.add(prof.id);
+                                      return next;
+                                    })}
+                                    className={`p-1 rounded transition-colors ${removido ? "text-blue-500 hover:bg-blue-50" : "text-gray-300 hover:text-red-500 hover:bg-red-50"}`}
+                                  >
+                                    {removido ? <CheckCircle2 className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+
+                {/* CC */}
                 <div>
                   <label className="block text-xs text-gray-500 mb-1 font-medium">Cópia para (CC) — um e-mail por linha</label>
                   <textarea
-                    className="input w-full h-20 resize-none text-xs"
+                    className="input w-full h-16 resize-none text-xs"
                     placeholder={"coordenacao@senai.org.br\ngerencia@senai.org.br"}
                     value={notifCCs}
                     onChange={e => setNotifCCs(e.target.value)}
                   />
                 </div>
-                <p className="text-xs text-gray-400 -mt-2">
-                  Cada docente receberá um e-mail individual com a lista das suas aulas sem diário.
-                </p>
+
                 <div className="flex gap-2">
                   <button
                     onClick={() => setNotifModalAberto(false)}
@@ -1493,15 +1572,19 @@ export default function RelatoriosPage() {
                     Cancelar
                   </button>
                   <button
-                    disabled={notifEnviando || !notifDataIni || !notifDataFim}
+                    disabled={notifEnviando || !notifDataIni || !notifDataFim || notifLista.filter(p => !notifRemovidosIds.has(p.id)).length === 0}
                     onClick={async () => {
                       setNotifEnviando(true);
                       try {
                         const ccs = notifCCs.split("\n").map(s => s.trim()).filter(Boolean);
+                        const idsEnvio = notifLista
+                          .filter((p: any) => !notifRemovidosIds.has(p.id))
+                          .map((p: any) => p.id);
                         const res = await notificacoesApi.notificarDiariosAbertos({
                           data_inicio: notifDataIni,
                           data_fim: notifDataFim,
                           ccs,
+                          professor_ids: idsEnvio,
                         });
                         setNotifResultado(res);
                         toast.success(`${res.enviados} e-mail(s) enviado(s) com sucesso.`);
