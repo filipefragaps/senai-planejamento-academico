@@ -41,7 +41,8 @@ async def get_dashboard(
         proxima_semana_fim = proxima_semana_inicio + timedelta(days=6)
 
         regencias = await calcular_regencia_todos(db, semana_inicio, semana_fim)
-        regencias_real = await calcular_regencia_todos(db, semana_inicio, semana_fim, apenas_realizadas=True)
+        # Regência Real: aulas já ocorridas (data <= hoje) — não depende do status "Realizada"
+        regencias_real = await calcular_regencia_todos(db, semana_inicio, hoje)
 
         # Inclusão em Folha, PJ e RPA excluídos da média de regência e contagens de status
         _TIPOS_EXCLUIDOS_MEDIA = {"Inclusão em Folha", "PJ", "RPA"}
