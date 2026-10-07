@@ -1079,6 +1079,8 @@ export default function EventosPage() {
   const [modalidadeFiltro, setModalidadeFiltro] = useState("");
   const [turnoFiltro, setTurnoFiltro] = useState("");
   const [coordenadorFiltro, setCoordenadorFiltro] = useState("");
+  const [anoFiltro, setAnoFiltro] = useState("");
+  const [semestreFiltro, setSemestreFiltro] = useState("");
   const [eventoSelecionado, setEventoSelecionado] = useState<Evento | null>(null);
   const [abaAtiva, setAbaAtiva] = useState<"cronograma" | "ucs" | "regencia">("cronograma");
   const [aulaEditando, setAulaEditando] = useState<AulaRow | null>(null);
@@ -1475,6 +1477,14 @@ export default function EventosPage() {
     [...new Set((eventos as Evento[]).map((e) => e.coordenador).filter(Boolean) as string[])].sort()
   , [eventos]);
 
+  const anosDisponiveis = useMemo(() => {
+    const anos = new Set<string>();
+    for (const e of (eventos as Evento[])) {
+      if (e.data_inicio) anos.add(String(new Date(e.data_inicio).getFullYear()));
+    }
+    return [...anos].sort((a, b) => Number(b) - Number(a)); // mais recente primeiro
+  }, [eventos]);
+
   const filtrados = useMemo(() => {
     const q = search.toLowerCase();
     return (eventos as Evento[])
@@ -1488,14 +1498,24 @@ export default function EventosPage() {
         const matchCoordenador = !coordenadorFiltro
           || (coordenadorFiltro === "__sem__" ? !e.coordenador : e.coordenador === coordenadorFiltro);
         const matchGrupo = !grupoFiltro || getGrupoModalidade(e.tipo_curso || e.tipo_modalidade) === grupoFiltro;
-        return matchSearch && matchStatus && matchModalidade && matchTurno && matchCoordenador && matchGrupo;
+        let matchAno = true;
+        let matchSemestre = true;
+        if ((anoFiltro || semestreFiltro) && e.data_inicio) {
+          const d = new Date(e.data_inicio);
+          const ano = d.getFullYear();
+          const mes = d.getMonth() + 1; // 1-12
+          if (anoFiltro) matchAno = String(ano) === anoFiltro;
+          if (semestreFiltro === "1") matchSemestre = mes >= 1 && mes <= 6;
+          if (semestreFiltro === "2") matchSemestre = mes >= 7 && mes <= 12;
+        }
+        return matchSearch && matchStatus && matchModalidade && matchTurno && matchCoordenador && matchGrupo && matchAno && matchSemestre;
       })
       .sort((a, b) => {
         const ga = STATUS_GROUP[a.status] ?? 0;
         const gb = STATUS_GROUP[b.status] ?? 0;
         return ga - gb;
       });
-  }, [eventos, search, statusFiltro, modalidadeFiltro, turnoFiltro, coordenadorFiltro, grupoFiltro]);
+  }, [eventos, search, statusFiltro, modalidadeFiltro, turnoFiltro, coordenadorFiltro, grupoFiltro, anoFiltro, semestreFiltro]);
 
   const ucsParaPlanejar: UCParaPlanejar[] = useMemo(() => {
     if (!modoSuperior) {
@@ -1715,6 +1735,25 @@ export default function EventosPage() {
                 </button>
               )}
             </div>
+            {anosDisponiveis.length > 0 && (
+              <select
+                className="input w-full text-sm"
+                value={anoFiltro}
+                onChange={(e) => setAnoFiltro(e.target.value)}
+              >
+                <option value="">Todos os anos</option>
+                {anosDisponiveis.map((a) => <option key={a} value={a}>{a}</option>)}
+              </select>
+            )}
+            <select
+              className="input w-full text-sm"
+              value={semestreFiltro}
+              onChange={(e) => setSemestreFiltro(e.target.value)}
+            >
+              <option value="">Ambos os semestres</option>
+              <option value="1">1º Semestre</option>
+              <option value="2">2º Semestre</option>
+            </select>
             <select
               className="input w-full text-sm"
               value={statusFiltro}
@@ -1756,9 +1795,9 @@ export default function EventosPage() {
                 {coordenadores.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             )}
-            {(search || statusFiltro || modalidadeFiltro || turnoFiltro || coordenadorFiltro || grupoFiltro) && (
+            {(search || statusFiltro || modalidadeFiltro || turnoFiltro || coordenadorFiltro || grupoFiltro || anoFiltro || semestreFiltro) && (
               <button
-                onClick={() => { setSearch(""); setStatusFiltro(""); setModalidadeFiltro(""); setTurnoFiltro(""); setCoordenadorFiltro(""); setGrupoFiltro(null); }}
+                onClick={() => { setSearch(""); setStatusFiltro(""); setModalidadeFiltro(""); setTurnoFiltro(""); setCoordenadorFiltro(""); setGrupoFiltro(null); setAnoFiltro(""); setSemestreFiltro(""); }}
                 className="text-xs text-blue-600 hover:text-blue-800 text-left"
               >
                 Limpar filtros
