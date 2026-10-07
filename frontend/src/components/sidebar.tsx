@@ -19,6 +19,7 @@ import {
   TrendingUp,
   DoorOpen,
   CalendarDays,
+  Clock3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clearAuth, getCurrentUser } from "@/lib/auth";
@@ -45,6 +46,7 @@ const NAV_PRINCIPAL: NavItem[] = [
   { href: "/calendario",  label: "Calendário",       icon: CalendarDays,     perfis: ["admin", "coordenador"] },
   { href: "/historico",   label: "Histórico",        icon: History,          perfis: ["admin"] },
   { href: "/ia",          label: "Análise com IA",   icon: Brain,            perfis: ["admin", "coordenador"] },
+  { href: "/gestao-ponto", label: "Gestão de Ponto",  icon: Clock3,           perfis: ["admin", "coordenador"] },
 ];
 
 export function Sidebar() {

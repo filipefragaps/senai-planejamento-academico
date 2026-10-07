@@ -1,0 +1,2592 @@
+[
+  {
+    "code": "125",
+    "description": "01:00 / 07:00",
+    "start": "01:00",
+    "end": "07:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "190",
+    "description": "05:00/14:00 / 10:00/12:00",
+    "start": "05:00",
+    "end": "14:00",
+    "breakStart": "10:00",
+    "breakEnd": "12:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "25",
+    "description": "05:00/14:00/11:00/12:00",
+    "start": "05:00",
+    "end": "14:00",
+    "breakStart": "11:00",
+    "breakEnd": "12:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "255",
+    "description": "05:30 14:30 / 11:00 - 12:00",
+    "start": "05:30",
+    "end": "14:30",
+    "breakStart": "11:00",
+    "breakEnd": "12:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "261",
+    "description": "06:00 - 20:00 / 10:00 - 16:00",
+    "start": "06:00",
+    "end": "20:00",
+    "breakStart": "10:00",
+    "breakEnd": "16:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "21",
+    "description": "06:00/12:00",
+    "start": "06:00",
+    "end": "12:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "120",
+    "description": "06:00/14:00 /11:00/12:00",
+    "start": "06:00",
+    "end": "14:00",
+    "breakStart": "11:00",
+    "breakEnd": "12:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "27",
+    "description": "06:00/15:00/11:00/12:00",
+    "start": "06:00",
+    "end": "15:00",
+    "breakStart": "11:00",
+    "breakEnd": "12:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "30",
+    "description": "06:00/15:00/12:00/13:00",
+    "start": "06:00",
+    "end": "15:00",
+    "breakStart": "12:00",
+    "breakEnd": "13:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "212",
+    "description": "06:30 - 14:30 / 12:00 - 13:00",
+    "start": "06:30",
+    "end": "14:30",
+    "breakStart": "12:00",
+    "breakEnd": "13:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "224",
+    "description": "06:30 - 15:30 / 12:00 - 13:00",
+    "start": "06:30",
+    "end": "15:30",
+    "breakStart": "12:00",
+    "breakEnd": "13:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "219",
+    "description": "06:30 - 16:00 / 12:30 - 14:00",
+    "start": "06:30",
+    "end": "16:00",
+    "breakStart": "12:30",
+    "breakEnd": "14:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "22",
+    "description": "06:30/10:30",
+    "start": "06:30",
+    "end": "10:30",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "24",
+    "description": "06:30/12:30",
+    "start": "06:30",
+    "end": "12:30",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "26",
+    "description": "06:30/16:30/11:30/13:30",
+    "start": "06:30",
+    "end": "16:30",
+    "breakStart": "11:30",
+    "breakEnd": "13:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "29",
+    "description": "06:30/17:30/10:00/13:00",
+    "start": "06:30",
+    "end": "17:30",
+    "breakStart": "10:00",
+    "breakEnd": "13:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "226",
+    "description": "07:00 - 12:00",
+    "start": "07:00",
+    "end": "12:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "222",
+    "description": "07:00 - 12:20",
+    "start": "07:00",
+    "end": "12:20",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "211",
+    "description": "07:00 - 14:30 / 12:00 - 12:30",
+    "start": "07:00",
+    "end": "14:30",
+    "breakStart": "12:00",
+    "breakEnd": "12:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "237",
+    "description": "07:00 - 16:00 / 12:00 - 14:00 / Sab 07:00 - 12:00",
+    "start": "07:00",
+    "end": "16:00",
+    "breakStart": "12:00",
+    "breakEnd": "14:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "227",
+    "description": "07:00 - 16:00 / 12:30 - 13:30",
+    "start": "07:00",
+    "end": "16:00",
+    "breakStart": "12:30",
+    "breakEnd": "13:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "229",
+    "description": "07:00 - 17:00 / 11:30 - 12:30 44 HRS SEMANAIS",
+    "start": "07:00",
+    "end": "17:00",
+    "breakStart": "11:30",
+    "breakEnd": "12:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "195",
+    "description": "07:00 / 10:00",
+    "start": "07:00",
+    "end": "10:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "165",
+    "description": "07:00 / 12:00 - inclusive sábado",
+    "start": "07:00",
+    "end": "12:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "35",
+    "description": "07:00 /11:00",
+    "start": "07:00",
+    "end": "11:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "176",
+    "description": "07:00/13:40",
+    "start": "07:00",
+    "end": "13:40",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "40",
+    "description": "07:00/13:00",
+    "start": "07:00",
+    "end": "13:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "168",
+    "description": "07:00/15:00 - 11:00/15:00 Sab 07:00/12:00",
+    "start": "07:00",
+    "end": "15:00",
+    "breakStart": "11:00",
+    "breakEnd": "15:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "173",
+    "description": "07:00/15:00 / 11:00/13:00",
+    "start": "07:00",
+    "end": "15:00",
+    "breakStart": "11:00",
+    "breakEnd": "13:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "16",
+    "description": "07:00/15:30/12:00/13:30",
+    "start": "07:00",
+    "end": "15:30",
+    "breakStart": "12:00",
+    "breakEnd": "13:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "20",
+    "description": "07:00/16:00 - 12:00/13:00",
+    "start": "07:00",
+    "end": "16:00",
+    "breakStart": "12:00",
+    "breakEnd": "13:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "43",
+    "description": "07:00/16:00/11:00/12:00",
+    "start": "07:00",
+    "end": "16:00",
+    "breakStart": "11:00",
+    "breakEnd": "12:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "231",
+    "description": "07:00/16:00/11:00/12:00 - 44 HRS SEMANAIS",
+    "start": "07:00",
+    "end": "16:00",
+    "breakStart": "11:00",
+    "breakEnd": "12:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "36",
+    "description": "07:00/16:00/13:00/14:00",
+    "start": "07:00",
+    "end": "16:00",
+    "breakStart": "13:00",
+    "breakEnd": "14:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "203",
+    "description": "07:00/16:30 - 11:00/12:30",
+    "start": "07:00",
+    "end": "16:30",
+    "breakStart": "11:00",
+    "breakEnd": "12:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "162",
+    "description": "07:00/17:00/11:00/13:00",
+    "start": "07:00",
+    "end": "17:00",
+    "breakStart": "11:00",
+    "breakEnd": "13:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "74",
+    "description": "07:00/17:00/13:00/15:00",
+    "start": "07:00",
+    "end": "17:00",
+    "breakStart": "13:00",
+    "breakEnd": "15:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "57",
+    "description": "07:00/17:30/11:00/13:30",
+    "start": "07:00",
+    "end": "17:30",
+    "breakStart": "11:00",
+    "breakEnd": "13:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "14",
+    "description": "07:00/17:30/12:00/13:30",
+    "start": "07:00",
+    "end": "17:30",
+    "breakStart": "12:00",
+    "breakEnd": "13:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "56",
+    "description": "07:00/20:00/11:00/16:00",
+    "start": "07:00",
+    "end": "20:00",
+    "breakStart": "11:00",
+    "breakEnd": "16:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "19",
+    "description": "07:00/20:00/12:00/17:00",
+    "start": "07:00",
+    "end": "20:00",
+    "breakStart": "12:00",
+    "breakEnd": "17:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "53",
+    "description": "07:00/21:00/11:30/17:30",
+    "start": "07:00",
+    "end": "21:00",
+    "breakStart": "11:30",
+    "breakEnd": "17:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "216",
+    "description": "07:25 - 17:43 / 12:00 - 13:30",
+    "start": "07:25",
+    "end": "17:43",
+    "breakStart": "12:00",
+    "breakEnd": "13:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "254",
+    "description": "07:30 - 17:00 / 12:00 - 12:30 - 44 Hrs semanais",
+    "start": "07:30",
+    "end": "17:00",
+    "breakStart": "12:00",
+    "breakEnd": "12:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "180",
+    "description": "07:30 / 13:30",
+    "start": "07:30",
+    "end": "13:30",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "33",
+    "description": "07:30/11:30",
+    "start": "07:30",
+    "end": "11:30",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "45",
+    "description": "07:30/16:30/11:30/12:30",
+    "start": "07:30",
+    "end": "16:30",
+    "breakStart": "11:30",
+    "breakEnd": "12:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "44",
+    "description": "07:30/16:30/12:00/14:00",
+    "start": "07:30",
+    "end": "16:30",
+    "breakStart": "12:00",
+    "breakEnd": "14:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "174",
+    "description": "07:30/17:00 / 11:30/13:00",
+    "start": "07:30",
+    "end": "17:00",
+    "breakStart": "11:30",
+    "breakEnd": "13:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "39",
+    "description": "07:30/17:30/11:30/13:30",
+    "start": "07:30",
+    "end": "17:30",
+    "breakStart": "11:30",
+    "breakEnd": "13:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "64",
+    "description": "07:30/20:00/11:30/16:00",
+    "start": "07:30",
+    "end": "20:00",
+    "breakStart": "11:30",
+    "breakEnd": "16:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "66",
+    "description": "07:30/20:30/11:30/16:30",
+    "start": "07:30",
+    "end": "20:30",
+    "breakStart": "11:30",
+    "breakEnd": "16:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "52",
+    "description": "07:30/21:00/11:30/17:00",
+    "start": "07:30",
+    "end": "21:00",
+    "breakStart": "11:30",
+    "breakEnd": "17:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "252",
+    "description": "08:00 - 14:00 / 11:00 - 12:00",
+    "start": "08:00",
+    "end": "14:00",
+    "breakStart": "11:00",
+    "breakEnd": "12:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "191",
+    "description": "08:00 - 15:00 / 11:00 - 12:00",
+    "start": "08:00",
+    "end": "15:00",
+    "breakStart": "11:00",
+    "breakEnd": "12:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "177",
+    "description": "08:00 - 17:30 / 12:00 - 13:30",
+    "start": "08:00",
+    "end": "17:30",
+    "breakStart": "12:00",
+    "breakEnd": "13:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "234",
+    "description": "08:00 - 18:00 / 12:00 - 13:00 44 HRS SEMANAIS",
+    "start": "08:00",
+    "end": "18:00",
+    "breakStart": "12:00",
+    "breakEnd": "13:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "223",
+    "description": "08:00 - 19:00 / 12:00 - 15:00",
+    "start": "08:00",
+    "end": "19:00",
+    "breakStart": "12:00",
+    "breakEnd": "15:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "221",
+    "description": "08:00 - 21:00 / 12:00 - 17:00",
+    "start": "08:00",
+    "end": "21:00",
+    "breakStart": "12:00",
+    "breakEnd": "17:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "245",
+    "description": "08:00 - 21:30 / 11:30 - 18:30",
+    "start": "08:00",
+    "end": "21:30",
+    "breakStart": "11:30",
+    "breakEnd": "18:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "207",
+    "description": "08:00 / 11:00",
+    "start": "08:00",
+    "end": "11:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "206",
+    "description": "08:00 / 12:30",
+    "start": "08:00",
+    "end": "12:30",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "183",
+    "description": "08:00 / 14:00 - SEG. TER. QUA. QUI.",
+    "start": "08:00",
+    "end": "14:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "32",
+    "description": "08:00/12:00",
+    "start": "08:00",
+    "end": "12:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "46",
+    "description": "08:00/14:00",
+    "start": "08:00",
+    "end": "14:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "179",
+    "description": "08:00/16:00 - 11:00/12:00",
+    "start": "08:00",
+    "end": "16:00",
+    "breakStart": "11:00",
+    "breakEnd": "12:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "7",
+    "description": "08:00/16:40/12:00/14:00",
+    "start": "08:00",
+    "end": "16:40",
+    "breakStart": "12:00",
+    "breakEnd": "14:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "97",
+    "description": "08:00/17:00 / 11:00/14:00",
+    "start": "08:00",
+    "end": "17:00",
+    "breakStart": "11:00",
+    "breakEnd": "14:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "225",
+    "description": "08:00/17:00/12:00/13:00 - 44 HRS SEMANAIS",
+    "start": "08:00",
+    "end": "17:00",
+    "breakStart": "12:00",
+    "breakEnd": "13:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "10",
+    "description": "08:00/17:00/12:00/14:00",
+    "start": "08:00",
+    "end": "17:00",
+    "breakStart": "12:00",
+    "breakEnd": "14:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "215",
+    "description": "08:00/18:00 - 11:00/13:00",
+    "start": "08:00",
+    "end": "18:00",
+    "breakStart": "11:00",
+    "breakEnd": "13:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "79",
+    "description": "08:00/22:00 - 12:00/18:00",
+    "start": "08:00",
+    "end": "22:00",
+    "breakStart": "12:00",
+    "breakEnd": "18:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "186",
+    "description": "08:30/17:30 - 12:00/13:00",
+    "start": "08:30",
+    "end": "17:30",
+    "breakStart": "12:00",
+    "breakEnd": "13:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "213",
+    "description": "08:30/18:00 - 12:00/13:30",
+    "start": "08:30",
+    "end": "18:00",
+    "breakStart": "12:00",
+    "breakEnd": "13:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "192",
+    "description": "09:00 - 16:00 / 12:00 - 13:00",
+    "start": "09:00",
+    "end": "16:00",
+    "breakStart": "12:00",
+    "breakEnd": "13:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "243",
+    "description": "09:00 - 17:00 / 12:00 - 13:00 SAB 08:00 - 13:00",
+    "start": "09:00",
+    "end": "17:00",
+    "breakStart": "12:00",
+    "breakEnd": "13:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "247",
+    "description": "09:00 - 18:00 / 12:00 - 13:00 S.T.Q / 09:00 - 12:00 Q.S",
+    "start": "09:00",
+    "end": "18:00",
+    "breakStart": "12:00",
+    "breakEnd": "13:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "246",
+    "description": "09:00 - 18:00 / 12:00 - 14:00 / Sab 07:00 - 12:00",
+    "start": "09:00",
+    "end": "18:00",
+    "breakStart": "12:00",
+    "breakEnd": "14:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "258",
+    "description": "09:00 - 22:00 / 12:00 - 17:00",
+    "start": "09:00",
+    "end": "22:00",
+    "breakStart": "12:00",
+    "breakEnd": "17:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "41",
+    "description": "09:00/15:00",
+    "start": "09:00",
+    "end": "15:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "70",
+    "description": "09:00/16:30/11:30/3:00",
+    "start": "09:00",
+    "end": "16:30",
+    "breakStart": "11:30",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "05",
+    "description": "09:00/17:00/12:00/14:00",
+    "start": "09:00",
+    "end": "17:00",
+    "breakStart": "12:00",
+    "breakEnd": "14:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "17",
+    "description": "09:00/17:30/12:00/13:30",
+    "start": "09:00",
+    "end": "17:30",
+    "breakStart": "12:00",
+    "breakEnd": "13:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "167",
+    "description": "09:00/18:00/12:00/13:00",
+    "start": "09:00",
+    "end": "18:00",
+    "breakStart": "12:00",
+    "breakEnd": "13:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "184",
+    "description": "09:00/18:30/11:00/12:30",
+    "start": "09:00",
+    "end": "18:30",
+    "breakStart": "11:00",
+    "breakEnd": "12:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "169",
+    "description": "09:00/19:00 / 12:00/14:00",
+    "start": "09:00",
+    "end": "19:00",
+    "breakStart": "12:00",
+    "breakEnd": "14:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "62",
+    "description": "09:00/22:00/12:30/17:30",
+    "start": "09:00",
+    "end": "22:00",
+    "breakStart": "12:30",
+    "breakEnd": "17:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "260",
+    "description": "09:30 - 17:00 / 12:00 - 13:30",
+    "start": "09:30",
+    "end": "17:00",
+    "breakStart": "12:00",
+    "breakEnd": "13:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "259",
+    "description": "09:30 - 19:00 / 12:00 - 13:30",
+    "start": "09:30",
+    "end": "19:00",
+    "breakStart": "12:00",
+    "breakEnd": "13:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "185",
+    "description": "09:30/18:30 - 13:00/14:00",
+    "start": "09:30",
+    "end": "18:30",
+    "breakStart": "13:00",
+    "breakEnd": "14:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "228",
+    "description": "10 HRS SEMANAIS - MÉDICO",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "220",
+    "description": "10:00 - 19:00 / 12:00 - 13:00",
+    "start": "10:00",
+    "end": "19:00",
+    "breakStart": "12:00",
+    "breakEnd": "13:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "257",
+    "description": "10:00 - 22:00 / 14:00 - 18:00",
+    "start": "10:00",
+    "end": "22:00",
+    "breakStart": "14:00",
+    "breakEnd": "18:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "194",
+    "description": "10:00 / 16:00",
+    "start": "10:00",
+    "end": "16:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "6",
+    "description": "10:00/22:00/14:00/19:20",
+    "start": "10:00",
+    "end": "22:00",
+    "breakStart": "14:00",
+    "breakEnd": "19:20",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "249",
+    "description": "11:00 - 20:00 / 15:30 - 16:30",
+    "start": "11:00",
+    "end": "20:00",
+    "breakStart": "15:30",
+    "breakEnd": "16:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "244",
+    "description": "11:00 - 22:00 / 15:00 - 18:00",
+    "start": "11:00",
+    "end": "22:00",
+    "breakStart": "15:00",
+    "breakEnd": "18:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "240",
+    "description": "11:00 / 14:00",
+    "start": "11:00",
+    "end": "14:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "193",
+    "description": "11:00 / 17:00",
+    "start": "11:00",
+    "end": "17:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "38",
+    "description": "11:00/20:00/13:00/14:00",
+    "start": "11:00",
+    "end": "20:00",
+    "breakStart": "13:00",
+    "breakEnd": "14:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "5",
+    "description": "11:00/20:00/13:00/15:40",
+    "start": "11:00",
+    "end": "20:00",
+    "breakStart": "13:00",
+    "breakEnd": "15:40",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "204",
+    "description": "11:30/17:30",
+    "start": "11:30",
+    "end": "17:30",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "158",
+    "description": "12 por 36 diurno",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Escala 12x36",
+    "category": "12x36"
+  },
+  {
+    "code": "92",
+    "description": "12 por 36 noturno 18:00/06:00",
+    "start": "18:00",
+    "end": "06:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Escala 12x36",
+    "category": "12x36"
+  },
+  {
+    "code": "217",
+    "description": "12 x 36 - Diurno 07:00 / 19:00",
+    "start": "07:00",
+    "end": "19:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Escala 12x36",
+    "category": "12x36"
+  },
+  {
+    "code": "218",
+    "description": "12 x 36 - Noturno 19:00 / 07:00",
+    "start": "19:00",
+    "end": "07:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Escala 12x36",
+    "category": "12x36"
+  },
+  {
+    "code": "242",
+    "description": "12 x 36 - NOTURNO 19:00 / 07:00 INVERTIDO",
+    "start": "19:00",
+    "end": "07:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Escala 12x36",
+    "category": "12x36"
+  },
+  {
+    "code": "214",
+    "description": "12:00 - 21:00 SEG/SEX - 08:00 - 17:00 SAB",
+    "start": "12:00",
+    "end": "21:00",
+    "breakStart": "08:00",
+    "breakEnd": "17:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "210",
+    "description": "12:00 / 16:30",
+    "start": "12:00",
+    "end": "16:30",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "37",
+    "description": "12:00/17:00",
+    "start": "12:00",
+    "end": "17:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "11",
+    "description": "12:00/18:00",
+    "start": "12:00",
+    "end": "18:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "189",
+    "description": "12:00/20:00/17:00/18:00",
+    "start": "12:00",
+    "end": "20:00",
+    "breakStart": "17:00",
+    "breakEnd": "18:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "301",
+    "description": "12:00/21:00/15:00/16:00",
+    "start": "12:00",
+    "end": "21:00",
+    "breakStart": "15:00",
+    "breakEnd": "16:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "47",
+    "description": "12:00/21:00/16:00/17:00",
+    "start": "12:00",
+    "end": "21:00",
+    "breakStart": "16:00",
+    "breakEnd": "17:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "48",
+    "description": "12:00/21:00/17:00/18:00",
+    "start": "12:00",
+    "end": "21:00",
+    "breakStart": "17:00",
+    "breakEnd": "18:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "59",
+    "description": "12:00/22:00/15:30/17:30",
+    "start": "12:00",
+    "end": "22:00",
+    "breakStart": "15:30",
+    "breakEnd": "17:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "60",
+    "description": "12:00/22:00/16:00/18:00",
+    "start": "12:00",
+    "end": "22:00",
+    "breakStart": "16:00",
+    "breakEnd": "18:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "239",
+    "description": "12:30 - 18:30",
+    "start": "12:30",
+    "end": "18:30",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "72",
+    "description": "12:30/21:30/16:30/17:30",
+    "start": "12:30",
+    "end": "21:30",
+    "breakStart": "16:30",
+    "breakEnd": "17:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "65",
+    "description": "12:30/22:00/16:30/18:00",
+    "start": "12:30",
+    "end": "22:00",
+    "breakStart": "16:30",
+    "breakEnd": "18:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "238",
+    "description": "13:00 - 21:00 / 17:00 - 18:00 / SAB 12:00 - 17:00",
+    "start": "13:00",
+    "end": "21:00",
+    "breakStart": "17:00",
+    "breakEnd": "18:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "208",
+    "description": "13:00 / 16:00",
+    "start": "13:00",
+    "end": "16:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "28",
+    "description": "13:00/17:00",
+    "start": "13:00",
+    "end": "17:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "71",
+    "description": "13:00/17:30",
+    "start": "13:00",
+    "end": "17:30",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "34",
+    "description": "13:00/18:00",
+    "start": "13:00",
+    "end": "18:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "58",
+    "description": "13:00/19:00",
+    "start": "13:00",
+    "end": "19:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "159",
+    "description": "13:00/21:00 com sábado pela manhã",
+    "start": "13:00",
+    "end": "21:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "23",
+    "description": "13:00/21:00/15:00/16:00",
+    "start": "13:00",
+    "end": "21:00",
+    "breakStart": "15:00",
+    "breakEnd": "16:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "188",
+    "description": "13:00/21:00/17:00/18:00",
+    "start": "13:00",
+    "end": "21:00",
+    "breakStart": "17:00",
+    "breakEnd": "18:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "49",
+    "description": "13:00/22:00/17:00/18:00",
+    "start": "13:00",
+    "end": "22:00",
+    "breakStart": "17:00",
+    "breakEnd": "18:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "51",
+    "description": "13:00/22:00/17:30/18:30",
+    "start": "13:00",
+    "end": "22:00",
+    "breakStart": "17:30",
+    "breakEnd": "18:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "50",
+    "description": "13:00/22:00/18:00/19:00",
+    "start": "13:00",
+    "end": "22:00",
+    "breakStart": "18:00",
+    "breakEnd": "19:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "61",
+    "description": "13:00/23:00/17:00/19:00",
+    "start": "13:00",
+    "end": "23:00",
+    "breakStart": "17:00",
+    "breakEnd": "19:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "235",
+    "description": "13:30 - 19:30",
+    "start": "13:30",
+    "end": "19:30",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "67",
+    "description": "13:30/22:30/17:30/18:30",
+    "start": "13:30",
+    "end": "22:30",
+    "breakStart": "17:30",
+    "breakEnd": "18:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "63",
+    "description": "13:30/23:00/17:30/19:00",
+    "start": "13:30",
+    "end": "23:00",
+    "breakStart": "17:30",
+    "breakEnd": "19:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "54",
+    "description": "13:45/22:45/17:00/18:00",
+    "start": "13:45",
+    "end": "22:45",
+    "breakStart": "17:00",
+    "breakEnd": "18:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "250",
+    "description": "14:00 - 22:00 / 17:00 - 19:00",
+    "start": "14:00",
+    "end": "22:00",
+    "breakStart": "17:00",
+    "breakEnd": "19:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "248",
+    "description": "14:00 - 22:00 / 19:00 - 22:00",
+    "start": "14:00",
+    "end": "22:00",
+    "breakStart": "19:00",
+    "breakEnd": "22:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "76",
+    "description": "14:00/18:00",
+    "start": "14:00",
+    "end": "18:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "187",
+    "description": "14:00/20:00",
+    "start": "14:00",
+    "end": "20:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "18",
+    "description": "14:00/22:00/16:00/17:00",
+    "start": "14:00",
+    "end": "22:00",
+    "breakStart": "16:00",
+    "breakEnd": "17:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "201",
+    "description": "14:00/23:00/19:00/20:00",
+    "start": "14:00",
+    "end": "23:00",
+    "breakStart": "19:00",
+    "breakEnd": "20:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "13",
+    "description": "15:00/01:00/16:30/22:00",
+    "start": "15:00",
+    "end": "01:00",
+    "breakStart": "16:30",
+    "breakEnd": "22:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "42",
+    "description": "15:00/21:00",
+    "start": "15:00",
+    "end": "21:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "200",
+    "description": "15:00/23:00/19:00/20:00",
+    "start": "15:00",
+    "end": "23:00",
+    "breakStart": "19:00",
+    "breakEnd": "20:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "205",
+    "description": "16:00 / 22:00",
+    "start": "16:00",
+    "end": "22:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "202",
+    "description": "16:00/00:00/18:00/19:00",
+    "start": "16:00",
+    "end": "00:00",
+    "breakStart": "18:00",
+    "breakEnd": "19:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "73",
+    "description": "17:30/21:30",
+    "start": "17:30",
+    "end": "21:30",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "68",
+    "description": "17:30/22:00",
+    "start": "17:30",
+    "end": "22:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "126",
+    "description": "18:00 / 00:00",
+    "start": "18:00",
+    "end": "00:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "241",
+    "description": "18:00 as 22:00 SEG/QUA/SEX",
+    "start": "18:00",
+    "end": "22:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "12",
+    "description": "18:00/22:00",
+    "start": "18:00",
+    "end": "22:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "31",
+    "description": "18:30/22:30",
+    "start": "18:30",
+    "end": "22:30",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "55",
+    "description": "18:45/22:45",
+    "start": "18:45",
+    "end": "22:45",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "124",
+    "description": "19:00 / 01:00",
+    "start": "19:00",
+    "end": "01:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "209",
+    "description": "19:00 / 22:00",
+    "start": "19:00",
+    "end": "22:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "69",
+    "description": "19:00/22:00",
+    "start": "19:00",
+    "end": "22:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias não informados na descrição",
+    "category": "Horário cadastrado"
+  },
+  {
+    "code": "4",
+    "description": "ADMINISTRATIVO 07:00/17:00/12:00/14:00",
+    "start": "07:00",
+    "end": "17:00",
+    "breakStart": "12:00",
+    "breakEnd": "14:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Administrativo"
+  },
+  {
+    "code": "2",
+    "description": "ADMINISTRATIVO 08:00/17:00/12:00/13:00",
+    "start": "08:00",
+    "end": "17:00",
+    "breakStart": "12:00",
+    "breakEnd": "13:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Administrativo"
+  },
+  {
+    "code": "3",
+    "description": "ADMINISTRATIVO 08:00/17:30/12:00/13:30",
+    "start": "08:00",
+    "end": "17:30",
+    "breakStart": "12:00",
+    "breakEnd": "13:30",
+    "rule": "Dias não informados na descrição",
+    "category": "Administrativo"
+  },
+  {
+    "code": "1",
+    "description": "ADMINISTRATIVO 08:00/18:00/12:00/14:00",
+    "start": "08:00",
+    "end": "18:00",
+    "breakStart": "12:00",
+    "breakEnd": "14:00",
+    "rule": "Dias não informados na descrição",
+    "category": "Administrativo"
+  },
+  {
+    "code": "233",
+    "description": "APRENDIZ 20 HRS MATUTINO",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do aprendiz",
+    "category": "Aprendiz"
+  },
+  {
+    "code": "15",
+    "description": "APRENDIZ 20 HRS VESPERTINO",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do aprendiz",
+    "category": "Aprendiz"
+  },
+  {
+    "code": "178",
+    "description": "APRENDIZ 24 HR",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do aprendiz",
+    "category": "Aprendiz"
+  },
+  {
+    "code": "181",
+    "description": "APRENDIZ 24 HS",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do aprendiz",
+    "category": "Aprendiz"
+  },
+  {
+    "code": "232",
+    "description": "APRENDIZ 25",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do aprendiz",
+    "category": "Aprendiz"
+  },
+  {
+    "code": "182",
+    "description": "APRENDIZ 28 HS",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do aprendiz",
+    "category": "Aprendiz"
+  },
+  {
+    "code": "236",
+    "description": "APRENDIZ MATUTINO - QUARTA VESPERTINO",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do aprendiz",
+    "category": "Aprendiz"
+  },
+  {
+    "code": "256",
+    "description": "FLEXÍVEL 15 HS",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Jornada flexível",
+    "category": "Flexível"
+  },
+  {
+    "code": "172",
+    "description": "FLEXÍVEL 20 HS",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Jornada flexível",
+    "category": "Flexível"
+  },
+  {
+    "code": "300",
+    "description": "FLEXÍVEL 24 HR",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Jornada flexível",
+    "category": "Flexível"
+  },
+  {
+    "code": "251",
+    "description": "FLEXÍVEL 28 HS",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Jornada flexível",
+    "category": "Flexível"
+  },
+  {
+    "code": "171",
+    "description": "FLEXÍVEL 30 HS",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Jornada flexível",
+    "category": "Flexível"
+  },
+  {
+    "code": "253",
+    "description": "FLEXÍVEL 35 HS",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Jornada flexível",
+    "category": "Flexível"
+  },
+  {
+    "code": "170",
+    "description": "FLEXÍVEL 40 HS",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Jornada flexível",
+    "category": "Flexível"
+  },
+  {
+    "code": "166",
+    "description": "HORISTAS",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade/relatório",
+    "category": "Horista"
+  },
+  {
+    "code": "230",
+    "description": "HORISTAS - SESI",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade/relatório",
+    "category": "Horista"
+  },
+  {
+    "code": "114",
+    "description": "Mista: Verificar grade de horários no relatório",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Verificar grade de horários no relatório",
+    "category": "Mista"
+  },
+  {
+    "code": "115",
+    "description": "Mista: Verificar grade de horários no relatório",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Verificar grade de horários no relatório",
+    "category": "Mista"
+  },
+  {
+    "code": "116",
+    "description": "Mista: Verificar grade de horários no relatório",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Verificar grade de horários no relatório",
+    "category": "Mista"
+  },
+  {
+    "code": "129",
+    "description": "Professor 10 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "130",
+    "description": "Professor 11 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "131",
+    "description": "Professor 12 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "132",
+    "description": "Professor 13 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "133",
+    "description": "Professor 14 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "134",
+    "description": "Professor 15 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "135",
+    "description": "Professor 16 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "136",
+    "description": "Professor 17 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "137",
+    "description": "Professor 18 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "138",
+    "description": "Professor 19 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "121",
+    "description": "Professor 2 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "139",
+    "description": "Professor 20 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "161",
+    "description": "Professor 20 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "140",
+    "description": "Professor 21 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "141",
+    "description": "Professor 22 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "142",
+    "description": "Professor 23 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "143",
+    "description": "Professor 24 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "144",
+    "description": "Professor 25 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "145",
+    "description": "Professor 26 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "146",
+    "description": "Professor 27 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "147",
+    "description": "Professor 28 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "148",
+    "description": "Professor 29 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "122",
+    "description": "Professor 3 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "149",
+    "description": "Professor 31 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "150",
+    "description": "Professor 32 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "151",
+    "description": "Professor 33 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "152",
+    "description": "Professor 33 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "153",
+    "description": "Professor 34 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "154",
+    "description": "Professor 35 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "155",
+    "description": "Professor 36 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "156",
+    "description": "Professor 37 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "157",
+    "description": "Professor 38 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "123",
+    "description": "Professor 4 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "160",
+    "description": "Professor 40 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "127",
+    "description": "Professor 8 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "128",
+    "description": "Professor 9 h",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Conforme grade do professor",
+    "category": "Professor"
+  },
+  {
+    "code": "89",
+    "description": "Seg 06:30/10:30 4h Ter 13:30/17:30 4h Qua Qui Sex 18:...",
+    "start": "06:30",
+    "end": "10:30",
+    "breakStart": "13:30",
+    "breakEnd": "17:30",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "112",
+    "description": "Seg 07:00/16:00 8h 1 de almoço Ter a Sex 07:00/17:00",
+    "start": "07:00",
+    "end": "16:00",
+    "breakStart": "07:00",
+    "breakEnd": "17:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "111",
+    "description": "Seg 13:00/22:00 Ter a Sex 08:00/18:00",
+    "start": "13:00",
+    "end": "22:00",
+    "breakStart": "08:00",
+    "breakEnd": "18:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "106",
+    "description": "Seg 14:00/22:00 Qua Sex 12:00/21:00 Sab 9h Dom 8h",
+    "start": "14:00",
+    "end": "22:00",
+    "breakStart": "12:00",
+    "breakEnd": "21:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "88",
+    "description": "Seg 18:00/22:00 4h Ter a Sex 06:30/10:30 4h",
+    "start": "18:00",
+    "end": "22:00",
+    "breakStart": "06:30",
+    "breakEnd": "10:30",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "75",
+    "description": "Seg a Qui 07:00-11:30 / Sex e Sab 06:30-12:30",
+    "start": "07:00",
+    "end": "11:30",
+    "breakStart": "06:30",
+    "breakEnd": "12:30",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "77",
+    "description": "Seg a Qui 08:00/19:00-12:00/14:00 e Sex 13:00/18:00",
+    "start": "08:00",
+    "end": "19:00",
+    "breakStart": "12:00",
+    "breakEnd": "14:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "103",
+    "description": "Seg a Qui 13:00/18:00 Sex e Sab 08:00/18:00",
+    "start": "13:00",
+    "end": "18:00",
+    "breakStart": "08:00",
+    "breakEnd": "18:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "105",
+    "description": "Seg a Qui 13:00/19:00 6h Sex e Sab 08:00/18:00 8h",
+    "start": "13:00",
+    "end": "19:00",
+    "breakStart": "08:00",
+    "breakEnd": "18:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "196",
+    "description": "Seg a Qui 8/18 Sex 8/17",
+    "start": "",
+    "end": "",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "78",
+    "description": "Seg a Sab 07:00/15:40 11:00/13:00",
+    "start": "07:00",
+    "end": "15:40",
+    "breakStart": "11:00",
+    "breakEnd": "13:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "8",
+    "description": "Seg a Sab 07:00/15:40/12:00/14:00",
+    "start": "07:00",
+    "end": "15:40",
+    "breakStart": "12:00",
+    "breakEnd": "14:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "9",
+    "description": "Seg a Sab 07:20/16:00/11:00/13:00",
+    "start": "07:20",
+    "end": "16:00",
+    "breakStart": "11:00",
+    "breakEnd": "13:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "91",
+    "description": "Seg a Sex 07:00/15:30-12:00/13:30 Sab 07:00/12:00",
+    "start": "07:00",
+    "end": "15:30",
+    "breakStart": "12:00",
+    "breakEnd": "13:30",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "104",
+    "description": "Seg a Sex 08:00/17:00 7h dia e Sab 08:00/13:00 5h",
+    "start": "08:00",
+    "end": "17:00",
+    "breakStart": "08:00",
+    "breakEnd": "13:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "86",
+    "description": "Seg a Sex 13:00/18:00 5h Sab 07:00/12:00 5h",
+    "start": "13:00",
+    "end": "18:00",
+    "breakStart": "07:00",
+    "breakEnd": "12:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "108",
+    "description": "Seg a Sex 14:00/22:00 Sab 07:00/12:00",
+    "start": "14:00",
+    "end": "22:00",
+    "breakStart": "07:00",
+    "breakEnd": "12:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "98",
+    "description": "Seg a Sex 14:00/22:00-16:00/17:00 Sab 08:00/13:00",
+    "start": "14:00",
+    "end": "22:00",
+    "breakStart": "16:00",
+    "breakEnd": "17:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "110",
+    "description": "Seg a Sex 17:00/22:00",
+    "start": "17:00",
+    "end": "22:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "109",
+    "description": "Seg a Sex 17:00/22:00 Sab 07:00/12:00",
+    "start": "17:00",
+    "end": "22:00",
+    "breakStart": "07:00",
+    "breakEnd": "12:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "81",
+    "description": "Seg e Qua 08:00/19:00 9h Ter e Qui 07:00/17:00 8h Sex...",
+    "start": "08:00",
+    "end": "19:00",
+    "breakStart": "07:00",
+    "breakEnd": "17:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "80",
+    "description": "Seg e Ter 07:00/17:00 Qua e Qui 08:00/19:00 Sex 07:00...",
+    "start": "07:00",
+    "end": "17:00",
+    "breakStart": "08:00",
+    "breakEnd": "19:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "99",
+    "description": "Seg folga Ter a Sex 06:30/12:30 Sab e Dom 08:00/17:00",
+    "start": "06:30",
+    "end": "12:30",
+    "breakStart": "08:00",
+    "breakEnd": "17:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "100",
+    "description": "Seg folga Ter a Sex 07:00/13:00 Sab e Dom 07:00/13:00",
+    "start": "07:00",
+    "end": "13:00",
+    "breakStart": "07:00",
+    "breakEnd": "13:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "101",
+    "description": "Seg folga Ter a Sex 08:00/14:00 Sab e Dom 08:00/18:00",
+    "start": "08:00",
+    "end": "14:00",
+    "breakStart": "08:00",
+    "breakEnd": "18:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "94",
+    "description": "Seg Qua 07:00/16:00 8h Ter Qui Sex 06:00/12:00 Sab 6...",
+    "start": "07:00",
+    "end": "16:00",
+    "breakStart": "06:00",
+    "breakEnd": "12:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "93",
+    "description": "Seg Qua 07:00/16:00-12:00/13:00 Ter Qui Sex Sab 06:00...",
+    "start": "07:00",
+    "end": "16:00",
+    "breakStart": "12:00",
+    "breakEnd": "13:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "96",
+    "description": "Seg Qua 07:00/17:00 Ter Qui Sex 06:00/12:00 Sab 12:00...",
+    "start": "07:00",
+    "end": "17:00",
+    "breakStart": "06:00",
+    "breakEnd": "12:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "95",
+    "description": "Seg Qua 07:00/17:00-12:00/14:00 Ter Qui Sex Sab 06:00...",
+    "start": "07:00",
+    "end": "17:00",
+    "breakStart": "12:00",
+    "breakEnd": "14:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "90",
+    "description": "Seg Qua 08:00/20:00-12:00/16:00 Ter Qui 08:00/19:00...",
+    "start": "08:00",
+    "end": "20:00",
+    "breakStart": "12:00",
+    "breakEnd": "16:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "82",
+    "description": "Seg Qua Qui 08:00/19:00 9h Ter 07:00/12:00 5h Sex 07:...",
+    "start": "08:00",
+    "end": "19:00",
+    "breakStart": "07:00",
+    "breakEnd": "12:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "102",
+    "description": "Seg Qua Qui e Sex 15:00/21:00 Ter folga Sab e Dom 08:...",
+    "start": "15:00",
+    "end": "21:00",
+    "breakStart": "",
+    "breakEnd": "",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "118",
+    "description": "Seg Qua Sex 06:00/12:00 Ter Qui 13:00/19:00",
+    "start": "06:00",
+    "end": "12:00",
+    "breakStart": "13:00",
+    "breakEnd": "19:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "119",
+    "description": "Seg Qua Sex 07:00/11:00 Ter Qui 14:00/18:00",
+    "start": "07:00",
+    "end": "11:00",
+    "breakStart": "14:00",
+    "breakEnd": "18:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "175",
+    "description": "Seg Qua Sex 07:30 -17:30 Ter Qui 13:00 22:00",
+    "start": "07:30",
+    "end": "17:30",
+    "breakStart": "13:00",
+    "breakEnd": "22:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "117",
+    "description": "Seg Qua Sex 08:00/18:00 Ter Qui 05:00/14:00",
+    "start": "08:00",
+    "end": "18:00",
+    "breakStart": "05:00",
+    "breakEnd": "14:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "107",
+    "description": "Seg Qua Sex 12:00/21:00 Sab 08:00/14:00",
+    "start": "12:00",
+    "end": "21:00",
+    "breakStart": "08:00",
+    "breakEnd": "14:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "113",
+    "description": "Seg Ter 08:00/17:00 6h Qua 07:00/16:00 Sex Sab 07:00...",
+    "start": "08:00",
+    "end": "17:00",
+    "breakStart": "07:00",
+    "breakEnd": "16:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "83",
+    "description": "Seg, Qua, Qui e Sex 07:00/17:30 9h Ter 06:30/10:30 4h",
+    "start": "07:00",
+    "end": "17:30",
+    "breakStart": "06:30",
+    "breakEnd": "10:30",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "87",
+    "description": "Seg, Qua, Qui e Sex 13:30/17:30 4h Ter 18:00/22:00 4h",
+    "start": "13:30",
+    "end": "17:30",
+    "breakStart": "18:00",
+    "breakEnd": "22:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "84",
+    "description": "Seg, Ter, Sex e Sab 05:00/14:00 8h Qua e Qui 08:00/12:00 4h",
+    "start": "05:00",
+    "end": "14:00",
+    "breakStart": "08:00",
+    "breakEnd": "12:00",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  },
+  {
+    "code": "85",
+    "description": "Seg, Ter, Sex e Sab 13:00/21:00 7h Qua e Qui 15:00/21:...",
+    "start": "13:00",
+    "end": "21:00",
+    "breakStart": "15:00",
+    "breakEnd": "",
+    "rule": "Dias e regras constam na descrição original",
+    "category": "Dias específicos"
+  }
+]
