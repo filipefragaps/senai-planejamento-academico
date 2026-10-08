@@ -12,7 +12,7 @@ from app.core.deps import get_current_user, require_admin
 
 MEDIA_DIR = pathlib.Path(__file__).parent.parent.parent / "media" / "planos_curso"
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
-MAX_PDF_SIZE = 5 * 1024 * 1024  # 5 MB
+MAX_PDF_SIZE = 25 * 1024 * 1024  # 25 MB
 
 router = APIRouter(prefix="/cursos", tags=["Cursos"])
 

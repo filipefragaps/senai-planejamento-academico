@@ -622,8 +622,8 @@ export default function CursosPage() {
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
-                      if (file.size > 5 * 1024 * 1024) {
-                        toast.error("Arquivo muito grande. Limite: 5 MB.");
+                      if (file.size > 25 * 1024 * 1024) {
+                        toast.error("Arquivo muito grande. Limite: 25 MB.");
                         return;
                       }
                       uploadPdf.mutate(file);
