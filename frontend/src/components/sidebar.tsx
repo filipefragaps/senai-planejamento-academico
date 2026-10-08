@@ -56,7 +56,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Cadastros",
     items: [
-      { href: "/professores", label: "Professores", icon: Users,    perfis: ["admin", "coordenador", "analista"] },
+      { href: "/professores", label: "Professores", icon: Users,    perfis: ["admin", "coordenador", "analista", "rh"] },
       { href: "/cursos",      label: "Cursos",      icon: BookOpen, perfis: ["admin", "coordenador", "analista", "secretario", "atendente", "consultor"] },
       { href: "/ambientes",   label: "Salas e Labs", icon: DoorOpen, perfis: ["admin", "coordenador"] },
     ],
@@ -65,7 +65,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Gestão",
     items: [
       { href: "/regencia",     label: "Regência",        icon: TrendingUp, perfis: ["admin", "coordenador", "analista"] },
-      { href: "/gestao-ponto", label: "Gestão de Ponto", icon: Clock3,     perfis: ["admin"] },
+      { href: "/gestao-ponto", label: "Gestão de Ponto", icon: Clock3,     perfis: ["admin", "rh"] },
       { href: "/relatorios",   label: "Relatórios",      icon: BarChart3,  perfis: ["admin", "coordenador", "analista", "secretario"] },
       { href: "/historico",    label: "Histórico",       icon: History,    perfis: ["admin"] },
     ],

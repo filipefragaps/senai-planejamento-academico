@@ -45,3 +45,9 @@ async def require_admin_ou_coordenador(current_user: Usuario = Depends(get_curre
     if current_user.perfil not in ("admin", "coordenador"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso negado: somente admin ou coordenador")
     return current_user
+
+
+async def require_admin_ou_rh(current_user: Usuario = Depends(get_current_user)) -> Usuario:
+    if current_user.perfil not in ("admin", "rh"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso negado: somente admin ou RH")
+    return current_user

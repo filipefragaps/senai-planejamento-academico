@@ -21,7 +21,7 @@ from app.database import get_db
 from app.models.gestao_ponto import (
     GpColaborador, GpRegistroDiario, GpOcorrencia, GpBancoHoras, GpImportacao,
 )
-from app.core.deps import get_current_user, require_admin
+from app.core.deps import get_current_user, require_admin, require_admin_ou_rh
 
 router = APIRouter(prefix="/gestao-ponto", tags=["Gestão de Ponto"])
 
@@ -103,7 +103,7 @@ class PontoImportPayload(BaseModel):
 async def importar_base(
     payload: BaseImportPayload,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(require_admin_ou_rh),
 ):
     """Salva/atualiza a base de colaboradores importada do Excel."""
     for c in payload.contacts:
@@ -132,7 +132,7 @@ async def importar_base(
 async def importar_ponto(
     payload: PontoImportPayload,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(require_admin_ou_rh),
 ):
     """
     Recebe dados já parseados do TXT e salva incrementalmente.
@@ -243,7 +243,7 @@ async def importar_ponto(
 @router.get("/dados")
 async def get_dados(
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(require_admin_ou_rh),
 ):
     """Retorna todos os dados armazenados para a página de Gestão de Ponto."""
     contacts_rows = (await db.execute(select(GpColaborador).order_by(GpColaborador.nome))).scalars().all()
@@ -319,7 +319,7 @@ async def update_status(
     occurrence_id: str,
     body: dict,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(require_admin_ou_rh),
 ):
     """Atualiza o status de uma ocorrência (pending → approved / ignored)."""
     novo_status = body.get("status")
@@ -337,7 +337,7 @@ async def update_status(
 async def update_status_lote(
     body: dict,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(require_admin_ou_rh),
 ):
     """Atualiza o status de várias ocorrências de uma vez."""
     ids: list[str] = body.get("ids", [])
@@ -356,7 +356,7 @@ async def update_status_lote(
 @router.get("/info")
 async def info(
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(require_admin_ou_rh),
 ):
     """Resumo dos dados armazenados."""
     from sqlalchemy import func as sqlfunc

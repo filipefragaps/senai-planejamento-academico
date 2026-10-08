@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { usuariosApi } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
 import { useRouter } from "next/navigation";
-import { UserPlus, Pencil, KeyRound, Power, Shield, BookOpen, BarChart3, ClipboardList, Headphones, Briefcase, GraduationCap } from "lucide-react";
+import { UserPlus, Pencil, KeyRound, Power, Shield, BookOpen, BarChart3, ClipboardList, Headphones, Briefcase, GraduationCap, UserCheck } from "lucide-react";
 
 const PERFIS = [
   { value: "admin",      label: "Administrador",       icon: Shield,        color: "text-red-600 bg-red-50" },
@@ -15,6 +15,7 @@ const PERFIS = [
   { value: "atendente",  label: "Atendente",            icon: Headphones,    color: "text-orange-600 bg-orange-50" },
   { value: "consultor",  label: "Consultor",            icon: Briefcase,     color: "text-teal-600 bg-teal-50" },
   { value: "professor",  label: "Professor",            icon: GraduationCap, color: "text-gray-600 bg-gray-100" },
+  { value: "rh",         label: "RH",                   icon: UserCheck,     color: "text-pink-600 bg-pink-50" },
 ];
 
 function PerfilBadge({ perfil }: { perfil: string }) {
@@ -239,6 +240,7 @@ export default function UsuariosPage() {
             atendente:   "Eventos SENAI e Cursos",
             consultor:   "Eventos SENAI e Cursos",
             professor:   "Somente Cronograma",
+            rh:          "Professores e Gestão de Ponto",
           };
           return (
             <div key={p.value} className="flex items-start gap-2 text-xs text-gray-500">
