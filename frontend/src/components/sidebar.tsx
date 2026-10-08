@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 import {
   LayoutDashboard,
   Users,
@@ -20,6 +21,7 @@ import {
   DoorOpen,
   CalendarDays,
   Clock3,
+  ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clearAuth, getCurrentUser } from "@/lib/auth";
@@ -86,6 +88,12 @@ export function Sidebar() {
   const perfil: string = me?.perfil ?? "";
   const isAdmin = perfil === "admin";
 
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  function toggleGroup(label: string) {
+    setCollapsed((prev) => ({ ...prev, [label]: !prev[label] }));
+  }
+
   function handleLogout() {
     clearAuth();
     router.push("/login");
@@ -113,54 +121,80 @@ export function Sidebar() {
             (item) => !item.perfis || item.perfis.includes(perfil)
           );
           if (!visibleItems.length) return null;
+          const isCollapsed = !!collapsed[group.label];
           return (
-            <div key={group.label} className="mb-4">
-              <p className="mb-1 px-3 text-[10px] font-bold uppercase tracking-widest text-blue-400">
-                {group.label}
-              </p>
-              <div className="space-y-0.5">
-                {visibleItems.map(({ href, label, icon: Icon }) => (
-                  <Link
-                    key={href}
-                    href={href}
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                      pathname.startsWith(href)
-                        ? "bg-white/20 text-white"
-                        : "text-blue-200 hover:bg-white/10 hover:text-white"
-                    )}
-                  >
-                    <Icon className="h-4 w-4 shrink-0" />
-                    {label}
-                  </Link>
-                ))}
-              </div>
+            <div key={group.label} className="mb-2">
+              <button
+                onClick={() => toggleGroup(group.label)}
+                className="flex w-full items-center justify-between mb-1 px-3 py-0.5 rounded hover:bg-white/5 transition-colors group"
+              >
+                <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400 group-hover:text-blue-300">
+                  {group.label}
+                </span>
+                <ChevronDown className={cn(
+                  "h-3 w-3 text-blue-500 transition-transform duration-200",
+                  isCollapsed && "-rotate-90"
+                )} />
+              </button>
+              {!isCollapsed && (
+                <div className="space-y-0.5">
+                  {visibleItems.map(({ href, label, icon: Icon }) => (
+                    <Link
+                      key={href}
+                      href={href}
+                      className={cn(
+                        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                        pathname.startsWith(href)
+                          ? "bg-white/20 text-white"
+                          : "text-blue-200 hover:bg-white/10 hover:text-white"
+                      )}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      {label}
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}
 
-        {/* Admin-only: Usuários */}
-        {isAdmin && (
-          <div className="mb-4">
-            <p className="mb-1 px-3 text-[10px] font-bold uppercase tracking-widest text-blue-400">
-              Administração
-            </p>
-            <div className="space-y-0.5">
-              <Link
-                href="/usuarios"
-                className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                  pathname.startsWith("/usuarios")
-                    ? "bg-white/20 text-white"
-                    : "text-blue-200 hover:bg-white/10 hover:text-white"
-                )}
+        {/* Admin-only: Administração */}
+        {isAdmin && (() => {
+          const isCollapsed = !!collapsed["Administração"];
+          return (
+            <div className="mb-2">
+              <button
+                onClick={() => toggleGroup("Administração")}
+                className="flex w-full items-center justify-between mb-1 px-3 py-0.5 rounded hover:bg-white/5 transition-colors group"
               >
-                <UserCog className="h-4 w-4 shrink-0" />
-                Usuários
-              </Link>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400 group-hover:text-blue-300">
+                  Administração
+                </span>
+                <ChevronDown className={cn(
+                  "h-3 w-3 text-blue-500 transition-transform duration-200",
+                  isCollapsed && "-rotate-90"
+                )} />
+              </button>
+              {!isCollapsed && (
+                <div className="space-y-0.5">
+                  <Link
+                    href="/usuarios"
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                      pathname.startsWith("/usuarios")
+                        ? "bg-white/20 text-white"
+                        : "text-blue-200 hover:bg-white/10 hover:text-white"
+                    )}
+                  >
+                    <UserCog className="h-4 w-4 shrink-0" />
+                    Usuários
+                  </Link>
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          );
+        })()}
       </nav>
 
       {/* Footer: user info + sair */}
