@@ -49,7 +49,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Acadêmico",
     items: [
-      { href: "/cronograma",  label: "Cronograma",    icon: Calendar,      perfis: ["admin", "coordenador", "analista", "secretario", "professor"] },
+      { href: "/cronograma",  label: "Cronograma",    icon: Calendar,      perfis: ["admin", "coordenador", "analista", "secretario", "professor", "apoio"] },
       { href: "/ofertas",     label: "Eventos SENAI", icon: ClipboardList, perfis: ["admin", "coordenador", "analista", "secretario", "atendente", "consultor"] },
       { href: "/eventos",     label: "Planejamento",  icon: Calendar,      perfis: ["admin", "coordenador"] },
       { href: "/calendario",  label: "Calendário",    icon: CalendarDays,  perfis: ["admin", "coordenador"] },
@@ -60,7 +60,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/professores", label: "Professores", icon: Users,    perfis: ["admin", "coordenador", "analista", "rh"] },
       { href: "/cursos",      label: "Cursos",      icon: BookOpen, perfis: ["admin", "coordenador", "analista", "secretario", "atendente", "consultor"] },
-      { href: "/ambientes",   label: "Salas e Labs", icon: DoorOpen, perfis: ["admin", "coordenador"] },
+      { href: "/ambientes",   label: "Salas e Labs", icon: DoorOpen, perfis: ["admin", "coordenador", "apoio"] },
     ],
   },
   {
