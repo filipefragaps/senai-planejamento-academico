@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cursosApi } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import {
   Plus, Search, ChevronRight, X, BookOpen, Layers,
   Pencil, Trash2, ArrowUp, ArrowDown, Check, Loader2,
+  FileText, Upload, ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -65,7 +66,7 @@ function groupByModulo(ucs: any[]) {
 interface Curso {
   id: number; nome: string; codigo: string; tipo: string;
   carga_horaria_total: number; modalidade: string; area: string | null;
-  descricao: string | null; ativo: boolean;
+  descricao: string | null; ativo: boolean; plano_curso_nome: string | null;
 }
 
 interface UC {
@@ -109,6 +110,9 @@ export default function CursosPage() {
   const [ucEditId, setUcEditId] = useState<number | "new" | null>(null);
   const [ucModuloNovo, setUcModuloNovo] = useState<string | null>(null); // módulo alvo para "nova UC"
   const [formUc, setFormUc] = useState(FORM_VAZIO_UC);
+
+  // PDF plano de curso
+  const pdfInputRef = useRef<HTMLInputElement>(null);
 
   // ── Queries ──────────────────────────────────────────────────────────────────
 
@@ -205,6 +209,26 @@ export default function CursosPage() {
       setSelected(null);
     },
     onError: (err: any) => toast.error(err?.response?.data?.detail || "Erro ao excluir curso"),
+  });
+
+  const uploadPdf = useMutation({
+    mutationFn: (file: File) => cursosApi.uploadPlanoPdf(selected!.id, file),
+    onSuccess: (data: { nome: string }) => {
+      toast.success("Plano de curso anexado!");
+      setSelected((prev) => prev ? { ...prev, plano_curso_nome: data.nome } : prev);
+      qc.invalidateQueries({ queryKey: ["cursos"] });
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.detail || "Erro ao enviar PDF"),
+  });
+
+  const deletarPdf = useMutation({
+    mutationFn: () => cursosApi.deletarPlanoPdf(selected!.id),
+    onSuccess: () => {
+      toast.success("Plano de curso removido.");
+      setSelected((prev) => prev ? { ...prev, plano_curso_nome: null } : prev);
+      qc.invalidateQueries({ queryKey: ["cursos"] });
+    },
+    onError: () => toast.error("Erro ao remover PDF"),
   });
 
   // ── Handlers ──────────────────────────────────────────────────────────────────
@@ -557,6 +581,66 @@ export default function CursosPage() {
                 </div>
               )}
             </div>
+
+            {/* Plano de Curso PDF */}
+            {!editandoCurso && (
+              <div className="px-5 py-3 border-b shrink-0 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <FileText className="h-4 w-4 text-gray-400 shrink-0" />
+                  <span className="text-xs text-gray-500 font-medium">Plano de Curso</span>
+                  {selected.plano_curso_nome && (
+                    <span className="text-xs text-gray-700 truncate max-w-[180px]" title={selected.plano_curso_nome}>
+                      {selected.plano_curso_nome}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  {selected.plano_curso_nome ? (
+                    <>
+                      <button
+                        onClick={() => cursosApi.abrirPlanoPdf(selected.id).catch(() => toast.error("Erro ao abrir PDF"))}
+                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" /> Abrir
+                      </button>
+                      <button
+                        onClick={() => { if (confirm("Remover o plano de curso?")) deletarPdf.mutate(); }}
+                        disabled={deletarPdf.isPending}
+                        className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50"
+                      >
+                        {deletarPdf.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                      </button>
+                    </>
+                  ) : (
+                    <span className="text-xs text-gray-400 italic mr-2">Nenhum anexo</span>
+                  )}
+                  <input
+                    ref={pdfInputRef}
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > 5 * 1024 * 1024) {
+                        toast.error("Arquivo muito grande. Limite: 5 MB.");
+                        return;
+                      }
+                      uploadPdf.mutate(file);
+                      e.target.value = "";
+                    }}
+                  />
+                  <button
+                    onClick={() => pdfInputRef.current?.click()}
+                    disabled={uploadPdf.isPending}
+                    className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50 border border-blue-200"
+                  >
+                    {uploadPdf.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                    {selected.plano_curso_nome ? "Substituir" : "Anexar PDF"}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Estrutura Curricular */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">

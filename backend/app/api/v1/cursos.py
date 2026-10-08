@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+import pathlib
+import aiofiles
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 from app.database import get_db
@@ -6,6 +9,10 @@ from app.models.curso import Curso
 from app.models.unidade_curricular import UnidadeCurricular
 from app.schemas.curso import CursoCreate, CursoUpdate, CursoOut, UCCreate, UCUpdate, UCOut, UCReorderItem
 from app.core.deps import get_current_user, require_admin
+
+MEDIA_DIR = pathlib.Path(__file__).parent.parent.parent / "media" / "planos_curso"
+MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+MAX_PDF_SIZE = 5 * 1024 * 1024  # 5 MB
 
 router = APIRouter(prefix="/cursos", tags=["Cursos"])
 
@@ -95,6 +102,82 @@ async def deletar_curso(curso_id: int, db: AsyncSession = Depends(get_db), _=Dep
     if not curso:
         raise HTTPException(status_code=404, detail="Curso não encontrado")
     await db.delete(curso)
+    await db.commit()
+
+
+# ── Plano de Curso (PDF) ──────────────────────────────────────────────────────
+
+@router.post("/{curso_id}/plano-pdf", status_code=200)
+async def upload_plano_pdf(
+    curso_id: int,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    result = await db.execute(select(Curso).where(Curso.id == curso_id))
+    curso = result.scalar_one_or_none()
+    if not curso:
+        raise HTTPException(status_code=404, detail="Curso não encontrado")
+
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Apenas arquivos PDF são aceitos")
+
+    conteudo = await file.read()
+    if len(conteudo) > MAX_PDF_SIZE:
+        raise HTTPException(status_code=413, detail="Arquivo excede o limite de 5 MB")
+
+    # Remove PDF anterior se existir
+    arquivo_anterior = MEDIA_DIR / f"curso_{curso_id}.pdf"
+    if arquivo_anterior.exists():
+        arquivo_anterior.unlink()
+
+    caminho = MEDIA_DIR / f"curso_{curso_id}.pdf"
+    async with aiofiles.open(caminho, "wb") as f:
+        await f.write(conteudo)
+
+    curso.plano_curso_nome = file.filename
+    await db.commit()
+    return {"ok": True, "nome": file.filename, "tamanho": len(conteudo)}
+
+
+@router.get("/{curso_id}/plano-pdf")
+async def download_plano_pdf(
+    curso_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    result = await db.execute(select(Curso).where(Curso.id == curso_id))
+    curso = result.scalar_one_or_none()
+    if not curso or not curso.plano_curso_nome:
+        raise HTTPException(status_code=404, detail="Plano de curso não encontrado")
+
+    caminho = MEDIA_DIR / f"curso_{curso_id}.pdf"
+    if not caminho.exists():
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado no servidor")
+
+    return FileResponse(
+        path=str(caminho),
+        media_type="application/pdf",
+        filename=curso.plano_curso_nome,
+    )
+
+
+@router.delete("/{curso_id}/plano-pdf", status_code=204)
+async def deletar_plano_pdf(
+    curso_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    result = await db.execute(select(Curso).where(Curso.id == curso_id))
+    curso = result.scalar_one_or_none()
+    if not curso:
+        raise HTTPException(status_code=404, detail="Curso não encontrado")
+
+    caminho = MEDIA_DIR / f"curso_{curso_id}.pdf"
+    if caminho.exists():
+        caminho.unlink()
+
+    curso.plano_curso_nome = None
     await db.commit()
 
 

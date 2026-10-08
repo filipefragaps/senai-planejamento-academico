@@ -29,6 +29,7 @@ class CursoUpdate(BaseModel):
 
 class CursoOut(CursoBase):
     id: int
+    plano_curso_nome: str | None = None
     criado_em: datetime | None = None
     atualizado_em: datetime | None = None
 

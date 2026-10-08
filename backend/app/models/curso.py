@@ -16,6 +16,7 @@ class Curso(Base):
     area: Mapped[str | None] = mapped_column(String(200))
     descricao: Mapped[str | None] = mapped_column(Text)
     ativo: Mapped[bool] = mapped_column(Boolean, default=True)
+    plano_curso_nome: Mapped[str | None] = mapped_column(String(300))
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     atualizado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

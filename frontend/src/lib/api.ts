@@ -56,6 +56,29 @@ export const cursosApi = {
     api.delete(`/cursos/${cursoId}/ucs/${ucId}`),
   reordenarUcs: (cursoId: number, items: { id: number; sequencia: number; modulo_etapa?: string | null }[]) =>
     api.patch(`/cursos/${cursoId}/ucs/reorder`, items),
+  uploadPlanoPdf: (cursoId: number, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post(`/cursos/${cursoId}/plano-pdf`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }).then((r) => r.data);
+  },
+  downloadPlanoPdf: async (cursoId: number, nomeOriginal: string) => {
+    const resp = await api.get(`/cursos/${cursoId}/plano-pdf`, { responseType: "blob" });
+    const url = URL.createObjectURL(resp.data);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = nomeOriginal;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+  abrirPlanoPdf: async (cursoId: number) => {
+    const resp = await api.get(`/cursos/${cursoId}/plano-pdf`, { responseType: "blob" });
+    const url = URL.createObjectURL(new Blob([resp.data], { type: "application/pdf" }));
+    window.open(url, "_blank");
+  },
+  deletarPlanoPdf: (cursoId: number) =>
+    api.delete(`/cursos/${cursoId}/plano-pdf`),
 };
 
 // Professores
