@@ -42,8 +42,8 @@ async def require_pode_deletar_planejamento(current_user: Usuario = Depends(get_
 
 
 async def require_admin_ou_coordenador(current_user: Usuario = Depends(get_current_user)) -> Usuario:
-    if current_user.perfil not in ("admin", "coordenador"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso negado: somente admin ou coordenador")
+    if current_user.perfil not in ("admin", "coordenador", "analista"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso negado: somente admin, coordenador ou analista")
     return current_user
 
 

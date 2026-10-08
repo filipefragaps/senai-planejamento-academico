@@ -235,7 +235,7 @@ export default function UsuariosPage() {
           const descricoes: Record<string, string> = {
             admin:       "Acesso total, pode excluir qualquer dado",
             coordenador: "Cronograma, Planejamento, Professores, Cursos, IA — pode excluir planejamentos",
-            analista:    "Cronograma, Eventos, Professores, Cursos, Relatórios",
+            analista:    "Cronograma, Eventos, Professores, Cursos, Relatórios, Regência",
             secretario:  "Cronograma, Eventos SENAI, Cursos, Relatórios",
             atendente:   "Eventos SENAI e Cursos",
             consultor:   "Eventos SENAI e Cursos",
