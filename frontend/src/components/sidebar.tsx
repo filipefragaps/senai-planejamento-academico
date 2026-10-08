@@ -32,21 +32,51 @@ type NavItem = {
   perfis?: string[];
 };
 
-const NAV_PRINCIPAL: NavItem[] = [
-  { href: "/dashboard",   label: "Dashboard",       icon: LayoutDashboard,  perfis: ["admin"] },
-  { href: "/cronograma",  label: "Cronograma",       icon: Calendar,         perfis: ["admin", "coordenador", "analista", "secretario", "professor"] },
-  { href: "/ofertas",     label: "Eventos SENAI",    icon: ClipboardList,    perfis: ["admin", "coordenador", "analista", "secretario", "atendente", "consultor"] },
-  { href: "/professores", label: "Professores",      icon: Users,            perfis: ["admin", "coordenador", "analista"] },
-  { href: "/cursos",      label: "Cursos",           icon: BookOpen,         perfis: ["admin", "coordenador", "analista", "secretario", "atendente", "consultor"] },
-  { href: "/eventos",     label: "Planejamento",     icon: Calendar,         perfis: ["admin", "coordenador"] },
-  { href: "/importacao",  label: "Importar Dados",   icon: Upload,           perfis: ["admin"] },
-  { href: "/ambientes",   label: "Salas e Labs",     icon: DoorOpen,         perfis: ["admin", "coordenador"] },
-  { href: "/regencia",    label: "Regência",         icon: TrendingUp,       perfis: ["admin", "coordenador", "analista"] },
-  { href: "/relatorios",  label: "Relatórios",       icon: BarChart3,        perfis: ["admin", "coordenador", "analista", "secretario"] },
-  { href: "/calendario",  label: "Calendário",       icon: CalendarDays,     perfis: ["admin", "coordenador"] },
-  { href: "/historico",   label: "Histórico",        icon: History,          perfis: ["admin"] },
-  { href: "/ia",          label: "Análise com IA",   icon: Brain,            perfis: ["admin", "coordenador"] },
-  { href: "/gestao-ponto", label: "Gestão de Ponto",  icon: Clock3,           perfis: ["admin", "coordenador"] },
+type NavGroup = {
+  label: string;
+  items: NavItem[];
+};
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: "Visão geral",
+    items: [
+      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, perfis: ["admin"] },
+    ],
+  },
+  {
+    label: "Acadêmico",
+    items: [
+      { href: "/cronograma",  label: "Cronograma",    icon: Calendar,      perfis: ["admin", "coordenador", "analista", "secretario", "professor"] },
+      { href: "/ofertas",     label: "Eventos SENAI", icon: ClipboardList, perfis: ["admin", "coordenador", "analista", "secretario", "atendente", "consultor"] },
+      { href: "/eventos",     label: "Planejamento",  icon: Calendar,      perfis: ["admin", "coordenador"] },
+      { href: "/calendario",  label: "Calendário",    icon: CalendarDays,  perfis: ["admin", "coordenador"] },
+    ],
+  },
+  {
+    label: "Cadastros",
+    items: [
+      { href: "/professores", label: "Professores", icon: Users,    perfis: ["admin", "coordenador", "analista"] },
+      { href: "/cursos",      label: "Cursos",      icon: BookOpen, perfis: ["admin", "coordenador", "analista", "secretario", "atendente", "consultor"] },
+      { href: "/ambientes",   label: "Salas e Labs", icon: DoorOpen, perfis: ["admin", "coordenador"] },
+    ],
+  },
+  {
+    label: "Gestão",
+    items: [
+      { href: "/regencia",     label: "Regência",        icon: TrendingUp, perfis: ["admin", "coordenador", "analista"] },
+      { href: "/gestao-ponto", label: "Gestão de Ponto", icon: Clock3,     perfis: ["admin"] },
+      { href: "/relatorios",   label: "Relatórios",      icon: BarChart3,  perfis: ["admin", "coordenador", "analista", "secretario"] },
+      { href: "/historico",    label: "Histórico",       icon: History,    perfis: ["admin"] },
+    ],
+  },
+  {
+    label: "Ferramentas",
+    items: [
+      { href: "/importacao", label: "Importar Dados",  icon: Upload, perfis: ["admin"] },
+      { href: "/ia",         label: "Análise com IA",  icon: Brain,  perfis: ["admin", "coordenador"] },
+    ],
+  },
 ];
 
 export function Sidebar() {
@@ -55,10 +85,6 @@ export function Sidebar() {
   const me = getCurrentUser();
   const perfil: string = me?.perfil ?? "";
   const isAdmin = perfil === "admin";
-
-  const navVisivel = NAV_PRINCIPAL.filter(
-    (item) => !item.perfis || item.perfis.includes(perfil)
-  );
 
   function handleLogout() {
     clearAuth();
@@ -81,48 +107,63 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
-        {navVisivel.map(({ href, label, icon: Icon }) => (
-          <Link
-            key={href}
-            href={href}
-            className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-              pathname.startsWith(href)
-                ? "bg-white/20 text-white"
-                : "text-blue-200 hover:bg-white/10 hover:text-white"
-            )}
-          >
-            <Icon className="h-4 w-4 shrink-0" />
-            {label}
-          </Link>
-        ))}
-
-        {/* Admin-only section */}
-        {isAdmin && (
-          <>
-            <div className="pt-3 pb-1 px-3">
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-blue-400">
-                Administração
-              </span>
+      <nav className="flex-1 overflow-y-auto py-3 px-3">
+        {NAV_GROUPS.map((group) => {
+          const visibleItems = group.items.filter(
+            (item) => !item.perfis || item.perfis.includes(perfil)
+          );
+          if (!visibleItems.length) return null;
+          return (
+            <div key={group.label} className="mb-4">
+              <p className="mb-1 px-3 text-[10px] font-bold uppercase tracking-widest text-blue-400">
+                {group.label}
+              </p>
+              <div className="space-y-0.5">
+                {visibleItems.map(({ href, label, icon: Icon }) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                      pathname.startsWith(href)
+                        ? "bg-white/20 text-white"
+                        : "text-blue-200 hover:bg-white/10 hover:text-white"
+                    )}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {label}
+                  </Link>
+                ))}
+              </div>
             </div>
-            <Link
-              href="/usuarios"
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                pathname.startsWith("/usuarios")
-                  ? "bg-white/20 text-white"
-                  : "text-blue-200 hover:bg-white/10 hover:text-white"
-              )}
-            >
-              <UserCog className="h-4 w-4 shrink-0" />
-              Usuários
-            </Link>
-          </>
+          );
+        })}
+
+        {/* Admin-only: Usuários */}
+        {isAdmin && (
+          <div className="mb-4">
+            <p className="mb-1 px-3 text-[10px] font-bold uppercase tracking-widest text-blue-400">
+              Administração
+            </p>
+            <div className="space-y-0.5">
+              <Link
+                href="/usuarios"
+                className={cn(
+                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                  pathname.startsWith("/usuarios")
+                    ? "bg-white/20 text-white"
+                    : "text-blue-200 hover:bg-white/10 hover:text-white"
+                )}
+              >
+                <UserCog className="h-4 w-4 shrink-0" />
+                Usuários
+              </Link>
+            </div>
+          </div>
         )}
       </nav>
 
-      {/* Footer: user info + perfil + sair */}
+      {/* Footer: user info + sair */}
       <div className="border-t border-blue-700 p-3 space-y-1">
         {me && (
           <Link
