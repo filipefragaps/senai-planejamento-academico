@@ -463,6 +463,20 @@ export const pagamentosApi = {
     api.get("/pagamentos/relatorio/excel", { params, responseType: "blob" }),
 };
 
+// Gestão de Ponto
+export const gestaoPontoApi = {
+  dados: () => api.get("/gestao-ponto/dados").then((r) => r.data),
+  info: () => api.get("/gestao-ponto/info").then((r) => r.data),
+  importarBase: (payload: { contacts: unknown[]; unidade: string; fileName: string }) =>
+    api.post("/gestao-ponto/base", payload).then((r) => r.data),
+  importarPonto: (payload: unknown) =>
+    api.post("/gestao-ponto/importar", payload).then((r) => r.data),
+  atualizarStatus: (occurrenceId: string, status: string) =>
+    api.patch(`/gestao-ponto/ocorrencias/${encodeURIComponent(occurrenceId)}/status`, { status }).then((r) => r.data),
+  atualizarStatusLote: (ids: string[], status: string) =>
+    api.patch("/gestao-ponto/ocorrencias/status/lote", { ids, status }).then((r) => r.data),
+};
+
 export function downloadBlob(data: Blob, filename: string) {
   const url = window.URL.createObjectURL(data);
   const a = document.createElement("a");

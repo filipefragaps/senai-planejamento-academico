@@ -2,11 +2,12 @@
 
 import {
   AlertTriangle, CheckCircle2, ChevronDown, Clock3, Download, FileText,
-  Mail, RefreshCw, Search, ShieldCheck, UploadCloud, Users, X,
+  Mail, Search, ShieldCheck, UploadCloud, Users, X,
 } from "lucide-react";
 import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { gestaoPontoApi } from "@/lib/api";
 import {
-  BalanceRecord, Contact, DailyRecord, HoursSummary, ImportedBase, MonthlyDay,
+  BalanceRecord, Contact, DailyRecord, HoursSummary, ImportedBase,
   Occurrence, ParseResult, ReviewStatus,
   MONTHLY_ANALYSIS_START, OPERATIONAL_ANALYSIS_START,
   balanceExportRows, dailyExportRows, dateKey, displayIsoDate, downloadCsv,
@@ -18,25 +19,56 @@ import {
   summarizeMonthlyDays, todayIso, unmatchedExportRows, manualEmailRecipients,
 } from "./parser";
 
-// ─── Storage ──────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const STORAGE_KEY = "gp_v1";
-type GpSnapshot = {
-  contacts: Contact[];
-  inactiveMatriculas: string[];
-  baseFileName: string;
-  unitName: string;
-  result: ParseResult | null;
-  items: Occurrence[];
-  fileName: string;
-  rhEmail: string;
-};
-function saveSnapshot(data: GpSnapshot) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch { /* storage full */ }
+/** Monta o payload de ocorrência para envio à API (adiciona dateKey que o backend precisa). */
+function toOccurrencePayload(occ: Occurrence) {
+  return { ...occ, dateKey: dateKey(occ.date), supervisorEmail: occ.supervisorEmail };
 }
-function loadSnapshot(): GpSnapshot | null {
-  try { const raw = localStorage.getItem(STORAGE_KEY); return raw ? JSON.parse(raw) : null; }
-  catch { return null; }
+
+/** Monta o payload de registro diário para envio à API. */
+function toDailyPayload(d: DailyRecord) {
+  return {
+    matricula: d.matricula, collaborator: d.collaborator,
+    date: d.date, dateKey: dateKey(d.date),
+    area: d.area, supervisor: d.supervisor, supervisorEmail: d.supervisorEmail,
+    weeklyHours: d.weeklyHours != null ? String(d.weeklyHours) : null,
+    schedule: d.schedule, scheduleCode: d.scheduleCode,
+    expectedMinutes: d.expectedMinutes, workedMinutes: d.workedMinutes,
+    punches: d.punches, nonWorkingReason: d.nonWorkingReason || null,
+  };
+}
+
+/** Monta o payload de contato para envio à API. */
+function toContactPayload(c: Contact) {
+  return {
+    matricula: c.matricula, nome: c.nome, email: c.email,
+    supervisor: c.supervisor, supervisorEmail: c.supervisorEmail,
+    area: c.area, weeklyHours: c.chSemanal != null ? String(c.chSemanal) : null,
+    schedule: null,
+  };
+}
+
+/** Reconstrói um ParseResult parcial a partir dos dados vindos da API. */
+function resultFromApi(apiData: {
+  dailyRecords: DailyRecord[];
+  occurrences: Occurrence[];
+  balances: BalanceRecord[];
+  lastImport: { fileName: string; period: string; people: number } | null;
+}): ParseResult {
+  return {
+    days: apiData.dailyRecords,
+    occurrences: apiData.occurrences,
+    balances: apiData.balances,
+    people: apiData.lastImport?.people ?? 0,
+    period: apiData.lastImport?.period ?? "",
+    editablePeriod: apiData.lastImport?.period ?? "",
+    unmatched: 0,
+    unmatchedPeople: [],
+    floating: 0,
+    openStart: "",
+    openEnd: "",
+  };
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -53,8 +85,10 @@ export default function GestaoPontoPage() {
   const [inactiveMatriculas, setInactiveMatriculas] = useState<string[]>([]);
   const [baseFileName, setBaseFileName] = useState("");
   const [unitName, setUnitName] = useState("");
-  const [rhEmail, setRhEmail] = useState("");
-  const [rhEmailDraft, setRhEmailDraft] = useState("");
+  const [rhEmail, setRhEmail] = useState(() => {
+    try { return localStorage.getItem("gp_rh_email") ?? ""; } catch { return ""; }
+  });
+  const [rhEmailDraft, setRhEmailDraft] = useState(rhEmail);
 
   // Point data state
   const [result, setResult] = useState<ParseResult | null>(null);
@@ -62,6 +96,7 @@ export default function GestaoPontoPage() {
   const [fileName, setFileName] = useState("");
 
   // UI state
+  const [isLoading, setIsLoading] = useState(true);
   const [notice, setNotice] = useState("");
   const [dragging, setDragging] = useState(false);
   const [detail, setDetail] = useState<Occurrence | null>(null);
@@ -79,27 +114,26 @@ export default function GestaoPontoPage() {
   const [showUnmatched, setShowUnmatched] = useState(false);
   const [showEmailConfig, setShowEmailConfig] = useState(false);
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    const snap = loadSnapshot();
-    if (snap) {
-      setContacts(snap.contacts || []);
-      setInactiveMatriculas(snap.inactiveMatriculas || []);
-      setBaseFileName(snap.baseFileName || "");
-      setUnitName(snap.unitName || "");
-      setResult(snap.result || null);
-      setItems(snap.items || []);
-      setFileName(snap.fileName || "");
-      setRhEmail(snap.rhEmail || "");
-      setRhEmailDraft(snap.rhEmail || "");
-    }
-  }, []);
+  // ─── Load from API on mount ─────────────────────────────────────────────────
 
-  function persist(partial: Partial<GpSnapshot>) {
-    const current: GpSnapshot = { contacts, inactiveMatriculas, baseFileName, unitName, result, items, fileName, rhEmail };
-    const next = { ...current, ...partial };
-    saveSnapshot(next);
-  }
+  useEffect(() => {
+    setIsLoading(true);
+    gestaoPontoApi.dados()
+      .then((data) => {
+        if (data.contacts?.length) {
+          setContacts(data.contacts);
+          setUnitName(data.unidade || "");
+        }
+        if (data.occurrences?.length || data.dailyRecords?.length) {
+          const parsedResult = resultFromApi(data);
+          setResult(parsedResult);
+          setItems(data.occurrences || []);
+          setFileName(data.lastImport?.fileName || "");
+        }
+      })
+      .catch(() => { /* Silencioso: sem dados ainda */ })
+      .finally(() => setIsLoading(false));
+  }, []);
 
   const currentNotificationWindow = notificationWindow();
 
@@ -169,11 +203,24 @@ export default function GestaoPontoPage() {
 
   // ─── Actions ─────────────────────────────────────────────────────────────────
 
-  function changeStatus(ids: Iterable<string>, status: ReviewStatus) {
+  async function changeStatus(ids: Iterable<string>, status: ReviewStatus) {
     const target = new Set(ids);
+    const idList = [...target];
+    // Optimistic update
     const nextItems = items.map((item) => target.has(item.id) ? { ...item, status } : item);
-    setItems(nextItems); setSelected(new Set());
-    persist({ items: nextItems });
+    setItems(nextItems);
+    setSelected(new Set());
+    if (detail && target.has(detail.id)) setDetail({ ...detail, status });
+    // Persist
+    try {
+      if (idList.length === 1) {
+        await gestaoPontoApi.atualizarStatus(idList[0], status);
+      } else {
+        await gestaoPontoApi.atualizarStatusLote(idList, status);
+      }
+    } catch {
+      setNotice("Não foi possível salvar o status. Recarregue a página.");
+    }
   }
 
   const openOutlookWeb = (sourceItems: Occurrence[]) => {
@@ -201,36 +248,71 @@ export default function GestaoPontoPage() {
     try {
       const text = new TextDecoder("windows-1252").decode(await file.arrayBuffer());
       const parsed = parsePoint(text, contacts, inactiveMatriculas);
-      setResult(parsed); setItems(parsed.occurrences); setFileName(file.name);
-      persist({ result: parsed, items: parsed.occurrences, fileName: file.name });
-      const adjustments = parsed.occurrences.filter(needsPointAdjustment).length;
-      setNotice(adjustments > 0 ? `${adjustments} ajuste(s) de ponto identificado(s) para ${parsed.people} pessoa(s).` : "Arquivo lido com sucesso. Nenhum ajuste identificado.");
-    } catch { setNotice("Não foi possível ler este TXT. Verifique se é um arquivo exportado pelo sistema de ponto."); }
+
+      // Salva no banco de dados (incremental: só insere/atualiza o que mudou)
+      setNotice("Salvando no banco de dados...");
+      await gestaoPontoApi.importarPonto({
+        fileName: file.name,
+        unidade: unitName,
+        period: parsed.period,
+        people: parsed.people,
+        dailyRecords: parsed.days.map(toDailyPayload),
+        occurrences: parsed.occurrences.map(toOccurrencePayload),
+        balances: parsed.balances.map((b) => ({
+          matricula: b.matricula, collaborator: b.collaborator,
+          minutes: b.minutes, label: b.label, critical: b.critical,
+          area: b.area, supervisor: b.supervisor, supervisorEmail: b.supervisorEmail,
+        })),
+      });
+
+      // Recarrega do banco para pegar status preservados de ocorrências antigas
+      const apiData = await gestaoPontoApi.dados();
+      const nextResult = resultFromApi({ ...apiData, lastImport: { fileName: file.name, period: parsed.period, people: parsed.people } });
+      // Preserva os unmatchedPeople desta importação (ephemeral, não vai ao banco)
+      nextResult.unmatched = parsed.unmatched;
+      nextResult.unmatchedPeople = parsed.unmatchedPeople;
+
+      setResult(nextResult);
+      setItems(apiData.occurrences || []);
+      setFileName(file.name);
+
+      const adjustments = (apiData.occurrences || []).filter(needsPointAdjustment).length;
+      setNotice(adjustments > 0 ? `${adjustments} ajuste(s) identificado(s) para ${parsed.people} pessoa(s). Dados salvos no banco.` : "Arquivo lido com sucesso. Nenhum ajuste identificado. Dados salvos no banco.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setNotice(`Erro ao processar: ${msg.slice(0, 120)}`);
+    }
   }
 
   async function importContacts(file: File) {
     setNotice("Validando a base de colaboradores...");
     try {
       const imported: ImportedBase = await parseContactsFile(file);
-      setContacts(imported.contacts); setInactiveMatriculas(imported.inactiveMatriculas);
-      setBaseFileName(imported.fileName); setUnitName(imported.unidade);
+
+      // Salva no banco
+      await gestaoPontoApi.importarBase({
+        contacts: imported.contacts.map(toContactPayload),
+        unidade: imported.unidade,
+        fileName: imported.fileName,
+      });
+
+      setContacts(imported.contacts);
+      setInactiveMatriculas(imported.inactiveMatriculas);
+      setBaseFileName(imported.fileName);
+      setUnitName(imported.unidade);
+      // Limpa dados de ponto anteriores na UI (não apaga do banco)
       setResult(null); setItems([]); setFileName("");
-      persist({ contacts: imported.contacts, inactiveMatriculas: imported.inactiveMatriculas, baseFileName: imported.fileName, unitName: imported.unidade, result: null, items: [], fileName: "" });
+
       setNotice(`Base de ${imported.unidade} importada: ${imported.contacts.length} colaborador(es) ativo(s)${imported.inactiveSkipped ? ` e ${imported.inactiveSkipped} inativo(s) ignorado(s)` : ""}. Importe agora o TXT do ponto.`);
     } catch (error) { setNotice(error instanceof Error ? error.message : "Não foi possível importar a base."); }
-  }
-
-  function clearData() {
-    if (!confirm("Remover os dados do ponto desta sessão?")) return;
-    setResult(null); setItems([]); setFileName("");
-    persist({ result: null, items: [], fileName: "" });
-    setNotice("Dados do ponto removidos. Importe um novo TXT para começar.");
   }
 
   function saveRhEmail() {
     const trimmed = rhEmailDraft.trim().toLowerCase();
     if (trimmed && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) { setNotice("Informe um e-mail válido."); return; }
-    setRhEmail(trimmed); persist({ rhEmail: trimmed }); setShowEmailConfig(false);
+    setRhEmail(trimmed);
+    try { localStorage.setItem("gp_rh_email", trimmed); } catch { /* ok */ }
+    setShowEmailConfig(false);
     setNotice(trimmed ? `E-mail do RH salvo: ${trimmed}` : "E-mail do RH removido.");
   }
 
@@ -266,6 +348,17 @@ export default function GestaoPontoPage() {
 
   // ─── Render ──────────────────────────────────────────────────────────────────
 
+  if (isLoading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="text-center text-slate-500">
+          <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-[#003B8E] border-t-transparent" />
+          <p className="text-sm font-semibold">Carregando dados do banco...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="-m-6 min-h-screen bg-[#f4f7fb] text-[#17233a]">
       {/* Header */}
@@ -284,11 +377,6 @@ export default function GestaoPontoPage() {
             <button onClick={() => { setRhEmailDraft(rhEmail); setShowEmailConfig(true); }} className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold ${rhEmail ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
               <Mail size={13} />{rhEmail ? `RH: ${rhEmail}` : "Configurar e-mail do RH"}
             </button>
-            {result && (
-              <button onClick={clearData} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-600 hover:border-red-300 hover:bg-red-50 hover:text-red-700">
-                <X size={15} />Limpar dados
-              </button>
-            )}
             <button onClick={() => baseInputRef.current && (baseInputRef.current.value = "", baseInputRef.current.click())} className="inline-flex items-center gap-2 rounded-lg border border-[#003B8E] bg-white px-3 py-2 text-sm font-bold text-[#003B8E] hover:bg-blue-50">
               <Users size={15} />Importar base
             </button>
@@ -348,7 +436,7 @@ export default function GestaoPontoPage() {
                   <>
                     <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-blue-50 text-[#003B8E]"><UploadCloud size={28} /></div>
                     <h3 className="text-xl font-bold">Solte aqui o TXT acumulado do ponto</h3>
-                    <p className="mt-2 text-sm leading-6 text-slate-500">Exporte o TXT desde 01/01/2026 no sistema FPW Gestão de Ponto e importe aqui.</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-500">Exporte o TXT desde 01/01/2026 no sistema FPW Gestão de Ponto e importe aqui. Os dados ficam salvos no banco e só o que é novo será adicionado.</p>
                     <button onClick={() => inputRef.current && (inputRef.current.value = "", inputRef.current.click())} className="mt-5 rounded-lg bg-[#003B8E] px-5 py-3 text-sm font-bold text-white hover:bg-[#002d6e]">Escolher arquivo TXT</button>
                   </>
                 ) : (
@@ -366,7 +454,7 @@ export default function GestaoPontoPage() {
                 <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700"><ShieldCheck size={20} /></div>
                 <h3 className="font-bold">Fluxo de uso</h3>
                 <ol className="mt-3 space-y-3 text-sm text-slate-600">
-                  {["Configure o e-mail do RH", "Importe a base da unidade (Excel)", "Importe o TXT acumulado do FPW", "O sistema detecta ocorrências automaticamente", "Abra o rascunho no Outlook Web para enviar"].map((step, i) => (
+                  {["Configure o e-mail do RH", "Importe a base da unidade (Excel)", "Importe o TXT acumulado do FPW", "O sistema detecta ocorrências automaticamente", "Dados salvos no banco — próximo TXT só adiciona o novo", "Abra o rascunho no Outlook Web para enviar"].map((step, i) => (
                     <li key={step} className="flex gap-3"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">{i + 1}</span><span className="pt-0.5">{step}</span></li>
                   ))}
                 </ol>
@@ -523,13 +611,12 @@ export default function GestaoPontoPage() {
               <footer className="border-t border-slate-200 bg-slate-50 px-5 py-3 text-xs text-slate-500">{visibleBalances.length} colaborador(es) · saldo desde 21/08/2026</footer>
             </section>
 
-            {/* Notification info banner */}
-            <div className={`mb-5 flex items-start gap-3 rounded-xl border p-4 text-sm border-blue-200 bg-blue-50 text-blue-950`}>
+            {/* Notification banner */}
+            <div className="mb-5 flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
               <Mail className="mt-0.5 shrink-0" size={17} />
               <div>
                 <p><strong>Envio manual pelo Outlook Web.</strong> Somente ausência de batida e batidas incompletas são notificadas ao colaborador e supervisor.</p>
                 <p className="mt-1 font-bold text-blue-900">Período liberado: {currentNotificationWindow.label}.</p>
-                <p className="mt-1 text-xs">Configure o e-mail do RH no topo para habilitar os botões de rascunho. As demais ocorrências ficam disponíveis somente para acompanhamento.</p>
                 <div className="mt-3 flex gap-2">
                   <button disabled={!pendingOutlookDrafts.length || !rhEmail} onClick={() => downloadCsv(pendingOutlookItems, rhEmail, "lote-outlook-ponto")} className="inline-flex items-center gap-2 rounded-lg bg-[#003B8E] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#002d6e] disabled:cursor-not-allowed disabled:opacity-40"><Mail size={14} />Exportar CSV ({pendingOutlookDrafts.length} pessoa{pendingOutlookDrafts.length !== 1 ? "s" : ""})</button>
                 </div>
@@ -558,8 +645,8 @@ export default function GestaoPontoPage() {
                   <label className="relative min-w-[200px] flex-1 xl:max-w-xs"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar pessoa, matrícula ou área" className="w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-[#003B8E]" /></label>
                   {selected.size > 0 && (
                     <>
-                      <button onClick={() => { if (confirm("Confirme somente após enviar as mensagens pelo Outlook.")) changeStatus(selected, "approved"); }} className="rounded-lg border border-emerald-300 px-3 py-2 text-xs font-bold text-emerald-800">Registrar como enviado</button>
-                      <button onClick={() => changeStatus(selected, "ignored")} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-600"><X size={14} className="mr-1 inline" />Sem envio</button>
+                      <button onClick={() => { if (confirm("Confirme somente após enviar as mensagens pelo Outlook.")) void changeStatus(selected, "approved"); }} className="rounded-lg border border-emerald-300 px-3 py-2 text-xs font-bold text-emerald-800">Registrar como enviado</button>
+                      <button onClick={() => void changeStatus(selected, "ignored")} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-600"><X size={14} className="mr-1 inline" />Sem envio</button>
                       <button disabled={!rhEmail} onClick={() => openOutlookWeb(items.filter((i) => selected.has(i.id)))} className="rounded-lg bg-[#003B8E] px-3 py-2 text-xs font-bold text-white hover:bg-[#002d6e] disabled:opacity-40"><Mail size={14} className="mr-1 inline" />Abrir Outlook Web</button>
                     </>
                   )}
@@ -743,9 +830,9 @@ export default function GestaoPontoPage() {
               </div>
             </div>
             <div className="mt-6 flex flex-wrap gap-2">
-              <button onClick={() => { changeStatus([detail.id], "ignored"); setDetail(null); }} className="flex-1 rounded-lg border border-slate-300 px-4 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50">Não enviar</button>
+              <button onClick={() => { void changeStatus([detail.id], "ignored"); setDetail(null); }} className="flex-1 rounded-lg border border-slate-300 px-4 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50">Não enviar</button>
               {detail.status !== "approved" && isNotificationEligible(detail, rhEmail) && <button onClick={() => openOutlookWeb([detail])} className="flex-1 rounded-lg bg-[#003B8E] px-4 py-3 text-sm font-bold text-white hover:bg-[#002d6e]"><Mail size={15} className="mr-1 inline" />Abrir no Outlook</button>}
-              {detail.status !== "approved" && <button onClick={() => { if (confirm("Confirme somente após enviar a mensagem pelo Outlook.")) { changeStatus([detail.id], "approved"); setDetail(null); } }} className="flex-1 rounded-lg border border-emerald-300 px-4 py-3 text-sm font-bold text-emerald-800 hover:bg-emerald-50">Registrar envio</button>}
+              {detail.status !== "approved" && <button onClick={() => { if (confirm("Confirme somente após enviar a mensagem pelo Outlook.")) { void changeStatus([detail.id], "approved"); setDetail(null); } }} className="flex-1 rounded-lg border border-emerald-300 px-4 py-3 text-sm font-bold text-emerald-800 hover:bg-emerald-50">Registrar envio</button>}
             </div>
           </aside>
         </div>

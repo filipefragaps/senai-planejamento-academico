@@ -16,6 +16,7 @@ from app.models.diario import DiarioAula
 from app.models.planejamento_snapshot import PlanejamentoSnapshot
 from app.models.grupo_aula import GrupoAula
 from app.models.ponto import PontoMensal
+from app.models.gestao_ponto import GpColaborador, GpRegistroDiario, GpOcorrencia, GpBancoHoras, GpImportacao
 
 __all__ = [
     "Usuario",
@@ -37,4 +38,9 @@ __all__ = [
     "PlanejamentoSnapshot",
     "GrupoAula",
     "PontoMensal",
+    "GpColaborador",
+    "GpRegistroDiario",
+    "GpOcorrencia",
+    "GpBancoHoras",
+    "GpImportacao",
 ]
