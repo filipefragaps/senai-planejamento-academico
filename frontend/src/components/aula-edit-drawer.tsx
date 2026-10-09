@@ -38,6 +38,7 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
   const qc = useQueryClient();
   const [form, setForm] = useState({
     professor_id: "" as string | number,
+    professor2_id: "" as string | number,
     ambiente: "",
     subturma: "",
     status: "Agendada",
@@ -89,6 +90,7 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
     if (aula) {
       setForm({
         professor_id: aula.professor_id ?? "",
+        professor2_id: (aula as any).professor2_id ?? "",
         ambiente: aula.ambiente ?? "",
         subturma: aula.subturma ?? "",
         status: aula.status,
@@ -287,6 +289,8 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
       const alteracoes: Record<string, unknown> = {};
       // Sempre inclui professor_id para permitir remover (null) ou trocar
       alteracoes.professor_id = form.professor_id !== "" ? Number(form.professor_id) : null;
+      // professor2_id: inclui sempre para permitir remover
+      alteracoes.professor2_id = form.professor2_id !== "" ? Number(form.professor2_id) : null;
       if (form.ambiente !== aula.ambiente) alteracoes.ambiente = form.ambiente || null;
       if (form.subturma !== (aula.subturma ?? "")) alteracoes.subturma = form.subturma || null;
       if (form.status !== aula.status) alteracoes.status = form.status;
@@ -414,6 +418,27 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
                 </option>
               ))}
             </select>
+          </Field>
+
+          <Field label="Divisão de Turma — 2º Professor">
+            <select
+              className="input w-full text-sm"
+              value={form.professor2_id}
+              onChange={(e) => set("professor2_id", e.target.value)}
+            >
+              <option value="">— Sem divisão —</option>
+              {(professoresDisponiveis as any[]).map((c: any) => (
+                <option key={c.professor_id ?? c.id} value={c.professor_id ?? c.id}>
+                  {c.nome}
+                  {c.nivel_competencia ? ` ★${c.nivel_competencia}` : ""}
+                  {c.percentual_regencia != null ? ` (reg. ${c.percentual_regencia.toFixed(1)}%)` : ""}
+                  {c.disponivel === false ? " ⚠ sem disponib." : ""}
+                </option>
+              ))}
+            </select>
+            {form.professor2_id !== "" && form.professor2_id === form.professor_id && (
+              <p className="text-xs text-amber-600 mt-1">⚠ Mesmo professor nos dois grupos.</p>
+            )}
           </Field>
 
           <Field label="Ambiente / Sala">

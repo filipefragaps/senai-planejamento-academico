@@ -198,7 +198,7 @@ def _serializar_alocacao(a) -> dict:
     }
 
 
-def _serializar_aula(a: Aula, nome_prof: str | None = None, nome_uc: str | None = None, nome_evento: str | None = None, nome_curso: str | None = None, coordenador: str | None = None, tipo_modalidade: str | None = None) -> dict:
+def _serializar_aula(a: Aula, nome_prof: str | None = None, nome_uc: str | None = None, nome_evento: str | None = None, nome_curso: str | None = None, coordenador: str | None = None, tipo_modalidade: str | None = None, nome_prof2: str | None = None) -> dict:
     return {
         "id": a.id,
         "evento_id": a.evento_id,
@@ -215,6 +215,8 @@ def _serializar_aula(a: Aula, nome_prof: str | None = None, nome_uc: str | None 
         "subturma": a.subturma,
         "professor_id": a.professor_id,
         "professor_nome": nome_prof,
+        "professor2_id": a.professor2_id,
+        "professor2_nome": nome_prof2,
         "ambiente": a.ambiente or a.sala,
         "etapa": a.etapa,
         "tipo_contrato": a.tipo_contrato,
@@ -577,12 +579,13 @@ async def cronograma_geral(
 
     # Enriquecer com nomes via lookups em batch
     prof_ids = {a.professor_id for a in aulas if a.professor_id}
+    prof2_ids = {a.professor2_id for a in aulas if a.professor2_id}
     uc_ids = {a.unidade_curricular_id for a in aulas if a.unidade_curricular_id}
     ev_ids = {a.evento_id for a in aulas}
 
     profs = {}
-    if prof_ids:
-        res = await db.execute(select(Professor).where(Professor.id.in_(prof_ids)))
+    if prof_ids | prof2_ids:
+        res = await db.execute(select(Professor).where(Professor.id.in_(prof_ids | prof2_ids)))
         profs = {p.id: p.nome for p in res.scalars().all()}
 
     ucs = {}
@@ -653,6 +656,7 @@ async def cronograma_geral(
             nome_curso=nome_curso,
             coordenador=coordenador,
             tipo_modalidade=ev.tipo_modalidade if ev else None,
+            nome_prof2=profs.get(a.professor2_id) if a.professor2_id else None,
         ))
 
     return rows

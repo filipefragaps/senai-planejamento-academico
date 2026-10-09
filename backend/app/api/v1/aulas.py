@@ -95,6 +95,8 @@ async def alterar_aula(
                     prof_obj = res_prof.scalar_one_or_none()
                     if prof_obj:
                         sync_fields["tipo_contrato"] = prof_obj.tipo
+            if "professor2_id" in alteracoes:
+                sync_fields["professor2_id"] = alteracoes["professor2_id"]
             if "ambiente" in alteracoes:
                 sync_fields["ambiente"] = alteracoes["ambiente"]
             if sync_fields:

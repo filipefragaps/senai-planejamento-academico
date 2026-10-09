@@ -33,6 +33,7 @@ class Aula(Base):
     uc_nome_original: Mapped[str | None] = mapped_column(String(300))  # raw UC name from import when uc link fails
     fonte: Mapped[str | None] = mapped_column(String(50))              # origem da aula: 'seduc', etc.
     dados_anteriores: Mapped[dict | None] = mapped_column(JSON)  # snapshot before manual change
+    professor2_id: Mapped[int | None] = mapped_column(ForeignKey("professores.id", ondelete="SET NULL"), nullable=True)  # segundo professor (divisão de turma)
     grupo_aula_id: Mapped[int | None] = mapped_column(ForeignKey("grupo_aula.id", ondelete="SET NULL"), nullable=True, index=True)
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     atualizado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

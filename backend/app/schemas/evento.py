@@ -72,6 +72,7 @@ class AulaCreate(AulaBase):
 
 class AulaUpdate(BaseModel):
     professor_id: int | None = None
+    professor2_id: int | None = None
     unidade_curricular_id: int | None = None
     data: date | None = None
     horario_inicio: time | None = None
@@ -86,6 +87,7 @@ class AulaUpdate(BaseModel):
 
 class AulaOut(AulaBase):
     id: int
+    professor2_id: int | None = None
     alterada_manualmente: bool
     dados_anteriores: dict | None = None
     criado_em: datetime

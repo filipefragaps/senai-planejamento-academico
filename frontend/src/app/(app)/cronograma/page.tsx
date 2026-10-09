@@ -208,6 +208,7 @@ export default function CronogramaPage() {
       ...a,
       nome_evento: a.nome_evento || eventoMap.get(a.evento_id) || null,
       professor_nome: a.professor_nome || profMap.get(a.professor_id) || null,
+      professor2_nome: a.professor2_nome || null,
     }));
     if (semProfessor) {
       list = list.filter((a: any) => !a.professor_id);
@@ -840,6 +841,9 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
                             {a.professor_nome && (
                               <p className="text-[10px] text-gray-500 truncate">{a.professor_nome}</p>
                             )}
+                            {(a as any).professor2_nome && (
+                              <p className="text-[10px] text-indigo-500 truncate">+ {(a as any).professor2_nome}</p>
+                            )}
                             <div className="flex items-center justify-between mt-0.5">
                               {a.nome_evento && a.uc_nome && (
                                 <p className="text-[9px] text-gray-400 truncate">{a.nome_evento}</p>
@@ -1008,12 +1012,17 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
                         )}
                       </td>
                       <td className="px-4 py-3 text-gray-600">
-                        <span className="flex items-center gap-1">
-                          {choqueProfessores.has(String(a.professor_id ?? "")) && (
-                            <span title="Professor com choque de horário"><Zap className="h-3.5 w-3.5 text-red-500 shrink-0" /></span>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="flex items-center gap-1">
+                            {choqueProfessores.has(String(a.professor_id ?? "")) && (
+                              <span title="Professor com choque de horário"><Zap className="h-3.5 w-3.5 text-red-500 shrink-0" /></span>
+                            )}
+                            {a.professor_nome || <span className="text-gray-400 italic">Não definido</span>}
+                          </span>
+                          {(a as any).professor2_nome && (
+                            <span className="text-xs text-indigo-600">+ {(a as any).professor2_nome}</span>
                           )}
-                          {a.professor_nome || <span className="text-gray-400 italic">Não definido</span>}
-                        </span>
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-gray-500">
                         <span className="flex items-center gap-1">
