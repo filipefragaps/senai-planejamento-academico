@@ -39,6 +39,7 @@ class Aula(Base):
     atualizado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     evento: Mapped["Evento"] = relationship("Evento", back_populates="aulas")
-    professor: Mapped["Professor | None"] = relationship("Professor", back_populates="aulas")
+    professor: Mapped["Professor | None"] = relationship("Professor", back_populates="aulas", foreign_keys="[Aula.professor_id]")
+    professor2: Mapped["Professor | None"] = relationship("Professor", foreign_keys="[Aula.professor2_id]")
     unidade_curricular: Mapped["UnidadeCurricular | None"] = relationship("UnidadeCurricular")
     grupo: Mapped["GrupoAula | None"] = relationship("GrupoAula", back_populates="aulas")
