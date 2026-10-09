@@ -2,14 +2,15 @@
 
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { professoresApi, contratosApi, eventosApi, ofertasApi, type ContratoEventoRef } from "@/lib/api";
+import { professoresApi, contratosApi, eventosApi, ofertasApi, contratoVirtualApi, planejamentoApi, type ContratoEventoRef } from "@/lib/api";
+import { getCurrentUser } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { RegenciaBar } from "@/components/regencia-bar";
 import { ProfessorDrawer } from "@/components/professor-drawer";
 import { toast } from "sonner";
 import {
   Plus, Search, X, Pencil, ChevronRight, Clock, BookOpen, User, Briefcase,
-  LayoutGrid, List, ChevronLeft, Zap, Loader2,
+  LayoutGrid, List, ChevronLeft, Zap, Loader2, FileSignature, Check, Ban,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -64,6 +65,19 @@ function groupByDia(disp: any[]) {
 }
 
 const TIPOS_QUADRO_PROF = new Set(["Mensalista", "Horista", "Inclusão em Folha"]);
+
+const CV_MODALIDADES = [
+  "Habilitação Técnica",
+  "Qualificação Profissional",
+  "Habilitação Técnica e Qualificação Profissional",
+];
+
+const CV_FORM_VAZIO = {
+  nome_completo: "", cpf: "", conta_corrente: "", email: "", telefone: "",
+  evento_id: null as number | null, evento_nome: "",
+  ucs: [] as { uc_id: number; uc_nome: string }[],
+  modalidade: "Habilitação Técnica", justificativa: "",
+};
 
 const FILTROS_TIPO = [
   { key: "todos",              label: "Todos",             grupo: "base" },
@@ -316,6 +330,14 @@ export default function ProfessoresPage() {
   const [buscaEvento, setBuscaEvento] = useState("");
   const [dropdownEventoAberto, setDropdownEventoAberto] = useState(false);
 
+  // Contrato Virtual
+  const meAtual = typeof window !== "undefined" ? getCurrentUser() : null;
+  const [cvModal, setCvModal] = useState(false);
+  const [cvForm, setCvForm] = useState(CV_FORM_VAZIO);
+  const [cvBuscaEvento, setCvBuscaEvento] = useState("");
+  const [cvDropdownAberto, setCvDropdownAberto] = useState(false);
+  const [cvUcsBuscaEvento, setCvUcsBuscaEvento] = useState<number | null>(null);
+
   const { data: contratos = [], isLoading: loadingContratos } = useQuery({
     queryKey: ["contratos", selected?.id],
     queryFn: () => contratosApi.listar(selected!.id),
@@ -323,10 +345,24 @@ export default function ProfessoresPage() {
     staleTime: 30_000,
   });
 
+  const { data: contratosVirtuais = [], isLoading: loadingCv } = useQuery({
+    queryKey: ["contratos-virtuais", selected?.id],
+    queryFn: () => contratoVirtualApi.listar(selected!.id),
+    enabled: !!selected,
+    staleTime: 30_000,
+  });
+
+  const { data: ucsDoCvEvento = [] } = useQuery({
+    queryKey: ["ucs-cv-evento", cvUcsBuscaEvento],
+    queryFn: () => planejamentoApi.ucs(cvUcsBuscaEvento!, undefined, true),
+    enabled: !!cvUcsBuscaEvento,
+    staleTime: 60_000,
+  });
+
   const { data: todosEventos = [] } = useQuery({
     queryKey: ["eventos-para-contrato"],
     queryFn: () => eventosApi.listar(),
-    enabled: contratoModal.open,
+    enabled: contratoModal.open || cvModal,
     staleTime: 120_000,
   });
 
@@ -364,6 +400,69 @@ export default function ProfessoresPage() {
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || "Erro ao salvar contrato"),
   });
+
+  const criarCvMutation = useMutation({
+    mutationFn: () => contratoVirtualApi.criar(selected!.id, {
+      nome_completo: cvForm.nome_completo,
+      cpf: cvForm.cpf,
+      conta_corrente: cvForm.conta_corrente || undefined,
+      email: cvForm.email || undefined,
+      telefone: cvForm.telefone || undefined,
+      evento_id: cvForm.evento_id || undefined,
+      evento_nome: cvForm.evento_nome || undefined,
+      ucs: cvForm.ucs,
+      modalidade: cvForm.modalidade,
+      justificativa: cvForm.justificativa,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["contratos-virtuais", selected?.id] });
+      setCvModal(false);
+      setCvForm(CV_FORM_VAZIO);
+      setCvBuscaEvento("");
+      setCvUcsBuscaEvento(null);
+      toast.success("Contrato virtual enviado para aprovação!");
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || "Erro ao criar contrato virtual"),
+  });
+
+  const aprovarCvMutation = useMutation({
+    mutationFn: ({ cvId, acao }: { cvId: number; acao: "aprovar" | "rejeitar" }) =>
+      contratoVirtualApi.aprovar(selected!.id, cvId, acao),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["contratos-virtuais", selected?.id] });
+      toast.success("Status atualizado!");
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || "Erro ao atualizar status"),
+  });
+
+  function abrirNovoCv() {
+    setCvForm({
+      ...CV_FORM_VAZIO,
+      nome_completo: selected?.nome || "",
+      cpf: selected?.cpf || "",
+      email: selected?.email || "",
+      telefone: selected?.telefone || "",
+    });
+    setCvBuscaEvento("");
+    setCvUcsBuscaEvento(null);
+    setCvModal(true);
+  }
+
+  function salvarCv() {
+    if (!cvForm.nome_completo || !cvForm.cpf) {
+      toast.error("Nome completo e CPF são obrigatórios");
+      return;
+    }
+    if (!cvForm.modalidade) {
+      toast.error("Modalidade é obrigatória");
+      return;
+    }
+    if (!cvForm.justificativa.trim()) {
+      toast.error("Justificativa é obrigatória");
+      return;
+    }
+    criarCvMutation.mutate();
+  }
 
   function abrirNovoContrato() {
     setContratoForm(CONTRATO_FORM_VAZIO);
@@ -983,6 +1082,102 @@ export default function ProfessoresPage() {
                       )}
                     </div>
                   )}
+
+                  {/* Contratos Virtuais */}
+                  <div className="p-4 border-t border-gray-100">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <FileSignature className="h-4 w-4 text-primary" />
+                        <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                          Contratos Virtuais
+                        </span>
+                      </div>
+                      <button
+                        onClick={abrirNovoCv}
+                        className="text-xs text-primary hover:underline flex items-center gap-1"
+                      >
+                        + Novo
+                      </button>
+                    </div>
+
+                    {loadingCv ? (
+                      <p className="text-xs text-gray-400">Carregando...</p>
+                    ) : (contratosVirtuais as any[]).length === 0 ? (
+                      <p className="text-xs text-gray-400 italic">
+                        Nenhum contrato virtual.{" "}
+                        <button onClick={abrirNovoCv} className="text-primary underline">
+                          Adicionar
+                        </button>
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {(contratosVirtuais as any[]).map((cv: any) => {
+                          const statusColor =
+                            cv.status === "aprovado"
+                              ? "bg-green-50 text-green-700"
+                              : cv.status === "rejeitado"
+                              ? "bg-red-50 text-red-600"
+                              : "bg-amber-50 text-amber-700";
+                          const isAdmin = meAtual?.perfil === "admin";
+                          return (
+                            <div key={cv.id} className="rounded-lg border border-gray-200 p-3 text-xs">
+                              <div className="flex items-start justify-between gap-2 mb-1.5">
+                                <div>
+                                  <p className="font-semibold text-gray-800 truncate max-w-[180px]">{cv.modalidade}</p>
+                                  {cv.evento_nome && (
+                                    <p className="text-[10px] text-gray-500 mt-0.5 truncate">
+                                      Evento: {cv.evento_nome}
+                                    </p>
+                                  )}
+                                </div>
+                                <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0", statusColor)}>
+                                  {cv.status}
+                                </span>
+                              </div>
+
+                              {cv.ucs && cv.ucs.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mb-1.5">
+                                  {cv.ucs.map((u: any) => (
+                                    <span key={u.uc_id} className="bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded text-[10px]">
+                                      {u.uc_nome}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+
+                              <p className="text-[10px] text-gray-500 line-clamp-2">{cv.justificativa}</p>
+
+                              {cv.status !== "pendente" && cv.aprovado_por && (
+                                <p className="text-[10px] text-gray-400 mt-1">
+                                  {cv.status === "aprovado" ? "Aprovado" : "Rejeitado"} por {cv.aprovado_por}
+                                  {cv.aprovado_em ? ` em ${new Date(cv.aprovado_em).toLocaleDateString("pt-BR")}` : ""}
+                                </p>
+                              )}
+
+                              {isAdmin && cv.status === "pendente" && (
+                                <div className="flex gap-2 mt-2 pt-2 border-t border-gray-100">
+                                  <button
+                                    onClick={() => aprovarCvMutation.mutate({ cvId: cv.id, acao: "aprovar" })}
+                                    disabled={aprovarCvMutation.isPending}
+                                    className="flex items-center gap-1 text-[10px] text-green-700 bg-green-50 hover:bg-green-100 px-2 py-1 rounded"
+                                  >
+                                    <Check className="h-3 w-3" /> Aprovar
+                                  </button>
+                                  <button
+                                    onClick={() => aprovarCvMutation.mutate({ cvId: cv.id, acao: "rejeitar" })}
+                                    disabled={aprovarCvMutation.isPending}
+                                    className="flex items-center gap-1 text-[10px] text-red-600 bg-red-50 hover:bg-red-100 px-2 py-1 rounded"
+                                  >
+                                    <Ban className="h-3 w-3" /> Rejeitar
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
             </div>
@@ -1214,6 +1409,174 @@ export default function ProfessoresPage() {
                 <button onClick={() => setContratoModal({ open: false, contrato: null })} className="btn-secondary">Cancelar</button>
                 <button onClick={salvarContrato} disabled={salvarContratoMutation.isPending} className="btn-primary">
                   {salvarContratoMutation.isPending ? "Salvando..." : "Salvar"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ─── Modal de Contrato Virtual ─── */}
+      {cvModal && selected && (() => {
+        const q = cvBuscaEvento.toLowerCase().trim();
+        const cvSugestoes = q
+          ? (todosEventos as any[])
+              .filter(e =>
+                String(e.id).includes(q) ||
+                e.nome_turma.toLowerCase().includes(q) ||
+                (e.nome_curso || "").toLowerCase().includes(q)
+              )
+              .slice(0, 8)
+          : [];
+
+        function selecionarEventoCv(ev: any) {
+          setCvForm(f => ({
+            ...f,
+            evento_id: ev.id,
+            evento_nome: ev.nome_turma,
+            ucs: [],
+          }));
+          setCvUcsBuscaEvento(ev.id);
+          setCvBuscaEvento("");
+          setCvDropdownAberto(false);
+        }
+
+        function toggleUc(uc: any) {
+          setCvForm(f => {
+            const exists = f.ucs.find(u => u.uc_id === uc.id);
+            if (exists) return { ...f, ucs: f.ucs.filter(u => u.uc_id !== uc.id) };
+            return { ...f, ucs: [...f.ucs, { uc_id: uc.id, uc_nome: uc.nome }] };
+          });
+        }
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setCvDropdownAberto(false)}>
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="font-semibold text-gray-900">Novo Contrato Virtual</h3>
+                <button onClick={() => { setCvModal(false); setCvForm(CV_FORM_VAZIO); setCvUcsBuscaEvento(null); }} className="text-gray-400 hover:text-gray-600">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Dados pessoais */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo *</label>
+                    <input className="input w-full" value={cvForm.nome_completo} onChange={e => setCvForm(f => ({ ...f, nome_completo: e.target.value }))} placeholder="Nome completo do professor" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">CPF *</label>
+                    <input className="input w-full" value={cvForm.cpf} onChange={e => setCvForm(f => ({ ...f, cpf: e.target.value }))} placeholder="000.000.000-00" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Conta Corrente</label>
+                    <input className="input w-full" value={cvForm.conta_corrente} onChange={e => setCvForm(f => ({ ...f, conta_corrente: e.target.value }))} placeholder="Agência/Conta" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">E-mail</label>
+                    <input type="email" className="input w-full" value={cvForm.email} onChange={e => setCvForm(f => ({ ...f, email: e.target.value }))} placeholder="email@exemplo.com" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Telefone</label>
+                    <input className="input w-full" value={cvForm.telefone} onChange={e => setCvForm(f => ({ ...f, telefone: e.target.value }))} placeholder="(00) 00000-0000" />
+                  </div>
+                </div>
+
+                {/* Evento */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Evento</label>
+                  {cvForm.evento_id ? (
+                    <div className="flex items-center gap-2 rounded border border-gray-200 bg-indigo-50 px-3 py-2 text-sm">
+                      <span className="font-mono font-semibold text-indigo-600">#{cvForm.evento_id}</span>
+                      <span className="text-gray-700 flex-1 truncate">{cvForm.evento_nome}</span>
+                      <button onClick={() => { setCvForm(f => ({ ...f, evento_id: null, evento_nome: "", ucs: [] })); setCvUcsBuscaEvento(null); }} className="text-gray-400 hover:text-red-500">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="relative" onClick={e => e.stopPropagation()}>
+                      <input
+                        className="input w-full"
+                        placeholder="Buscar evento por nome ou código..."
+                        value={cvBuscaEvento}
+                        onChange={e => { setCvBuscaEvento(e.target.value); setCvDropdownAberto(true); }}
+                        onFocus={() => setCvDropdownAberto(true)}
+                      />
+                      {cvDropdownAberto && cvBuscaEvento.trim() && (
+                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                          {cvSugestoes.length > 0 ? cvSugestoes.map((ev: any) => (
+                            <button key={ev.id} type="button" onClick={() => selecionarEventoCv(ev)}
+                              className="w-full text-left px-3 py-2 hover:bg-indigo-50 text-xs flex items-center gap-2">
+                              <span className="font-mono font-semibold text-indigo-600">#{ev.id}</span>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-gray-800 truncate">{ev.nome_turma}</p>
+                                {ev.nome_curso && <p className="text-[10px] text-gray-500 truncate">{ev.nome_curso}</p>}
+                              </div>
+                            </button>
+                          )) : (
+                            <p className="px-3 py-2 text-xs text-gray-400 italic">Nenhum evento encontrado.</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* UCs do evento */}
+                {cvForm.evento_id && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Unidades Curriculares</label>
+                    {(ucsDoCvEvento as any[]).length === 0 ? (
+                      <p className="text-xs text-gray-400 italic">Nenhuma UC encontrada neste evento.</p>
+                    ) : (
+                      <div className="space-y-1 max-h-32 overflow-y-auto border border-gray-100 rounded-lg p-2">
+                        {(ucsDoCvEvento as any[]).map((uc: any) => {
+                          const sel = cvForm.ucs.find(u => u.uc_id === uc.id);
+                          return (
+                            <label key={uc.id} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-gray-50 rounded px-1 py-0.5">
+                              <input type="checkbox" checked={!!sel} onChange={() => toggleUc(uc)} className="rounded" />
+                              <span className={cn("flex-1 truncate", sel ? "font-medium text-blue-700" : "text-gray-700")}>
+                                {uc.nome}
+                              </span>
+                              {uc.carga_horaria && <span className="text-gray-400 shrink-0">{uc.carga_horaria}h</span>}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {cvForm.ucs.length > 0 && (
+                      <p className="text-xs text-blue-600 mt-1">{cvForm.ucs.length} UC(s) selecionada(s)</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Modalidade */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Modalidade *</label>
+                  <select className="input w-full" value={cvForm.modalidade} onChange={e => setCvForm(f => ({ ...f, modalidade: e.target.value }))}>
+                    {CV_MODALIDADES.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+
+                {/* Justificativa */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Justificativa *</label>
+                  <textarea
+                    className="input w-full resize-none"
+                    rows={3}
+                    placeholder="Descreva o motivo deste contrato virtual..."
+                    value={cvForm.justificativa}
+                    onChange={e => setCvForm(f => ({ ...f, justificativa: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 mt-6">
+                <button onClick={() => { setCvModal(false); setCvForm(CV_FORM_VAZIO); setCvUcsBuscaEvento(null); }} className="btn-secondary">Cancelar</button>
+                <button onClick={salvarCv} disabled={criarCvMutation.isPending} className="btn-primary">
+                  {criarCvMutation.isPending ? "Enviando..." : "Enviar para Aprovação"}
                 </button>
               </div>
             </div>

@@ -17,6 +17,7 @@ from app.models.planejamento_snapshot import PlanejamentoSnapshot
 from app.models.grupo_aula import GrupoAula
 from app.models.ponto import PontoMensal
 from app.models.gestao_ponto import GpColaborador, GpRegistroDiario, GpOcorrencia, GpBancoHoras, GpImportacao
+from app.models.contrato_virtual import ContratoVirtual
 
 __all__ = [
     "Usuario",
@@ -43,4 +44,5 @@ __all__ = [
     "GpOcorrencia",
     "GpBancoHoras",
     "GpImportacao",
+    "ContratoVirtual",
 ]

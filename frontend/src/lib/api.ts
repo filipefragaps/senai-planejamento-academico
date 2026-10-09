@@ -500,6 +500,21 @@ export const gestaoPontoApi = {
     api.patch("/gestao-ponto/ocorrencias/status/lote", { ids, status }).then((r) => r.data),
 };
 
+// Contratos Virtuais
+export const contratoVirtualApi = {
+  listar: (professorId: number) =>
+    api.get(`/professores/${professorId}/contratos-virtuais`).then((r) => r.data),
+  criar: (professorId: number, data: {
+    nome_completo: string; cpf: string; conta_corrente?: string; email?: string;
+    telefone?: string; evento_id?: number | null; evento_nome?: string;
+    ucs?: { uc_id: number; uc_nome: string }[]; modalidade: string; justificativa: string;
+  }) => api.post(`/professores/${professorId}/contratos-virtuais`, data).then((r) => r.data),
+  aprovar: (professorId: number, cvId: number, acao: "aprovar" | "rejeitar") =>
+    api.patch(`/professores/${professorId}/contratos-virtuais/${cvId}/aprovar`, { acao }).then((r) => r.data),
+  pendentes: () =>
+    api.get("/professores/contratos-virtuais/pendentes").then((r) => r.data),
+};
+
 export function downloadBlob(data: Blob, filename: string) {
   const url = window.URL.createObjectURL(data);
   const a = document.createElement("a");
