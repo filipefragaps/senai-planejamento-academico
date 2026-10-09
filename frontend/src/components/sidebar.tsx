@@ -22,6 +22,7 @@ import {
   CalendarDays,
   Clock3,
   ChevronDown,
+  FileSignature,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clearAuth, getCurrentUser } from "@/lib/auth";
@@ -67,8 +68,9 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Gestão",
     items: [
       { href: "/regencia",     label: "Regência",        icon: TrendingUp, perfis: ["admin", "coordenador", "analista"] },
-      { href: "/gestao-ponto", label: "Gestão de Ponto", icon: Clock3,     perfis: ["admin", "rh"] },
-      { href: "/relatorios",   label: "Relatórios",      icon: BarChart3,  perfis: ["admin", "coordenador", "analista", "secretario"] },
+      { href: "/gestao-ponto",         label: "Gestão de Ponto",       icon: Clock3,          perfis: ["admin", "rh"] },
+      { href: "/contratos-virtuais",   label: "Contratos Virtuais",    icon: FileSignature,   perfis: ["admin"] },
+      { href: "/relatorios",           label: "Relatórios",            icon: BarChart3,       perfis: ["admin", "coordenador", "analista", "secretario"] },
       { href: "/historico",    label: "Histórico",       icon: History,    perfis: ["admin"] },
     ],
   },

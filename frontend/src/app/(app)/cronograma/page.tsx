@@ -136,7 +136,7 @@ export default function CronogramaPage() {
     ? filtroModalidades.map(m => m.split(/\s*[-–]\s*/)[0].trim()).join(",")
     : undefined;
 
-  const { data: rawAulas = [], isLoading } = useQuery({
+  const { data: rawAulas = [], isLoading, isError: cronogramaErro } = useQuery({
     queryKey: ["cronograma-global", dataInicio, dataFim, semProfessor ? "sem_professor" : professorFiltro, eventoFiltro, modalidadesParam],
     queryFn: () =>
       planejamentoApi.cronograma({
@@ -147,6 +147,7 @@ export default function CronogramaPage() {
         modalidades: modalidadesParam,
         limit: 5000,
       }),
+    retry: 1,
   });
 
   const { data: professores = [] } = useQuery({
@@ -679,6 +680,11 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
       {isLoading ? (
         <div className="card flex items-center justify-center py-24 text-gray-400">
           <Loader2 className="h-6 w-6 animate-spin mr-2" /> Carregando aulas...
+        </div>
+      ) : cronogramaErro ? (
+        <div className="card flex flex-col items-center justify-center py-24 text-red-500 gap-2">
+          <p className="font-semibold">Erro ao carregar o cronograma.</p>
+          <p className="text-sm text-gray-500">O servidor retornou um erro. Tente recarregar a página ou contate o suporte.</p>
         </div>
       ) : modo === "mes" ? (
         /* ── MODO MÊS ── */

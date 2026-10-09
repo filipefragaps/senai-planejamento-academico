@@ -449,8 +449,8 @@ export default function ProfessoresPage() {
   }
 
   function salvarCv() {
-    if (!cvForm.nome_completo || !cvForm.cpf) {
-      toast.error("Nome completo e CPF são obrigatórios");
+    if (!cvForm.nome_completo) {
+      toast.error("Nome completo é obrigatório");
       return;
     }
     if (!cvForm.modalidade) {

@@ -48,7 +48,8 @@ async def _aplicar_migracoes(engine) -> None:
         "ALTER TABLE aulas ADD COLUMN grupo_aula_id INTEGER REFERENCES grupo_aula(id) ON DELETE SET NULL",
         "ALTER TABLE professores ADD COLUMN area VARCHAR(100)",
         "ALTER TABLE cursos ADD COLUMN plano_curso_nome VARCHAR(300)",
-        "ALTER TABLE aulas ADD COLUMN professor2_id INTEGER REFERENCES professores(id) ON DELETE SET NULL",
+        "ALTER TABLE aulas ADD COLUMN professor2_id INTEGER",
+        "ALTER TABLE contratos_virtuais ALTER COLUMN cpf DROP NOT NULL",
     ]
 
     # Cada ALTER TABLE em transação própria — PostgreSQL aborta toda a transação

@@ -24,7 +24,7 @@ class UcRef(BaseModel):
 
 class ContratoVirtualCreate(BaseModel):
     nome_completo: str
-    cpf: str
+    cpf: str | None = None
     conta_corrente: str | None = None
     email: str | None = None
     telefone: str | None = None

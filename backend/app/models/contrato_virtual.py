@@ -12,7 +12,7 @@ class ContratoVirtual(Base):
         ForeignKey("professores.id", ondelete="CASCADE"), nullable=False, index=True
     )
     nome_completo: Mapped[str] = mapped_column(String(300), nullable=False)
-    cpf: Mapped[str] = mapped_column(String(20), nullable=False)
+    cpf: Mapped[str | None] = mapped_column(String(20), nullable=True)
     conta_corrente: Mapped[str | None] = mapped_column(String(100), nullable=True)
     email: Mapped[str | None] = mapped_column(String(200), nullable=True)
     telefone: Mapped[str | None] = mapped_column(String(30), nullable=True)
