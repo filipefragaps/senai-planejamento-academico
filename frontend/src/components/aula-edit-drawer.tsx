@@ -407,8 +407,10 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
               {(professoresDisponiveis as any[]).map((c: any) => (
                 <option key={c.professor_id ?? c.id} value={c.professor_id ?? c.id}>
                   {c.nome}
+                  {c.nivel_competencia ? ` ★${c.nivel_competencia}` : ""}
                   {c.percentual_regencia != null ? ` (reg. ${c.percentual_regencia.toFixed(1)}%)` : ""}
-                  {c.is_preferido ? " ★" : ""}
+                  {c.disponivel === false ? " ⚠ sem disponib." : ""}
+                  {c.is_preferido ? " ✓ preferido" : ""}
                 </option>
               ))}
             </select>

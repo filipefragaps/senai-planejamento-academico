@@ -859,9 +859,7 @@ async def candidatos_uc(
         regencias[p.id] = await calcular_regencia_professor(p, db)
 
     preferidos = evento.professores_preferidos or []
-    # Para o dropdown de seleção manual, não filtra por disponibilidade
-    # (a verificação de disponibilidade ocorre apenas no planejamento automático)
-    candidatos = await _candidatos_uc(uc, evento, preferidos, regencias, db, verificar_disponibilidade=False)
+    candidatos = await _candidatos_uc(uc, evento, preferidos, regencias, db, verificar_disponibilidade=True)
 
     return [
         {
