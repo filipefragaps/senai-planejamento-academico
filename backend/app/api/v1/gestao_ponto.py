@@ -19,7 +19,7 @@ from sqlalchemy import select
 
 from app.database import get_db
 from app.models.gestao_ponto import (
-    GpColaborador, GpRegistroDiario, GpOcorrencia, GpBancoHoras, GpImportacao,
+    GpColaborador, GpRegistroDiario, GpOcorrencia, GpBancoHoras, GpBalanceMensal, GpImportacao,
 )
 from app.core.deps import get_current_user, require_admin, require_admin_ou_rh
 
@@ -81,6 +81,21 @@ class BalanceIn(BaseModel):
     area: str = ""
     supervisor: str = ""
     supervisorEmail: str = ""
+    sourceMonth: str = ""
+    sourceFile: str = ""
+
+class MonthlyBalanceIn(BaseModel):
+    matricula: str
+    collaborator: str
+    month: str          # YYYY-MM
+    monthLabel: str = ""
+    initialMinutes: int = 0
+    creditMinutes: int = 0
+    debitMinutes: int = 0
+    accumulatedMinutes: int = 0
+    accumulatedLabel: str = ""
+    critical: bool = False
+    fileName: str = ""
 
 class BaseImportPayload(BaseModel):
     contacts: list[ContactIn]
@@ -95,6 +110,7 @@ class PontoImportPayload(BaseModel):
     dailyRecords: list[DailyRecordIn]
     occurrences: list[OccurrenceIn]
     balances: list[BalanceIn]
+    monthlyBalances: list[MonthlyBalanceIn] = []
 
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
@@ -141,6 +157,7 @@ async def importar_ponto(
     diarios_inseridos = diarios_atualizados = 0
     occ_inseridas = occ_atualizadas = status_mantido = 0
     banco_atualizados = 0
+    mensais_atualizados = 0
 
     # ── Registros diários ────────────────────────────────────────────────────
     for rec in payload.dailyRecords:
@@ -224,6 +241,34 @@ async def importar_ponto(
             ))
         banco_atualizados += 1
 
+    # ── Saldos mensais oficiais FPW ──────────────────────────────────────────
+    for mb in payload.monthlyBalances:
+        stmt = select(GpBalanceMensal).where(
+            GpBalanceMensal.matricula == mb.matricula,
+            GpBalanceMensal.month == mb.month,
+        )
+        existing = (await db.execute(stmt)).scalar_one_or_none()
+        if existing:
+            existing.initial_minutes = mb.initialMinutes
+            existing.credit_minutes = mb.creditMinutes
+            existing.debit_minutes = mb.debitMinutes
+            existing.accumulated_minutes = mb.accumulatedMinutes
+            existing.accumulated_label = mb.accumulatedLabel
+            existing.critical = mb.critical
+            existing.file_name = mb.fileName
+            existing.collaborator = mb.collaborator
+            existing.month_label = mb.monthLabel
+        else:
+            db.add(GpBalanceMensal(
+                matricula=mb.matricula, collaborator=mb.collaborator,
+                month=mb.month, month_label=mb.monthLabel,
+                initial_minutes=mb.initialMinutes, credit_minutes=mb.creditMinutes,
+                debit_minutes=mb.debitMinutes, accumulated_minutes=mb.accumulatedMinutes,
+                accumulated_label=mb.accumulatedLabel, critical=mb.critical,
+                file_name=mb.fileName,
+            ))
+        mensais_atualizados += 1
+
     # ── Log da importação ────────────────────────────────────────────────────
     db.add(GpImportacao(
         file_name=payload.fileName, unidade=payload.unidade,
@@ -237,6 +282,7 @@ async def importar_ponto(
         "diarios": {"inseridos": diarios_inseridos, "atualizados": diarios_atualizados},
         "ocorrencias": {"inseridas": occ_inseridas, "atualizadas": occ_atualizadas, "statusMantido": status_mantido},
         "banco": {"atualizados": banco_atualizados},
+        "saldosMensais": {"atualizados": mensais_atualizados},
     }
 
 
@@ -250,6 +296,9 @@ async def get_dados(
     daily_rows = (await db.execute(select(GpRegistroDiario).order_by(GpRegistroDiario.date_key))).scalars().all()
     occ_rows = (await db.execute(select(GpOcorrencia).order_by(GpOcorrencia.date_key))).scalars().all()
     bank_rows = (await db.execute(select(GpBancoHoras).order_by(GpBancoHoras.collaborator))).scalars().all()
+    monthly_rows = (await db.execute(
+        select(GpBalanceMensal).order_by(GpBalanceMensal.month, GpBalanceMensal.collaborator)
+    )).scalars().all()
     last_import = (await db.execute(
         select(GpImportacao).order_by(GpImportacao.imported_at.desc()).limit(1)
     )).scalar_one_or_none()
@@ -303,6 +352,20 @@ async def get_dados(
                 "supervisorEmail": b.supervisor_email,
             }
             for b in bank_rows
+        ],
+        "monthlyBalances": [
+            {
+                "matricula": m.matricula, "collaborator": m.collaborator,
+                "month": m.month, "monthLabel": m.month_label,
+                "initialMinutes": m.initial_minutes, "creditMinutes": m.credit_minutes,
+                "debitMinutes": m.debit_minutes, "accumulatedMinutes": m.accumulated_minutes,
+                "accumulatedLabel": m.accumulated_label, "critical": m.critical,
+                "fileName": m.file_name,
+                "email": "", "area": m.area, "supervisor": m.supervisor,
+                "supervisorEmail": m.supervisor_email,
+                "director": "", "directorEmail": "", "unidade": "",
+            }
+            for m in monthly_rows
         ],
         "lastImport": {
             "fileName": last_import.file_name,

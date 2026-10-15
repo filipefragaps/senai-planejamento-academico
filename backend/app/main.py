@@ -50,6 +50,25 @@ async def _aplicar_migracoes(engine) -> None:
         "ALTER TABLE cursos ADD COLUMN plano_curso_nome VARCHAR(300)",
         "ALTER TABLE aulas ADD COLUMN professor2_id INTEGER",
         "ALTER TABLE contratos_virtuais ALTER COLUMN cpf DROP NOT NULL",
+        """CREATE TABLE IF NOT EXISTS gp_balances_mensais (
+            id SERIAL PRIMARY KEY,
+            matricula VARCHAR(50) NOT NULL,
+            collaborator VARCHAR(300) NOT NULL,
+            month VARCHAR(7) NOT NULL,
+            month_label VARCHAR(7) DEFAULT '',
+            initial_minutes INTEGER DEFAULT 0,
+            credit_minutes INTEGER DEFAULT 0,
+            debit_minutes INTEGER DEFAULT 0,
+            accumulated_minutes INTEGER DEFAULT 0,
+            accumulated_label VARCHAR(20) DEFAULT '',
+            critical BOOLEAN DEFAULT false,
+            file_name VARCHAR(300) DEFAULT '',
+            area VARCHAR(300) DEFAULT '',
+            supervisor VARCHAR(300) DEFAULT '',
+            supervisor_email VARCHAR(300) DEFAULT '',
+            updated_at TIMESTAMPTZ DEFAULT NOW(),
+            CONSTRAINT uq_gp_balance_mensal UNIQUE (matricula, month)
+        )""",
     ]
 
     # Cada ALTER TABLE em transação própria — PostgreSQL aborta toda a transação

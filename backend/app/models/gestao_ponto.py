@@ -91,6 +91,34 @@ class GpBancoHoras(Base):
     )
 
 
+class GpBalanceMensal(Base):
+    """Saldo oficial FPW por colaborador por competência (MonthlyBalanceRecord)."""
+    __tablename__ = "gp_balances_mensais"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    matricula: Mapped[str] = mapped_column(String(50), index=True)
+    collaborator: Mapped[str] = mapped_column(String(300))
+    month: Mapped[str] = mapped_column(String(7))          # YYYY-MM
+    month_label: Mapped[str] = mapped_column(String(7), default="")
+    initial_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    credit_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    debit_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    accumulated_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    accumulated_label: Mapped[str] = mapped_column(String(20), default="")
+    critical: Mapped[bool] = mapped_column(Boolean, default=False)
+    file_name: Mapped[str] = mapped_column(String(300), default="")
+    area: Mapped[str] = mapped_column(String(300), default="")
+    supervisor: Mapped[str] = mapped_column(String(300), default="")
+    supervisor_email: Mapped[str] = mapped_column(String(300), default="")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("matricula", "month", name="uq_gp_balance_mensal"),
+    )
+
+
 class GpImportacao(Base):
     """Metadados de cada importação de TXT."""
     __tablename__ = "gp_importacoes"

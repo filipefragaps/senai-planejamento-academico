@@ -8,15 +8,18 @@ import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useRef, useSta
 import { gestaoPontoApi } from "@/lib/api";
 import {
   BalanceRecord, Contact, DailyRecord, HoursSummary, ImportedBase,
+  MonthlyBalanceRecord, MonthlySourceFile,
   Occurrence, ParseResult, ReviewStatus,
-  MONTHLY_ANALYSIS_START, OPERATIONAL_ANALYSIS_START,
-  balanceExportRows, dailyExportRows, dateKey, displayIsoDate, downloadCsv,
-  downloadExcel, durationLabel, emailBodyFor, hoursSummaryExportRows,
-  isInNotificationWindow, isNotificationEligible, isRhOnly, isoDate,
-  monthlyDayFromRecord, needsAutomaticNotification, needsPointAdjustment,
-  normalize, notificationDrafts, notificationWindow, occurrenceExportRows,
-  occurrenceStatusLabel, parseContactsFile, parsePoint, signedDurationLabel,
-  summarizeMonthlyDays, todayIso, unmatchedExportRows, manualEmailRecipients,
+  MONTHLY_ANALYSIS_START,
+  attachOfficialMonthlyBalances, balanceExportRows, dailyExportRows,
+  dateKey, downloadCsv, downloadExcel, durationLabel, emailBodyFor,
+  hoursSummaryExportRows, isInNotificationWindow, isNotificationEligible,
+  isRhOnly, isoDate, monthlyBalanceExportRows, monthlyDayFromRecord,
+  needsAutomaticNotification, needsPointAdjustment, normalize,
+  notificationDrafts, notificationWindow, occurrenceExportRows,
+  occurrenceStatusLabel, parseContactsFile, parseMonthlyFileSet,
+  signedDurationLabel, sourceFilesExportRows, summarizeMonthlyDays,
+  todayIso, unmatchedExportRows, manualEmailRecipients,
 } from "./parser";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -54,12 +57,15 @@ function resultFromApi(apiData: {
   dailyRecords: DailyRecord[];
   occurrences: Occurrence[];
   balances: BalanceRecord[];
+  monthlyBalances?: MonthlyBalanceRecord[];
   lastImport: { fileName: string; period: string; people: number } | null;
 }): ParseResult {
   return {
     days: apiData.dailyRecords,
     occurrences: apiData.occurrences,
     balances: apiData.balances,
+    monthlyBalances: apiData.monthlyBalances || [],
+    sourceFiles: [],
     people: apiData.lastImport?.people ?? 0,
     period: apiData.lastImport?.period ?? "",
     editablePeriod: apiData.lastImport?.period ?? "",
@@ -158,7 +164,10 @@ export default function GestaoPontoPage() {
   const filteredBalances = useMemo(() => (result?.balances || []).filter((b) => matchesResponsible(b.supervisor, b.supervisorEmail)), [result, matchesResponsible]);
   const filteredDays = useMemo(() => (result?.days || []).filter((d) => matchesResponsible(d.supervisor, d.supervisorEmail)), [result, matchesResponsible]);
 
-  const hoursSummaries = useMemo(() => summarizeMonthlyDays(filteredDays.map(monthlyDayFromRecord), hoursStart, hoursEnd), [filteredDays, hoursStart, hoursEnd]);
+  const hoursSummaries = useMemo(() => {
+    const rows = summarizeMonthlyDays(filteredDays.map(monthlyDayFromRecord), hoursStart, hoursEnd);
+    return attachOfficialMonthlyBalances(rows, result?.monthlyBalances || []);
+  }, [filteredDays, hoursStart, hoursEnd, result?.monthlyBalances]);
   const visibleHoursSummaries = useMemo(() => {
     const term = normalize(hoursQuery);
     return hoursSummaries.filter((row) => !term || normalize(`${row.collaborator} ${row.matricula} ${row.area}`).includes(term));
@@ -241,18 +250,16 @@ export default function GestaoPontoPage() {
     setNotice(`Mensagem de ${draft.dates.length} data(s) aberta no Outlook. Confira e selecione "${rhEmail}" no campo De.`);
   };
 
-  async function processFile(file: File) {
-    if (!file.name.toLowerCase().endsWith(".txt")) { setNotice("Selecione um arquivo TXT exportado pelo sistema de ponto."); return; }
-    if (!contacts.length) { setNotice("Importe primeiro a base de colaboradores e depois o TXT do ponto."); return; }
-    setNotice("Lendo o arquivo...");
+  async function processFiles(files: File[]) {
+    if (!contacts.length) { setNotice("Importe primeiro o Relatório - Cargos e Funções - Empregados.csv e depois os TXT mensais do ponto."); return; }
+    setNotice(`Lendo ${files.length} arquivo(s)...`);
     try {
-      const text = new TextDecoder("windows-1252").decode(await file.arrayBuffer());
-      const parsed = parsePoint(text, contacts, inactiveMatriculas);
+      const parsed = await parseMonthlyFileSet(files, contacts, inactiveMatriculas);
+      const sourceName = `${parsed.sourceFiles.length} arquivo(s) mensal(is) · ${parsed.sourceFiles[0]?.monthLabel || ""} a ${parsed.sourceFiles.at(-1)?.monthLabel || ""}`;
 
-      // Salva no banco de dados (incremental: só insere/atualiza o que mudou)
       setNotice("Salvando no banco de dados...");
       await gestaoPontoApi.importarPonto({
-        fileName: file.name,
+        fileName: sourceName,
         unidade: unitName,
         period: parsed.period,
         people: parsed.people,
@@ -262,25 +269,35 @@ export default function GestaoPontoPage() {
           matricula: b.matricula, collaborator: b.collaborator,
           minutes: b.minutes, label: b.label, critical: b.critical,
           area: b.area, supervisor: b.supervisor, supervisorEmail: b.supervisorEmail,
+          sourceMonth: b.sourceMonth, sourceFile: b.sourceFile,
+        })),
+        monthlyBalances: parsed.monthlyBalances.map((b) => ({
+          matricula: b.matricula, collaborator: b.collaborator,
+          month: b.month, monthLabel: b.monthLabel,
+          initialMinutes: b.initialMinutes, creditMinutes: b.creditMinutes,
+          debitMinutes: b.debitMinutes, accumulatedMinutes: b.accumulatedMinutes,
+          accumulatedLabel: b.accumulatedLabel, critical: b.critical,
+          fileName: b.fileName,
         })),
       });
 
       // Recarrega do banco para pegar status preservados de ocorrências antigas
       const apiData = await gestaoPontoApi.dados();
-      const nextResult = resultFromApi({ ...apiData, lastImport: { fileName: file.name, period: parsed.period, people: parsed.people } });
-      // Preserva os unmatchedPeople desta importação (ephemeral, não vai ao banco)
+      const nextResult = resultFromApi({ ...apiData, lastImport: { fileName: sourceName, period: parsed.period, people: parsed.people } });
       nextResult.unmatched = parsed.unmatched;
       nextResult.unmatchedPeople = parsed.unmatchedPeople;
+      nextResult.sourceFiles = parsed.sourceFiles;
+      nextResult.monthlyBalances = apiData.monthlyBalances || parsed.monthlyBalances;
 
       setResult(nextResult);
       setItems(apiData.occurrences || []);
-      setFileName(file.name);
+      setFileName(sourceName);
 
       const adjustments = (apiData.occurrences || []).filter(needsPointAdjustment).length;
-      setNotice(adjustments > 0 ? `${adjustments} ajuste(s) identificado(s) para ${parsed.people} pessoa(s). Dados salvos no banco.` : "Arquivo lido com sucesso. Nenhum ajuste identificado. Dados salvos no banco.");
+      setNotice(adjustments > 0 ? `${adjustments} ajuste(s) identificado(s) para ${parsed.people} pessoa(s). Dados salvos.` : `${parsed.people} pessoa(s) importada(s). Nenhum ajuste. Dados salvos.`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      setNotice(`Erro ao processar: ${msg.slice(0, 120)}`);
+      setNotice(`Erro ao processar: ${msg.slice(0, 200)}`);
     }
   }
 
@@ -303,7 +320,7 @@ export default function GestaoPontoPage() {
       // Limpa dados de ponto anteriores na UI (não apaga do banco)
       setResult(null); setItems([]); setFileName("");
 
-      setNotice(`Base de ${imported.unidade} importada: ${imported.contacts.length} colaborador(es) ativo(s)${imported.inactiveSkipped ? ` e ${imported.inactiveSkipped} inativo(s) ignorado(s)` : ""}. Importe agora o TXT do ponto.`);
+      setNotice(`Base de ${imported.unidade} importada: ${imported.contacts.length} colaborador(es) ativo(s)${imported.inactiveSkipped ? ` e ${imported.inactiveSkipped} inativo(s) ignorado(s)` : ""}. Importe agora os TXT mensais do ponto.`);
     } catch (error) { setNotice(error instanceof Error ? error.message : "Não foi possível importar a base."); }
   }
 
@@ -336,12 +353,15 @@ export default function GestaoPontoPage() {
 
   function downloadCompleteWorkbook() {
     if (!result) return;
+    const filteredMonthlyBalances = result.monthlyBalances.filter((b) => matchesResponsible(b.supervisor, b.supervisorEmail));
     downloadExcel("gestao-ponto-power-bi", [
       { name: "Base Power BI", rows: dailyExportRows(result, filteredItems) },
       { name: "Carga e Banco Mensal", rows: hoursSummaryExportRows(visibleHoursSummaries, hoursStart, hoursEnd) },
+      { name: "Banco Oficial FPW", rows: monthlyBalanceExportRows(filteredMonthlyBalances) },
       { name: "Banco de Horas", rows: balanceExportRows(filteredBalances) },
       { name: "Ajustes", rows: occurrenceExportRows(adjustmentItems, filteredBalances) },
       { name: "Alertas Prioritários", rows: occurrenceExportRows(allPriorityItems, filteredBalances) },
+      { name: "Arquivos Mensais", rows: responsibleFilter === "all" ? sourceFilesExportRows(result.sourceFiles) : [] },
       { name: "Não Localizados", rows: responsibleFilter === "all" ? unmatchedExportRows(result.unmatchedPeople) : [] },
     ]);
   }
@@ -378,13 +398,13 @@ export default function GestaoPontoPage() {
               <Mail size={13} />{rhEmail ? `RH: ${rhEmail}` : "Configurar e-mail do RH"}
             </button>
             <button onClick={() => baseInputRef.current && (baseInputRef.current.value = "", baseInputRef.current.click())} className="inline-flex items-center gap-2 rounded-lg border border-[#003B8E] bg-white px-3 py-2 text-sm font-bold text-[#003B8E] hover:bg-blue-50">
-              <Users size={15} />Importar base
+              <Users size={15} />Atualizar base FPW
             </button>
             <button disabled={!contacts.length} onClick={() => inputRef.current && (inputRef.current.value = "", inputRef.current.click())} className="inline-flex items-center gap-2 rounded-lg bg-[#003B8E] px-4 py-2 text-sm font-bold text-white hover:bg-[#002d6e] disabled:cursor-not-allowed disabled:bg-slate-300">
-              <UploadCloud size={15} />Importar TXT
+              <UploadCloud size={15} />Importar TXT mensais
             </button>
-            <input ref={inputRef} className="hidden" type="file" accept=".txt,text/plain" onChange={(e: ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) void processFile(f); }} />
-            <input ref={baseInputRef} className="hidden" type="file" accept=".xlsx,.xls" onChange={(e: ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) void importContacts(f); }} />
+            <input ref={inputRef} className="hidden" type="file" accept=".txt,text/plain" multiple onChange={(e: ChangeEvent<HTMLInputElement>) => { const files = Array.from(e.target.files || []); if (files.length) void processFiles(files); }} />
+            <input ref={baseInputRef} className="hidden" type="file" accept=".csv,text/csv" onChange={(e: ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) void importContacts(f); }} />
           </div>
         </div>
         {/* Responsible filter */}
@@ -428,23 +448,23 @@ export default function GestaoPontoPage() {
             <div
               onDragOver={(e: DragEvent<HTMLDivElement>) => { e.preventDefault(); if (contacts.length) setDragging(true); }}
               onDragLeave={() => setDragging(false)}
-              onDrop={(e: DragEvent<HTMLDivElement>) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files?.[0]; if (f) void processFile(f); }}
+              onDrop={(e: DragEvent<HTMLDivElement>) => { e.preventDefault(); setDragging(false); const files = Array.from(e.dataTransfer.files || []); if (files.length) void processFiles(files); }}
               className={`grid min-h-[380px] place-items-center rounded-2xl border-2 border-dashed bg-white p-8 text-center transition ${dragging ? "border-red-400 bg-red-50" : "border-slate-300 hover:border-[#003B8E]"}`}
             >
               <div className="max-w-md">
                 {contacts.length ? (
                   <>
                     <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-blue-50 text-[#003B8E]"><UploadCloud size={28} /></div>
-                    <h3 className="text-xl font-bold">Solte aqui o TXT acumulado do ponto</h3>
-                    <p className="mt-2 text-sm leading-6 text-slate-500">Exporte o TXT desde 01/01/2026 no sistema FPW Gestão de Ponto e importe aqui. Os dados ficam salvos no banco e só o que é novo será adicionado.</p>
-                    <button onClick={() => inputRef.current && (inputRef.current.value = "", inputRef.current.click())} className="mt-5 rounded-lg bg-[#003B8E] px-5 py-3 text-sm font-bold text-white hover:bg-[#002d6e]">Escolher arquivo TXT</button>
+                    <h3 className="text-xl font-bold">Solte aqui os TXT mensais do ponto</h3>
+                    <p className="mt-2 text-sm leading-6 text-slate-500">Selecione de uma vez todos os TXT mensais do FPW — um por competência, de janeiro até ontem. O sistema valida a cobertura e salva no banco.</p>
+                    <button onClick={() => inputRef.current && (inputRef.current.value = "", inputRef.current.click())} className="mt-5 rounded-lg bg-[#003B8E] px-5 py-3 text-sm font-bold text-white hover:bg-[#002d6e]">Escolher arquivos TXT</button>
                   </>
                 ) : (
                   <>
                     <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-amber-50 text-amber-700"><Users size={28} /></div>
-                    <h3 className="text-xl font-bold">Comece pela base da unidade</h3>
-                    <p className="mt-2 text-sm leading-6 text-slate-500">Importe a planilha de colaboradores com matrícula, supervisor e e-mails. Depois importe o TXT do ponto.</p>
-                    <button onClick={() => baseInputRef.current && (baseInputRef.current.value = "", baseInputRef.current.click())} className="mt-5 rounded-lg bg-[#003B8E] px-5 py-3 text-sm font-bold text-white hover:bg-[#002d6e]">Importar base de colaboradores</button>
+                    <h3 className="text-xl font-bold">Comece pela base do FPW</h3>
+                    <p className="mt-2 text-sm leading-6 text-slate-500">Importe o CSV "Relatório - Cargos e Funções - Empregados" exportado do FPwReports. Depois importe os TXT mensais do ponto.</p>
+                    <button onClick={() => baseInputRef.current && (baseInputRef.current.value = "", baseInputRef.current.click())} className="mt-5 rounded-lg bg-[#003B8E] px-5 py-3 text-sm font-bold text-white hover:bg-[#002d6e]">Importar CSV do FPW</button>
                   </>
                 )}
               </div>
@@ -454,7 +474,7 @@ export default function GestaoPontoPage() {
                 <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700"><ShieldCheck size={20} /></div>
                 <h3 className="font-bold">Fluxo de uso</h3>
                 <ol className="mt-3 space-y-3 text-sm text-slate-600">
-                  {["Configure o e-mail do RH", "Importe a base da unidade (Excel)", "Importe o TXT acumulado do FPW", "O sistema detecta ocorrências automaticamente", "Dados salvos no banco — próximo TXT só adiciona o novo", "Abra o rascunho no Outlook Web para enviar"].map((step, i) => (
+                  {["Configure o e-mail do RH", "Importe o CSV do FPwReports (Cargos e Funções)", "Selecione todos os TXT mensais de uma vez (jan até ontem)", "O sistema valida cobertura e detecta ocorrências", "Dados salvos no banco com saldos oficiais FPW", "Abra o rascunho no Outlook Web para enviar"].map((step, i) => (
                     <li key={step} className="flex gap-3"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">{i + 1}</span><span className="pt-0.5">{step}</span></li>
                   ))}
                 </ol>
@@ -555,7 +575,7 @@ export default function GestaoPontoPage() {
                 <div className="max-h-[480px] overflow-auto">
                   <table className="w-full min-w-[900px] text-left text-sm">
                     <thead className="sticky top-0 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
-                      <tr><th className="px-5 py-3">Colaborador</th><th className="px-5 py-3">Mês</th><th className="px-5 py-3">Carga/escala</th><th className="px-5 py-3">Carga prevista</th><th className="px-5 py-3">Horas batidas</th><th className="px-5 py-3">Banco do mês</th><th className="px-5 py-3">Conferência</th></tr>
+                      <tr><th className="px-5 py-3">Colaborador</th><th className="px-5 py-3">Mês</th><th className="px-5 py-3">Carga/escala</th><th className="px-5 py-3">Carga prevista</th><th className="px-5 py-3">Horas batidas</th><th className="px-5 py-3">Banco do mês</th><th className="px-5 py-3">Saldo acumulado oficial FPW</th><th className="px-5 py-3">Conferência</th></tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {visibleHoursSummaries.map((row: HoursSummary) => (
@@ -566,6 +586,12 @@ export default function GestaoPontoPage() {
                           <td className="px-5 py-4"><span className="text-lg font-black text-[#003B8E]">{durationLabel(row.expectedMinutes)}</span><span className="block text-xs text-slate-400">{row.scheduledDays} dia(s)</span></td>
                           <td className="px-5 py-4 text-lg font-black text-slate-800">{durationLabel(row.workedMinutes)}</td>
                           <td className={`px-5 py-4 text-lg font-black ${row.bankMinutes > 0 ? "text-emerald-700" : row.bankMinutes < 0 ? "text-red-700" : "text-slate-600"}`}>{signedDurationLabel(row.bankMinutes)}</td>
+                          <td className="px-5 py-4">
+                            {row.officialAccumulatedMinutes === null ? <span className="text-xs text-slate-400">—</span> : (
+                              <span className={`text-lg font-black ${row.officialCritical ? "text-red-700" : row.officialAccumulatedMinutes > 0 ? "text-emerald-700" : "text-slate-600"}`}>{signedDurationLabel(row.officialAccumulatedMinutes)}</span>
+                            )}
+                            {row.officialCritical && <span className="ml-1 inline-flex rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-bold text-red-700">±16h</span>}
+                          </td>
                           <td className="px-5 py-4">{row.incompleteDays > 0 ? <span className="inline-flex rounded-full bg-red-100 px-2.5 py-1 text-xs font-bold text-red-700">{row.incompleteDays} dia(s) c/ batida incompleta</span> : <span className="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">Cálculo completo</span>}<span className="mt-0.5 block text-xs text-slate-400">{row.nonWorkingDays} folga(s)/feriado(s)</span></td>
                         </tr>
                       ))}
@@ -581,8 +607,8 @@ export default function GestaoPontoPage() {
             <section className="mb-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <h3 className="font-bold">Banco de horas acumulado</h3>
-                  <p className="mt-1 text-sm text-slate-500">Calculado desde 21/08/2026 — horas batidas menos horas previstas. Limite ±16h.</p>
+                  <h3 className="font-bold">Banco de horas acumulado oficial</h3>
+                  <p className="mt-1 text-sm text-slate-500">Saldo BH Acumulado oficial informado pelo FPW na última competência importada. Limite ±16h.</p>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <button onClick={() => downloadExcel("banco-de-horas", [{ name: "Banco de Horas", rows: balanceExportRows(visibleBalances) }])} className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 px-3 py-2.5 text-xs font-bold text-emerald-700 hover:bg-emerald-50"><Download size={13} />Baixar Excel</button>
@@ -608,7 +634,7 @@ export default function GestaoPontoPage() {
                   </tbody>
                 </table>
               </div>
-              <footer className="border-t border-slate-200 bg-slate-50 px-5 py-3 text-xs text-slate-500">{visibleBalances.length} colaborador(es) · saldo desde 21/08/2026</footer>
+              <footer className="border-t border-slate-200 bg-slate-50 px-5 py-3 text-xs text-slate-500">{visibleBalances.length} colaborador(es) · saldo oficial da última competência importada</footer>
             </section>
 
             {/* Notification banner */}
