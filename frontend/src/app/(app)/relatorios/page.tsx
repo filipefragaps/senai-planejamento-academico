@@ -809,7 +809,14 @@ export default function RelatoriosPage() {
                 onChange={(e) => setSelectedEventoHist(e.target.value)}
               >
                 <option value="">Todos os eventos</option>
-                {eventos.map((e: any) => <option key={e.id} value={e.id}>{e.nome_turma}</option>)}
+                {eventos.map((e: any) => {
+                  const base = e.nome_turma || String(e.id);
+                  const curso = e.nome_curso || e.disciplina || "";
+                  const label = curso && !base.toLowerCase().includes(curso.toLowerCase().slice(0, 15))
+                    ? `${base} – ${curso}`
+                    : base;
+                  return <option key={e.id} value={e.id}>{label.toUpperCase()}</option>;
+                })}
               </select>
             </div>
             <button

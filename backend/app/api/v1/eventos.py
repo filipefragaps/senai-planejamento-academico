@@ -52,6 +52,7 @@ async def listar_eventos(
                 "coordenador": o.coordenador,
                 "pasta": o.pasta,
                 "carga_horaria": o.carga_horaria,
+                "nome_curso": o.nome_curso,
             }
             for o in res.scalars().all()
         }
@@ -64,14 +65,16 @@ async def listar_eventos(
     }
     coord_por_codigo: dict[str, str | None] = {}
     modalidade_por_codigo: dict[str, str | None] = {}
+    nome_curso_por_codigo: dict[str, str | None] = {}
     if codigos_sem_oferta:
         res2 = await db.execute(
-            select(OfertaCurso.codigo_evento, OfertaCurso.coordenador, OfertaCurso.modalidade)
+            select(OfertaCurso.codigo_evento, OfertaCurso.coordenador, OfertaCurso.modalidade, OfertaCurso.nome_curso)
             .where(OfertaCurso.codigo_evento.in_(list(codigos_sem_oferta.keys())))
         )
-        for codigo, coord, modalidade in res2.all():
+        for codigo, coord, modalidade, nome_curso in res2.all():
             coord_por_codigo[codigo] = coord
             modalidade_por_codigo[codigo] = modalidade
+            nome_curso_por_codigo[codigo] = nome_curso
 
     out = []
     for e in eventos_list:
@@ -79,7 +82,12 @@ async def listar_eventos(
         curso_data = cursos.get(e.curso_id) or {}
         oferta_data = oferta_map.get(e.oferta_id) if e.oferta_id else {}
         nome_turma_key = (e.nome_turma or "").strip()
-        d["nome_curso"] = curso_data.get("nome")
+        # Nome do curso: curso vinculado → oferta vinculada → oferta via codigo_evento
+        d["nome_curso"] = (
+            curso_data.get("nome")
+            or (oferta_data.get("nome_curso") if oferta_data else None)
+            or nome_curso_por_codigo.get(nome_turma_key)
+        )
         d["area"] = curso_data.get("area") or (oferta_data.get("area") if oferta_data else None)
         # Modalidade: oferta vinculada → fallback via codigo_evento → fallback tipo do curso
         modalidade_efetiva = (
