@@ -17,7 +17,9 @@ from app.core.deps import get_current_user, require_admin
 from app.database import get_db
 from app.models.aula import Aula
 from app.models.contrato import ContratoDocente
+from app.models.curso import Curso
 from app.models.evento import Evento
+from app.models.oferta import OfertaCurso
 from app.models.pagamento import HistoricoPagamento, PagamentoAula
 from app.models.professor import Professor
 from app.models.unidade_curricular import UnidadeCurricular
@@ -423,7 +425,7 @@ async def relatorio_excel(
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    """Gera Excel para envio ao Departamento Financeiro."""
+    """Gera Boletim de Medição (uma aba por docente/contrato) para o Financeiro."""
     if current_user.perfil not in ("admin", "coordenador", "analista"):
         raise HTTPException(403, "Sem permissão")
 
@@ -438,24 +440,52 @@ async def relatorio_excel(
             selectinload(PagamentoAula.aula).selectinload(Aula.evento),
             selectinload(PagamentoAula.aula).selectinload(Aula.unidade_curricular),
             selectinload(PagamentoAula.contrato),
-            selectinload(PagamentoAula.encaminhado_por),
-            selectinload(PagamentoAula.confirmado_por),
         )
         .where(*filtros)
-        .order_by(PagamentoAula.encaminhado_em.desc())
     )
     if professor_id:
         q = q.join(Aula, PagamentoAula.aula_id == Aula.id).where(Aula.professor_id == professor_id)
 
     res = await db.execute(q)
-    pagamentos = res.scalars().all()
+    pagamentos = [p for p in res.scalars().all() if p.aula]
 
-    wb = _gerar_excel_financeiro(pagamentos)
+    # Dados complementares por evento: oferta (curso, turno, modalidade, coordenador) e curso
+    eventos = {p.aula.evento.id: p.aula.evento for p in pagamentos if p.aula.evento}
+    ids_oferta = {e.oferta_id for e in eventos.values() if e.oferta_id}
+    codigos = {_codigo_evento(e.nome_turma) for e in eventos.values() if not e.oferta_id}
+    ofertas_por_id: dict[int, OfertaCurso] = {}
+    ofertas_por_codigo: dict[str, OfertaCurso] = {}
+    if ids_oferta:
+        r = await db.execute(select(OfertaCurso).where(OfertaCurso.id.in_(ids_oferta)))
+        ofertas_por_id = {o.id: o for o in r.scalars().all()}
+    if codigos:
+        r = await db.execute(select(OfertaCurso).where(OfertaCurso.codigo_evento.in_(codigos)))
+        ofertas_por_codigo = {o.codigo_evento: o for o in r.scalars().all()}
+    ids_curso = {e.curso_id for e in eventos.values() if e.curso_id}
+    cursos: dict[int, Curso] = {}
+    if ids_curso:
+        r = await db.execute(select(Curso).where(Curso.id.in_(ids_curso)))
+        cursos = {c.id: c for c in r.scalars().all()}
+
+    info_evento: dict[int, dict] = {}
+    for e in eventos.values():
+        of = ofertas_por_id.get(e.oferta_id) if e.oferta_id else ofertas_por_codigo.get(_codigo_evento(e.nome_turma))
+        curso = cursos.get(e.curso_id) if e.curso_id else None
+        info_evento[e.id] = {
+            "codigo": (of.codigo_evento if of else None) or _codigo_evento(e.nome_turma),
+            "curso": (of.nome_curso if of else None) or (curso.nome if curso else None) or e.disciplina,
+            "turno": of.turno if of else None,
+            "modalidade": (of.modalidade if of else None) or e.tipo_modalidade or e.modalidade,
+            "coordenador": of.coordenador if of else None,
+            "sala": e.sala,
+        }
+
+    wb = _gerar_boletim_medicao(pagamentos, info_evento)
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
 
-    filename = f"pagamentos_{status}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    filename = f"boletim_medicao_{status}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -463,116 +493,215 @@ async def relatorio_excel(
     )
 
 
-def _gerar_excel_financeiro(pagamentos: list[PagamentoAula]):
+def _codigo_evento(nome_turma: str | None) -> str:
+    """'1089644 – SOLDAGEM ...' → '1089644'."""
+    nome = (nome_turma or "").strip()
+    for sep in (" – ", " - ", " — "):
+        if sep in nome:
+            return nome.split(sep, 1)[0].strip()
+    return nome
+
+
+TURNOS = {"manhã": "MATUTINO", "manha": "MATUTINO", "tarde": "VESPERTINO", "noite": "NOTURNO"}
+
+
+def _turno(aula: Aula, turno_oferta: str | None) -> str:
+    t = aula.turno or turno_oferta
+    if not t:
+        h = aula.horario_inicio.hour
+        t = "manhã" if h < 12 else "tarde" if h < 18 else "noite"
+    return TURNOS.get(t.strip().lower(), t.upper())
+
+
+def _hhmm(horas: float) -> str:
+    mins = round(horas * 60)
+    return f"{mins // 60:02d}:{mins % 60:02d}"
+
+
+def _gerar_boletim_medicao(pagamentos: list[PagamentoAula], info_evento: dict[int, dict]):
+    """Uma aba por (docente, contrato) no layout do Boletim de Medição."""
     from openpyxl import Workbook
     from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
 
     wb = Workbook()
-    ws = wb.active
-    ws.title = "Pagamentos"
+    wb.remove(wb.active)
 
-    AZUL = "003B8E"
-    CINZA = "F5F5F5"
-    VERDE = "C6EFCE"
-    AMARELO = "FFEB9C"
+    AZUL = PatternFill("solid", fgColor="4472C4")
+    thin = Side(style="thin", color="000000")
+    medium = Side(style="medium", color="000000")
+    BORDA = Border(left=thin, right=thin, top=thin, bottom=thin)
+    F = Font(name="Calibri", size=8)
+    FB = Font(name="Calibri", size=8, bold=True)
+    CENTRO = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    ESQ = Alignment(horizontal="left", vertical="center")
+    DIR = Alignment(horizontal="right", vertical="center")
+    MOEDA = '"R$" #,##0.00'
 
-    header_fill = PatternFill("solid", fgColor=AZUL)
-    header_font = Font(bold=True, color="FFFFFF", size=10)
-    cinza_fill = PatternFill("solid", fgColor=CINZA)
-    verde_fill = PatternFill("solid", fgColor=VERDE)
-    amarelo_fill = PatternFill("solid", fgColor=AMARELO)
-    thin = Side(style="thin", color="CCCCCC")
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    # A=nº  B=data  C=evento  D=curso  E=CH  F=turno  G=UC  H=ambiente  I=unit  J=total  K=status
+    LARGURAS = [3, 20, 10, 30, 14, 16, 48, 18, 13, 14, 18]
 
-    COLS = [
-        ("Professor", 28),
-        ("Tipo", 18),
-        ("Nº Contrato", 20),
-        ("Data Aula", 12),
-        ("Evento / Turma", 30),
-        ("Disciplina / UC", 30),
-        ("Horas", 8),
-        ("Valor Hora (R$)", 14),
-        ("Valor Aula (R$)", 14),
-        ("Status", 14),
-        ("Encaminhado por", 22),
-        ("Encaminhado em", 18),
-        ("Confirmado por", 22),
-    ]
+    def celula(ws, ref, valor=None, font=F, align=CENTRO, fmt=None, fill=None, borda=True):
+        c = ws[ref]
+        c.value = valor
+        c.font = font
+        c.alignment = align
+        if fmt:
+            c.number_format = fmt
+        if fill:
+            c.fill = fill
+        if borda:
+            c.border = BORDA
+        return c
 
-    for col_idx, (header, width) in enumerate(COLS, 1):
-        cell = ws.cell(row=1, column=col_idx, value=header)
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal="center", vertical="center")
-        cell.border = border
-        ws.column_dimensions[get_column_letter(col_idx)].width = width
+    def mesclar(ws, rng, valor=None, borda=True, **kw):
+        ws.merge_cells(rng)
+        celula(ws, rng.split(":")[0], valor, borda=borda, **kw)
+        if borda:
+            for row in ws[rng]:
+                for c in row:
+                    c.border = BORDA
 
-    ws.row_dimensions[1].height = 20
+    grupos: dict[tuple, list[PagamentoAula]] = {}
+    for p in pagamentos:
+        grupos.setdefault((p.aula.professor_id, p.contrato_id), []).append(p)
 
-    total_horas = 0.0
-    total_valor = 0.0
+    nomes_usados: set[str] = set()
+    ordenados = sorted(
+        grupos.values(),
+        key=lambda itens: itens[0].aula.professor.nome if itens[0].aula.professor else "",
+    )
+    for itens in ordenados:
+        itens.sort(key=lambda p: (p.aula.data, p.aula.horario_inicio))
+        prof = itens[0].aula.professor
+        contrato = itens[0].contrato
+        prof_nome = (prof.nome if prof else "—").upper()
 
-    for row_idx, p in enumerate(pagamentos, 2):
-        aula = p.aula
-        prof = aula.professor if aula else None
-        evento = aula.evento if aula else None
-        uc_nome = (
-            aula.unidade_curricular.nome if aula and aula.unidade_curricular
-            else (aula.uc_nome_original if aula else None)
-        ) or "—"
+        # Nome de aba único (máx. 31 chars, sem caracteres inválidos)
+        bruto = f"{prof_nome[:22]} {contrato.numero_contrato if contrato else ''}"
+        base = "".join(ch for ch in bruto if ch not in "[]:*?/\\").strip()[:31] or "BM"
+        nome_aba, n = base, 2
+        while nome_aba in nomes_usados:
+            nome_aba = f"{base[:27]} ({n})"
+            n += 1
+        nomes_usados.add(nome_aba)
 
-        horas = float(p.horas)
-        valor = float(p.valor)
-        total_horas += horas
-        total_valor += valor
+        ws = wb.create_sheet(nome_aba)
+        ws.sheet_view.showGridLines = False
+        for i, w in enumerate(LARGURAS, 1):
+            ws.column_dimensions[get_column_letter(i)].width = w
 
-        fill = verde_fill if p.status == "pago" else amarelo_fill
+        infos = [info_evento.get(p.aula.evento_id, {}) for p in itens]
+        coordenador = next((i["coordenador"] for i in infos if i.get("coordenador")), None)
+        modalidade = next((i["modalidade"] for i in infos if i.get("modalidade")), "")
+        eventos_aulas = [p.aula.evento for p in itens if p.aula.evento]
+        if contrato:
+            valor_hora = float(contrato.valor_hora)
+        else:
+            h0 = float(itens[0].horas)
+            valor_hora = round(float(itens[0].valor) / h0, 2) if h0 else 0.0
+        valor_contrato = (
+            round(float(contrato.valor_hora) * float(contrato.total_horas_previstas), 2) if contrato else None
+        )
+        total_medicao = round(sum(float(p.valor) for p in itens), 2)
+        data_ini_contrato = min((e.data_inicio for e in eventos_aulas), default=None)
+        data_fim_contrato = max((e.data_fim for e in eventos_aulas), default=None)
 
-        valores = [
-            prof.nome if prof else "—",
-            prof.tipo if prof else "—",
-            p.contrato.numero_contrato if p.contrato else "—",
-            aula.data.strftime("%d/%m/%Y") if aula else "—",
-            evento.nome_turma if evento else "—",
-            uc_nome,
-            horas,
-            float(p.contrato.valor_hora) if p.contrato else 0,
-            valor,
-            p.status.title(),
-            p.encaminhado_por.nome if p.encaminhado_por else "—",
-            p.encaminhado_em.strftime("%d/%m/%Y %H:%M") if p.encaminhado_em else "—",
-            p.confirmado_por.nome if p.confirmado_por else "—",
+        def fmt_d(d):
+            return d.strftime("%d/%m/%Y") if d else ""
+
+        # ── Cabeçalho ──
+        mesclar(ws, "B1:K1", "BOLETIM DE MEDIÇÃO", font=FB, fill=AZUL)
+        cab = [
+            ("DOCENTE:", prof_nome, "VALOR DO CONTRATO:", valor_contrato,
+             "DATA INICIAL:", fmt_d(data_ini_contrato)),
+            ("CONTRATO:", contrato.numero_contrato if contrato else "", "VALOR DA MEDIÇÃO:", total_medicao,
+             "DATA FINAL:", fmt_d(data_fim_contrato)),
+            ("SOLICITAÇÃO DE COMPRA:", "", "MODALIDADE:", (modalidade or "").upper(),
+             "SITUAÇÃO:", "EM ANDAMENTO" if (contrato is None or contrato.ativo) else "ENCERRADO"),
+            ("VALOR HORA AULA:", valor_hora, "TIPO DE CONTRATO:", (prof.tipo if prof else "").upper(),
+             "NUMERO DO BM:", ""),
         ]
+        for i, (l1, v1, l2, v2, l3, v3) in enumerate(cab):
+            r = 2 + i
+            celula(ws, f"B{r}", l1, font=FB, align=ESQ)
+            mesclar(ws, f"C{r}:D{r}", v1, fmt=MOEDA if isinstance(v1, float) else None)
+            mesclar(ws, f"E{r}:F{r}", l2, font=FB, align=ESQ)
+            celula(ws, f"G{r}", v2, fmt=MOEDA if isinstance(v2, float) else None)
+            celula(ws, f"H{r}", l3, font=FB, align=ESQ)
+            celula(ws, f"I{r}", v3)
 
-        for col_idx, val in enumerate(valores, 1):
-            cell = ws.cell(row=row_idx, column=col_idx, value=val)
-            cell.fill = fill
-            cell.border = border
-            cell.alignment = Alignment(vertical="center")
-            if col_idx in (7, 8, 9):
-                cell.alignment = Alignment(horizontal="right", vertical="center")
-                if col_idx in (8, 9):
-                    cell.number_format = "R$ #,##0.00"
+        # ── Período de medição ──
+        mesclar(ws, "B7:K7", "PERÍODO DE MEDIÇÃO", font=FB)
+        celula(ws, "B8", "DATA INICIAL:", font=FB, align=ESQ)
+        mesclar(ws, "C8:K8", fmt_d(itens[0].aula.data), align=ESQ)
+        celula(ws, "B9", "DATA FINAL:", font=FB, align=ESQ)
+        mesclar(ws, "C9:K9", fmt_d(itens[-1].aula.data), align=ESQ)
 
-    # Linha de total
-    total_row = len(pagamentos) + 2
-    total_fill = PatternFill("solid", fgColor="D6E4FF")
-    total_font = Font(bold=True, size=10)
-    ws.cell(row=total_row, column=1, value="TOTAL").fill = total_fill
-    ws.cell(row=total_row, column=1).font = total_font
-    cell_h = ws.cell(row=total_row, column=7, value=round(total_horas, 2))
-    cell_h.fill = total_fill
-    cell_h.font = total_font
-    cell_h.alignment = Alignment(horizontal="right")
-    cell_v = ws.cell(row=total_row, column=9, value=round(total_valor, 2))
-    cell_v.fill = total_fill
-    cell_v.font = total_font
-    cell_v.number_format = "R$ #,##0.00"
-    cell_v.alignment = Alignment(horizontal="right")
+        # ── Tabela de aulas ──
+        HDR = 11
+        titulos = ["DATA", "EVENTO", "CURSO", "CARGA HORARIA", "TURNO", "AULA / UC",
+                   "AMBIENTE", "R$ UNIT.", "R$ TOTAL", "STATUS PAGAMENTO"]
+        for j, t in enumerate(titulos, 2):
+            celula(ws, f"{get_column_letter(j)}{HDR}", t, font=FB, align=ESQ if j in (2, 10, 11) else CENTRO)
 
-    ws.freeze_panes = "A2"
-    ws.auto_filter.ref = f"A1:{get_column_letter(len(COLS))}1"
+        for k, (p, info) in enumerate(zip(itens, infos), 1):
+            r = HDR + k
+            aula = p.aula
+            uc = (aula.unidade_curricular.nome if aula.unidade_curricular else aula.uc_nome_original) or "—"
+            ambiente = aula.ambiente or aula.sala or info.get("sala") or ""
+            horas = float(p.horas)
+            unit = round(float(p.valor) / horas, 2) if horas else valor_hora
+            celula(ws, f"A{r}", k, align=DIR, borda=False)
+            celula(ws, f"B{r}", fmt_d(aula.data), align=DIR)
+            celula(ws, f"C{r}", info.get("codigo") or "")
+            celula(ws, f"D{r}", (info.get("curso") or "").upper())
+            celula(ws, f"E{r}", _hhmm(horas))
+            celula(ws, f"F{r}", _turno(aula, info.get("turno")))
+            celula(ws, f"G{r}", uc.upper())
+            celula(ws, f"H{r}", ambiente.upper())
+            celula(ws, f"I{r}", unit, align=DIR, fmt=MOEDA)
+            celula(ws, f"J{r}", float(p.valor), align=DIR, fmt=MOEDA)
+            celula(ws, f"K{r}", {"pago": "PAGO", "encaminhado": "ENCAMINHADO"}.get(p.status, p.status.upper()), align=ESQ)
+
+        ult = HDR + len(itens)
+        tot = ult + 1
+        celula(ws, f"I{tot}", "TOTAL:", font=FB, align=ESQ)
+        celula(ws, f"J{tot}", f"=SUM(J{HDR + 1}:J{ult})", font=FB, align=DIR, fmt=MOEDA)
+
+        # ── Assinaturas ──
+        s = tot + 3
+        mesclar(ws, f"B{s}:G{s}", "RESPONSÁVEL PELA APROVAÇÃO", borda=False)
+        for col in "BCDEFG":
+            ws[f"{col}{s}"].border = Border(top=medium)
+
+        a = s + 3
+        nome_coord = (coordenador or "").strip()
+        ws.row_dimensions[a].height = 32
+        # Assinatura "manuscrita" (fonte cursiva) do coordenador do evento
+        assinatura = " ".join(
+            w.lower() if w.lower() in ("da", "de", "do", "das", "dos", "e") else w.capitalize()
+            for w in nome_coord.split()
+        )
+        mesclar(ws, f"B{a}:D{a}", assinatura or None, borda=False,
+                font=Font(name="Segoe Script", size=16, color="404040"),
+                align=Alignment(horizontal="center", vertical="bottom"))
+        mesclar(ws, f"B{a + 1}:D{a + 1}", nome_coord.upper() or "COORDENADOR(A)", borda=False)
+        mesclar(ws, f"B{a + 2}:D{a + 2}", "COORDENADOR(A)", borda=False)
+        mesclar(ws, f"H{a + 1}:K{a + 1}", prof_nome, borda=False)
+        mesclar(ws, f"H{a + 2}:K{a + 2}", "DOCENTE", borda=False)
+        for col in "BCDHIJK":
+            ws[f"{col}{a + 1}"].border = Border(top=medium)
+
+        # Impressão: paisagem, ajustado à largura da página
+        ws.page_setup.orientation = "landscape"
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 0
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.print_area = f"A1:K{a + 2}"
+
+    if not wb.sheetnames:
+        ws = wb.create_sheet("Boletim")
+        ws["A1"] = "Nenhum pagamento encontrado para os filtros selecionados."
 
     return wb

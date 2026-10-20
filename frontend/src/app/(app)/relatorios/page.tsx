@@ -199,6 +199,7 @@ export default function RelatoriosPage() {
   const [modalReverter, setModalReverter] = useState<{ open: boolean; pagamentoId: number | null; obs: string }>({ open: false, pagamentoId: null, obs: "" });
   const [loadingExcelPag, setLoadingExcelPag] = useState(false);
   const [abaConfirmar, setAbaConfirmar] = useState<"encaminhado" | "pago">("encaminhado");
+  const [profConfirmar, setProfConfirmar] = useState("");
 
   const professoresPag = (professores as any[]).filter(p => TIPOS_CONTRATO_PAG.includes(p.tipo));
 
@@ -233,6 +234,20 @@ export default function RelatoriosPage() {
   });
 
   const contratoSelecionado = (contratosPag as any[]).find(c => c.id === +contratoIdSel);
+
+  // Filtro por docente na seção Confirmar Pagamentos
+  const encaminhadosFiltrados = (encaminhados as any[]).filter(
+    (e: any) => !profConfirmar || e.professor_id === +profConfirmar
+  );
+  const pagasFiltradas = (aulasPagas as any[]).filter(
+    (a: any) => !profConfirmar || a.professor_id === +profConfirmar
+  );
+  const docentesConfirmar = (() => {
+    const lista = abaConfirmar === "encaminhado" ? (encaminhados as any[]) : (aulasPagas as any[]);
+    const mapa = new Map<number, string>();
+    lista.forEach((x: any) => { if (x.professor_id) mapa.set(x.professor_id, x.professor_nome); });
+    return [...mapa.entries()].sort((a, b) => (a[1] || "").localeCompare(b[1] || ""));
+  })();
 
   // Seções colapsáveis
   const [encaminharAberto, setEncaminharAberto] = useState(true);
@@ -342,7 +357,7 @@ export default function RelatoriosPage() {
   }
 
   function toggleTodosEncaminhados() {
-    const ids = (encaminhados as any[]).map((e: any) => e.id);
+    const ids = encaminhadosFiltrados.map((e: any) => e.id);
     if (ids.every(id => encaminhadosSel.has(id))) {
       setEncaminhadosSel(new Set());
     } else {
@@ -354,11 +369,10 @@ export default function RelatoriosPage() {
     setLoadingExcelPag(true);
     try {
       const res = await pagamentosApi.relatorioExcel({
-        ...(profPag && { professor_id: +profPag }),
-        ...(dateIniPag && { data_inicio: dateIniPag }),
-        ...(dateFimPag && { data_fim: dateFimPag }),
+        status: abaConfirmar,
+        ...(profConfirmar && { professor_id: +profConfirmar }),
       });
-      downloadBlob(res.data, "controle_pagamentos.xlsx");
+      downloadBlob(res.data, "boletim_medicao.xlsx");
       toast.success("Relatório exportado!");
     } catch {
       toast.error("Erro ao exportar relatório de pagamentos");
@@ -1119,11 +1133,28 @@ export default function RelatoriosPage() {
             </button>
           </div>
 
+          {/* Filtro por docente (quando houver mais de um) */}
+          {(docentesConfirmar.length > 1 || profConfirmar) && (
+            <div className="flex items-center gap-2 mb-4">
+              <label className="text-xs text-gray-500 font-medium whitespace-nowrap">Docente:</label>
+              <select
+                className="input text-sm py-1 max-w-xs"
+                value={profConfirmar}
+                onChange={(e) => { setProfConfirmar(e.target.value); setEncaminhadosSel(new Set()); }}
+              >
+                <option value="">Todos os docentes ({docentesConfirmar.length})</option>
+                {docentesConfirmar.map(([id, nome]) => (
+                  <option key={id} value={id}>{nome}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* ── Aba Encaminhados ── */}
           {abaConfirmar === "encaminhado" && (
             loadingEnc ? (
               <p className="text-sm text-gray-400 py-2">Carregando...</p>
-            ) : (encaminhados as any[]).length === 0 ? (
+            ) : encaminhadosFiltrados.length === 0 ? (
               <div className="flex items-center gap-2 text-gray-400 text-sm py-4">
                 <AlertCircle className="h-4 w-4" />
                 Nenhum pagamento aguardando confirmação.
@@ -1134,7 +1165,7 @@ export default function RelatoriosPage() {
                   <div className="flex items-center gap-3 mb-3 bg-green-50 border border-green-200 rounded-lg p-3">
                     <span className="text-sm text-green-700 flex-1">
                       {encaminhadosSel.size} pagamento(s) selecionado(s) — total:{" "}
-                      <strong>{fmt((encaminhados as any[]).filter(e => encaminhadosSel.has(e.id)).reduce((s, e: any) => s + e.valor, 0))}</strong>
+                      <strong>{fmt(encaminhadosFiltrados.filter((e: any) => encaminhadosSel.has(e.id)).reduce((s, e: any) => s + e.valor, 0))}</strong>
                     </span>
                     <button
                       onClick={() => confirmarMutation.mutate([...encaminhadosSel])}
@@ -1156,7 +1187,7 @@ export default function RelatoriosPage() {
                             <input
                               type="checkbox"
                               onChange={toggleTodosEncaminhados}
-                              checked={(encaminhados as any[]).length > 0 && (encaminhados as any[]).every((e: any) => encaminhadosSel.has(e.id))}
+                              checked={encaminhadosFiltrados.length > 0 && encaminhadosFiltrados.every((e: any) => encaminhadosSel.has(e.id))}
                               className="rounded"
                             />
                           </th>
@@ -1172,7 +1203,7 @@ export default function RelatoriosPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {(encaminhados as any[]).map((enc: any, idx: number) => (
+                      {encaminhadosFiltrados.map((enc: any, idx: number) => (
                         <tr key={enc.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                           {isAdmin && (
                             <td className="px-3 py-2 border-b">
@@ -1233,7 +1264,7 @@ export default function RelatoriosPage() {
                       <tr className="bg-gray-100 font-bold">
                         <td colSpan={isAdmin ? 6 : 5} className="px-3 py-2 border-t text-gray-700">Total</td>
                         <td className="px-3 py-2 border-t text-right text-amber-700 tabular-nums">
-                          {fmt((encaminhados as any[]).reduce((s, e: any) => s + e.valor, 0))}
+                          {fmt(encaminhadosFiltrados.reduce((s, e: any) => s + e.valor, 0))}
                         </td>
                         <td colSpan={isAdmin ? 2 : 1} />
                       </tr>
@@ -1248,7 +1279,7 @@ export default function RelatoriosPage() {
           {abaConfirmar === "pago" && (
             loadingPagos ? (
               <p className="text-sm text-gray-400 py-2">Carregando...</p>
-            ) : (aulasPagas as any[]).length === 0 ? (
+            ) : pagasFiltradas.length === 0 ? (
               <div className="flex items-center gap-2 text-gray-400 text-sm py-4">
                 <AlertCircle className="h-4 w-4" />
                 Nenhum pagamento confirmado encontrado.
@@ -1268,7 +1299,7 @@ export default function RelatoriosPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(aulasPagas as any[]).map((a: any, idx: number) => (
+                    {pagasFiltradas.map((a: any, idx: number) => (
                       <tr key={a.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                         <td className="px-3 py-2 border-b font-mono text-gray-600 whitespace-nowrap">
                           {a.data?.replace(/(\d{4})-(\d{2})-(\d{2})/, "$3/$2/$1")}
@@ -1307,7 +1338,7 @@ export default function RelatoriosPage() {
                     <tr className="bg-gray-100 font-bold">
                       <td colSpan={isAdmin ? 5 : 4} className="px-3 py-2 border-t text-gray-700">Total</td>
                       <td className="px-3 py-2 border-t text-right text-green-700 tabular-nums">
-                        {fmt((aulasPagas as any[]).reduce((s, a: any) => s + (a.valor_pagamento || 0), 0))}
+                        {fmt(pagasFiltradas.reduce((s, a: any) => s + (a.valor_pagamento || 0), 0))}
                       </td>
                       {isAdmin && <td />}
                     </tr>
