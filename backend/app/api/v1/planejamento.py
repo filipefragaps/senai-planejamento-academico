@@ -2247,13 +2247,18 @@ async def totem_display(
 
     import re as _re
     eventos: dict[int, str] = {}
+    codigos: dict[int, str] = {}
     if ev_ids:
-        res = await db.execute(select(Evento.id, Evento.disciplina).where(Evento.id.in_(ev_ids)))
-        # Remove sufixo numérico trailing (ex: "- 18204") para exibir só o nome do curso
-        eventos = {
-            r[0]: _re.sub(r'\s*-\s*\d+\s*$', '', r[1] or '').strip()
-            for r in res.all()
-        }
+        res = await db.execute(
+            select(Evento.id, Evento.disciplina, Evento.nome_turma, OfertaCurso.codigo_evento)
+            .outerjoin(OfertaCurso, Evento.oferta_id == OfertaCurso.id)
+            .where(Evento.id.in_(ev_ids))
+        )
+        for ev_id, disciplina, nome_turma, codigo_oferta in res.all():
+            # Remove sufixo numérico trailing (ex: "- 18204") para exibir só o nome do curso
+            eventos[ev_id] = _re.sub(r'\s*-\s*\d+\s*$', '', disciplina or '').strip()
+            # Número do evento: código da oferta vinculada → início do nome_turma ("1089644 – SOLDAGEM...")
+            codigos[ev_id] = codigo_oferta or _re.split(r'\s+[–—-]\s+', (nome_turma or '').strip(), maxsplit=1)[0]
 
     def _turma_label(evento_id: int | None) -> str:
         if not evento_id:
@@ -2265,6 +2270,7 @@ async def totem_display(
             "id": a.id,
             "horario_inicio": str(a.horario_inicio)[:5] if a.horario_inicio else None,
             "horario_fim": str(a.horario_fim)[:5] if a.horario_fim else None,
+            "evento": codigos.get(a.evento_id, "") if a.evento_id else "",
             "turma": _turma_label(a.evento_id),
             "uc_nome": ucs.get(a.unidade_curricular_id) or a.uc_nome_original or "",
             "professor": profs.get(a.professor_id) or "",

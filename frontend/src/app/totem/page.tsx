@@ -11,6 +11,7 @@ interface AulaTotem {
   id: number;
   horario_inicio: string | null;
   horario_fim: string | null;
+  evento: string;
   turma: string;
   uc_nome: string;
   professor: string;
@@ -60,8 +61,8 @@ const STATUS_STYLE: Record<string, { bg: string; text: string; label: string }> 
   Remarcada:   { bg: "#b45309", text: "#fff", label: "REMARCADA" },
 };
 
-// Responsive grid: HORÁRIO | TURMA | UC | ETAPA | PROFESSOR | SALA | STATUS
-const GRID_COLS = "clamp(100px,9vw,180px) 1fr 1.4fr clamp(55px,5.5vw,105px) 1fr clamp(85px,8vw,155px) clamp(90px,9vw,148px)";
+// Responsive grid: HORÁRIO | EVENTO | TURMA | UC | ETAPA | PROFESSOR | SALA | STATUS
+const GRID_COLS = "clamp(100px,9vw,180px) clamp(70px,6.5vw,125px) 1fr 1.4fr clamp(55px,5.5vw,105px) 1fr clamp(85px,8vw,155px) clamp(90px,9vw,148px)";
 
 function TotemContent() {
   const params = useSearchParams();
@@ -299,7 +300,7 @@ function TotemContent() {
           gap: "clamp(0.3rem,0.5vw,0.75rem)",
           alignItems: "center",
         }}>
-          {["HORÁRIO", "TURMA", "DISCIPLINA / UC", "ETAPA", "PROFESSOR", "SALA", "STATUS"].map((h) => (
+          {["HORÁRIO", "EVENTO", "TURMA", "DISCIPLINA / UC", "ETAPA", "PROFESSOR", "SALA", "STATUS"].map((h) => (
             <div key={h} style={{ padding: "clamp(0.4rem,0.7vh,0.65rem) clamp(0.3rem,0.4vw,0.6rem)", fontSize: "clamp(0.55rem,0.7vw,0.75rem)", fontWeight: 700, color: "#64748b", letterSpacing: "0.1em", textTransform: "uppercase" }}>
               {h}
             </div>
@@ -379,8 +380,11 @@ function TotemContent() {
                     {st.label}
                   </span>
                 </div>
-                {/* Row 2: turma */}
+                {/* Row 2: evento + turma */}
                 <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#e2e8f0", lineHeight: 1.3, marginBottom: "0.2rem" }}>
+                  {a.evento && (
+                    <span style={{ fontFamily: "'Courier New', monospace", fontSize: "0.8rem", color: "#f0b429", marginRight: "0.4rem" }}>{a.evento}</span>
+                  )}
                   {a.turma || "—"}
                   {a.subturma && <span style={{ fontSize: "0.72rem", color: "#a78bfa", marginLeft: "0.4rem" }}>Sub: {a.subturma}</span>}
                 </div>
@@ -419,6 +423,13 @@ function TotemContent() {
               {/* Horário */}
               <div style={{ fontFamily: "'Courier New', monospace", fontSize: "clamp(0.85rem,1.1vw,1.3rem)", fontWeight: 700, color: isNow ? "#f0b429" : "#e2e8f0", letterSpacing: "0.02em", lineHeight: 1.2 }}>
                 {a.horario_inicio}<br /><span style={{ fontSize: "clamp(0.7rem,0.9vw,1.05rem)", color: isNow ? "#f0b429cc" : "#94a3b8" }}>– {a.horario_fim}</span>
+              </div>
+
+              {/* Evento */}
+              <div>
+                <div style={{ fontFamily: "'Courier New', monospace", fontSize: "clamp(0.75rem,1vw,1.15rem)", fontWeight: 700, color: "#f0b429", wordBreak: "break-all", lineHeight: 1.3 }}>
+                  {a.evento || "—"}
+                </div>
               </div>
 
               {/* Turma */}
