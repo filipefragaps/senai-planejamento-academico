@@ -23,6 +23,9 @@ import {
   Clock3,
   ChevronDown,
   FileSignature,
+  Target,
+  ListChecks,
+  Settings2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clearAuth, getCurrentUser } from "@/lib/auth";
@@ -72,6 +75,14 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/contratos-virtuais",   label: "Contratos Virtuais",    icon: FileSignature,   perfis: ["admin"] },
       { href: "/relatorios",           label: "Relatórios",            icon: BarChart3,       perfis: ["admin", "coordenador", "analista", "secretario"] },
       { href: "/historico",    label: "Histórico",       icon: History,    perfis: ["admin"] },
+    ],
+  },
+  {
+    label: "Comercial",
+    items: [
+      { href: "/crm/leads",  label: "Leads",              icon: ListChecks, perfis: ["admin", "vendedor"] },
+      { href: "/crm",        label: "Painel CRM",         icon: Target,     perfis: ["admin", "vendedor"] },
+      { href: "/crm/config", label: "Configurações CRM",  icon: Settings2,  perfis: ["admin"] },
     ],
   },
   {
@@ -146,7 +157,7 @@ export function Sidebar() {
                       href={href}
                       className={cn(
                         "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                        pathname.startsWith(href)
+                        (href === "/crm" ? pathname === href : pathname.startsWith(href))
                           ? "bg-white/20 text-white"
                           : "text-blue-200 hover:bg-white/10 hover:text-white"
                       )}

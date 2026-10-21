@@ -18,6 +18,7 @@ from app.models.grupo_aula import GrupoAula
 from app.models.ponto import PontoMensal
 from app.models.gestao_ponto import GpColaborador, GpRegistroDiario, GpOcorrencia, GpBancoHoras, GpImportacao
 from app.models.contrato_virtual import ContratoVirtual
+from app.models.crm import CrmCampanha, CrmLead, CrmHistorico, CrmConfig
 
 __all__ = [
     "Usuario",
@@ -45,4 +46,8 @@ __all__ = [
     "GpBancoHoras",
     "GpImportacao",
     "ContratoVirtual",
+    "CrmCampanha",
+    "CrmLead",
+    "CrmHistorico",
+    "CrmConfig",
 ]

@@ -523,3 +523,34 @@ export function downloadBlob(data: Blob, filename: string) {
   a.click();
   window.URL.revokeObjectURL(url);
 }
+
+// CRM de Leads
+export type CrmFiltros = {
+  busca?: string; campanha_id?: number; status?: string; temperatura?: string;
+  vendedor_id?: number; oferta_id?: number; data_inicio?: string; data_fim?: string;
+  alerta?: string; ordem?: string; page?: number; page_size?: number;
+};
+
+export const crmApi = {
+  opcoes: () => api.get("/crm/opcoes").then((r) => r.data),
+  leads: (params?: CrmFiltros) => api.get("/crm/leads", { params }).then((r) => r.data),
+  lead: (id: number) => api.get(`/crm/leads/${id}`).then((r) => r.data),
+  criar: (data: any) => api.post("/crm/leads", data).then((r) => r.data),
+  atualizar: (id: number, data: any) => api.patch(`/crm/leads/${id}`, data).then((r) => r.data),
+  excluir: (id: number) => api.delete(`/crm/leads/${id}`),
+  atribuir: (lead_ids: number[], vendedor_id: number | null) =>
+    api.post("/crm/leads/atribuir", { lead_ids, vendedor_id }).then((r) => r.data),
+  distribuir: () => api.post("/crm/leads/distribuir").then((r) => r.data),
+  importarCsv: (arquivo: File) => {
+    const form = new FormData();
+    form.append("arquivo", arquivo);
+    return api.post("/crm/leads/importar-csv", form, { headers: { "Content-Type": "multipart/form-data" } }).then((r) => r.data);
+  },
+  exportar: (params?: CrmFiltros) => api.get("/crm/leads/exportar", { params, responseType: "blob" }),
+  dashboard: (params?: CrmFiltros) => api.get("/crm/dashboard", { params }).then((r) => r.data),
+  campanhas: () => api.get("/crm/campanhas").then((r) => r.data),
+  criarCampanha: (data: any) => api.post("/crm/campanhas", data).then((r) => r.data),
+  atualizarCampanha: (id: number, data: any) => api.put(`/crm/campanhas/${id}`, data).then((r) => r.data),
+  config: () => api.get("/crm/config").then((r) => r.data),
+  salvarConfig: (data: { horas_alerta_novo: number }) => api.put("/crm/config", data).then((r) => r.data),
+};

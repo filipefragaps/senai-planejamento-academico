@@ -12,6 +12,7 @@ const ALLOWED_ROUTES: Record<string, string[]> = {
   professor:   ["/cronograma", "/perfil"],
   atendente:   ["/ofertas", "/cursos", "/perfil"],
   consultor:   ["/ofertas", "/cursos", "/perfil"],
+  vendedor:    ["/crm", "/perfil"],
 };
 
 const PERFIL_HOME: Record<string, string> = {
@@ -22,6 +23,7 @@ const PERFIL_HOME: Record<string, string> = {
   professor:   "/cronograma",
   atendente:   "/ofertas",
   consultor:   "/ofertas",
+  vendedor:    "/crm/leads",
 };
 
 export function middleware(request: NextRequest) {
