@@ -40,16 +40,18 @@ class TestStatusRegencia:
         assert calcular_status_regencia(0.901, "Mensalista") == "Sobrecarga"
         assert calcular_status_regencia(1.20, "Mensalista") == "Sobrecarga"
 
-    def test_horista_baixa_carga(self):
-        assert calcular_status_regencia(0.0, "Horista") == "Baixa carga"
-        assert calcular_status_regencia(0.49, "Horista") == "Baixa carga"
+    # Horista: CH contratada é o mínimo; regência vem limitada a 100% e não há sobrecarga
+    def test_horista_critico(self):
+        assert calcular_status_regencia(0.0, "Horista") == "Critico"
+        assert calcular_status_regencia(0.49, "Horista") == "Critico"
 
-    def test_horista_ok(self):
-        assert calcular_status_regencia(0.50, "Horista") == "OK"
-        assert calcular_status_regencia(0.89, "Horista") == "OK"
+    def test_horista_alerta_abaixo_do_minimo(self):
+        assert calcular_status_regencia(0.50, "Horista") == "Alerta"
+        assert calcular_status_regencia(0.91, "Horista") == "Alerta"
+        assert calcular_status_regencia(0.999, "Horista") == "Alerta"
 
-    def test_horista_alta_carga(self):
-        assert calcular_status_regencia(0.91, "Horista") == "Alta carga"
+    def test_horista_ok_ao_cumprir_minimo(self):
+        assert calcular_status_regencia(1.0, "Horista") == "OK"
 
     def test_limites_constantes_coerentes(self):
         """Garante que as constantes do módulo são consistentes com os limites testados."""
@@ -76,8 +78,8 @@ class TestCalcularRegenciaProfessor:
 
     async def test_mensalista_com_aulas_calcula_percentual(self, db_session, professor_mensalista):
         """
-        40h/sem × 4 semanas = 160h no período.
-        3 aulas de 2h cada = 6h → 3,75%.
+        40h/sem × 4,6 semanas úteis = 184h no período.
+        3 aulas de 2h cada = 6h → 3,26%.
         """
         from app.models.aula import Aula
         from app.models.evento import Evento
@@ -115,8 +117,8 @@ class TestCalcularRegenciaProfessor:
         result = await calcular_regencia_professor(professor_mensalista, db_session, inicio, fim)
 
         assert result["horas_ministradas"] == pytest.approx(6.0, abs=0.01)
-        # (31-1=30 dias) / 7 = 4.28 semanas × 40h = 171.4h; 6/171.4 ≈ 3.5%
-        semanas = 30 / 7
+        # Jan/2025 tem 23 dias úteis (seg–sex) → 23/5 = 4,6 semanas × 40h = 184h; 6/184 ≈ 3,26%
+        semanas = 23 / 5
         esperado = round(6.0 / (40 * semanas) * 100, 2)
         assert result["percentual_regencia"] == pytest.approx(esperado, abs=0.1)
         assert result["status"] == "Critico"
