@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
-  Search, Plus, Upload, Download, MessageCircle, ChevronLeft, ChevronRight, Loader2, UserPlus, Shuffle, X,
+  Search, Plus, Upload, Download, MessageCircle, ChevronLeft, ChevronRight, Loader2, UserPlus, Shuffle, X, List, SquareKanban,
 } from "lucide-react";
 import { crmApi, downloadBlob, CrmFiltros } from "@/lib/api";
 import { useCurrentUser } from "@/lib/use-current-user";
@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
 import { LeadDrawer } from "@/components/crm/lead-drawer";
 import { OfertaPicker } from "@/components/crm/oferta-picker";
+import { KanbanLeads } from "@/components/crm/kanban";
 import {
   ALERTA_INFO, STATUS_STYLE, TEMPERATURA_STYLE, CrmOpcoes, data, dataHora, formatarTelefone, linkWhatsApp,
 } from "@/lib/crm";
@@ -126,7 +127,20 @@ function LeadsPageInner() {
   const [selecionados, setSelecionados] = useState<Set<number>>(new Set());
   const [vendedorLote, setVendedorLote] = useState("");
   const [exportando, setExportando] = useState(false);
+  const [visao, setVisao] = useState<"lista" | "quadro">("quadro");
   const inputCsv = useRef<HTMLInputElement>(null);
+
+  // Visualização preferida fica salva no navegador
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem("crm_leads_visao");
+      if (v === "lista" || v === "quadro") setVisao(v);
+    } catch {}
+  }, []);
+  function trocarVisao(v: "lista" | "quadro") {
+    setVisao(v);
+    try { localStorage.setItem("crm_leads_visao", v); } catch {}
+  }
 
   useEffect(() => {
     const t = setTimeout(() => setBusca(buscaDigitada.trim()), 350);
@@ -143,7 +157,9 @@ function LeadsPageInner() {
     queryFn: () => crmApi.leads({ ...apiFiltros, ordem: filtros.ordem, page, page_size: PAGE_SIZE }),
     placeholderData: (prev) => prev,
     refetchInterval: 60_000,
+    enabled: visao === "lista",
   });
+  const { status: _s, ...filtrosQuadro } = apiFiltros;
 
   // Contadores dos atalhos de alerta (mesmos filtros, sem o filtro de alerta)
   const { alerta: _a, ...semAlerta } = apiFiltros;
@@ -219,6 +235,15 @@ function LeadsPageInner() {
   return (
     <div>
       <PageHeader title="Leads" description={isAdmin ? "Todos os contatos recebidos das campanhas" : "Seus contatos para atendimento"}>
+        <div className="inline-flex rounded-md border bg-white p-0.5" role="group" aria-label="Visualização">
+          {([["quadro", "Quadro", SquareKanban], ["lista", "Lista", List]] as const).map(([v, label, Icon]) => (
+            <button key={v} onClick={() => trocarVisao(v)} aria-pressed={visao === v}
+                    className={cn("inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-medium",
+                      visao === v ? "bg-primary text-white" : "text-gray-600 hover:bg-gray-50")}>
+              <Icon className="h-4 w-4" /> {label}
+            </button>
+          ))}
+        </div>
         {isAdmin && (
           <>
             <input ref={inputCsv} type="file" accept=".csv,text/csv" className="hidden"
@@ -275,7 +300,8 @@ function LeadsPageInner() {
           <option value="">Todas as campanhas</option>
           {(campanhas as any[]).map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
         </select>
-        <select className="input" value={filtros.status} onChange={set("status")}>
+        <select className="input disabled:opacity-50" value={visao === "quadro" ? "" : filtros.status} onChange={set("status")}
+                disabled={visao === "quadro"} title={visao === "quadro" ? "No quadro, cada coluna é um status" : undefined}>
           <option value="">Todos os status</option>
           <option value={EM_ABERTO}>Em aberto (não finalizados)</option>
           {opcoes?.status.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
@@ -303,8 +329,9 @@ function LeadsPageInner() {
       </div>
 
       <div className="mb-2 flex items-center gap-3 text-xs text-gray-500">
-        <span>{total} lead(s){isFetching && !isLoading && " · atualizando..."}</span>
-        {isAdmin && (
+        {visao === "lista" && <span>{total} lead(s){isFetching && !isLoading && " · atualizando..."}</span>}
+        {visao === "quadro" && <span className="hidden md:inline">Arraste os cards entre as colunas para atualizar o status.</span>}
+        {isAdmin && visao === "lista" && (
           <select className="input h-7 w-auto py-0 text-xs" value={filtros.ordem} onChange={set("ordem")}>
             <option value="recentes">Mais recentes</option>
             <option value="antigos">Mais antigos</option>
@@ -318,6 +345,11 @@ function LeadsPageInner() {
         )}
       </div>
 
+      {visao === "quadro" && opcoes && (
+        <KanbanLeads filtros={filtrosQuadro} opcoes={opcoes} isAdmin={isAdmin} onAbrirLead={setLeadAberto} />
+      )}
+
+      {visao === "lista" && <>
       {/* Atribuição em lote */}
       {isAdmin && selecionados.size > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 p-2.5 text-sm">
@@ -434,6 +466,7 @@ function LeadsPageInner() {
           <button className="btn-secondary h-8 px-2" disabled={page >= paginas} onClick={() => setPage((p) => p + 1)}><ChevronRight className="h-4 w-4" /></button>
         </div>
       )}
+      </>}
 
       {leadAberto && opcoes && (
         <LeadDrawer leadId={leadAberto} opcoes={opcoes} isAdmin={isAdmin} onClose={() => setLeadAberto(null)} />
