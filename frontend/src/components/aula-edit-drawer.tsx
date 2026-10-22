@@ -464,14 +464,17 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
             </select>
           </Field>
 
-          {form.professor2_id !== "" && (
-            <Field label="Ambiente / Sala — 2º Professor">
+          <Field label="Divisão de Turma — Ambiente / Sala do 2º Professor">
               <select
-                className="input w-full text-sm"
-                value={form.ambiente2}
+                className="input w-full text-sm disabled:bg-gray-50 disabled:text-gray-400"
+                value={form.professor2_id !== "" ? form.ambiente2 : ""}
                 onChange={(e) => set("ambiente2", e.target.value)}
+                disabled={form.professor2_id === ""}
+                title={form.professor2_id === "" ? "Escolha o 2º professor para definir a sala" : undefined}
               >
-                <option value="">— Mesmo ambiente / não definido —</option>
+                <option value="">
+                  {form.professor2_id === "" ? "— Escolha o 2º professor acima —" : "— Mesmo ambiente / não definido —"}
+                </option>
                 {(ambientes as any[]).map((a: any) => {
                   const sigla = a.sigla ?? a.nome;
                   return (
@@ -481,11 +484,10 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
                   );
                 })}
               </select>
-              {form.ambiente2 !== "" && form.ambiente2 === form.ambiente && (
+              {form.professor2_id !== "" && form.ambiente2 !== "" && form.ambiente2 === form.ambiente && (
                 <p className="text-xs text-amber-600 mt-1">⚠ Mesmo ambiente nos dois grupos.</p>
               )}
             </Field>
-          )}
 
           <Field label="Subturma">
             <input
