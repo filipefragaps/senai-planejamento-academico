@@ -527,16 +527,21 @@ async def importar_csv(
     if not linhas and erros:
         raise HTTPException(400, erros[0])
 
-    # Deduplicação: id do lead na Meta; sem id, telefone/e-mail + campanha
+    # Deduplicação: id do lead na Meta; sem id, telefone/e-mail + campanha ou nome + data/hora de criação
     ids_existentes = set((await db.execute(
         select(CrmLead.meta_lead_id).where(CrmLead.meta_lead_id.in_([l["meta_lead_id"] for l in linhas if l["meta_lead_id"]]))
     )).scalars().all())
     existentes = await db.execute(
-        select(CrmLead.telefone, CrmLead.email, CrmCampanha.nome)
+        select(CrmLead.telefone, CrmLead.email, CrmCampanha.nome, CrmLead.nome, CrmLead.recebido_em)
         .outerjoin(CrmCampanha, CrmLead.campanha_id == CrmCampanha.id)
     )
+
+    def chave_nome_data(nome: str, recebido) -> tuple:
+        return ("nome_data", nome.strip().lower(), svc.como_utc(recebido).astimezone(timezone.utc).strftime("%Y%m%d%H%M"))
+
     chaves = set()
-    for tel, email, camp in existentes.all():
+    for tel, email, camp, nome, recebido in existentes.all():
+        chaves.add(chave_nome_data(nome, recebido))
         camp = (camp or "").lower()
         if tel:
             chaves.add((tel, camp))
@@ -553,7 +558,9 @@ async def importar_csv(
         camp = (l["campanha"] or "").lower()
         tel = svc.normalizar_telefone(l["telefone"])
         email = (l["email"] or "").lower() or None
-        if not l["meta_lead_id"] and ((tel and (tel, camp) in chaves) or (email and (email, camp) in chaves)):
+        nome_data = chave_nome_data(l["nome"], l["recebido_em"]) if l["recebido_em"] else None
+        if not l["meta_lead_id"] and ((tel and (tel, camp) in chaves) or (email and (email, camp) in chaves)
+                                      or (nome_data and nome_data in chaves)):
             duplicados += 1
             continue
         await svc.criar_lead(db, l, "csv", user, cache, ativos)
@@ -564,6 +571,8 @@ async def importar_csv(
             chaves.add((tel, camp))
         if email:
             chaves.add((email, camp))
+        if nome_data:
+            chaves.add(nome_data)
 
     return {"inseridos": inseridos, "duplicados": duplicados, "erros": erros[:20], "total_erros": len(erros)}
 

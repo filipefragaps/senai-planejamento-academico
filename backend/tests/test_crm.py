@@ -160,3 +160,40 @@ async def test_campanha_com_oferta_e_vendedor_padrao(client, db_session, admin_u
     assert len(leads) == 2
     assert all(l["vendedor_id"] == vendedores[1].id for l in leads)
     assert all(l["oferta_label"] == "1089644 – Soldagem MIG MAG" for l in leads)
+
+
+# Export da Central de Leads em português: sem campanha, data americana, telefone em 3 colunas
+CSV_CENTRAL_LEADS = (
+    "Criado em,Nome,Email,Fonte,Formulário,Canal,Estágio,Proprietário,Rótulos,Telefone,"
+    "Número de telefone secundário,Número do WhatsApp\n"
+    "10/20/2026 4:57pm,Carla Dias,,Pago,Instrumentação Industrial (v5),,Em análise,Unassigned,,,,+5562988887777\n"
+    "10/20/2026 9:05am,Bruno Alves,,Pago,Instrumentação Industrial (v4),Telefone,Em análise,Unassigned,,(62) 99999-1111,,\n"
+    "09/21/2026 6:38pm,Diego Rocha,,Pago,Formulário SEP-copy,,Em análise,Unassigned,,,,\n"
+).encode("utf-8")
+
+
+async def test_importacao_central_de_leads_pt(client, admin_user, vendedores):
+    admin = _hdr(admin_user)
+    r = await client.post("/api/v1/crm/leads/importar-csv", headers=admin,
+                          files={"arquivo": ("leads.csv", CSV_CENTRAL_LEADS, "text/csv")})
+    assert r.status_code == 200, r.text
+    assert r.json()["inseridos"] == 3
+
+    itens = {l["nome"]: l for l in (await client.get("/api/v1/crm/leads", headers=admin)).json()["items"]}
+    # WhatsApp usado quando "Telefone" está vazio
+    assert itens["Carla Dias"]["telefone"] == "5562988887777"
+    assert itens["Bruno Alves"]["telefone"] == "62999991111"
+    # Data americana com am/pm, no fuso de Brasília (16:57 BRT = 19:57 UTC)
+    assert itens["Carla Dias"]["recebido_em"].startswith("2026-10-20T19:57")
+    assert itens["Bruno Alves"]["recebido_em"].startswith("2026-10-20T12:05")
+    # Sem coluna de campanha: formulário vira campanha, versões (v4)/(v5) agrupadas
+    assert itens["Carla Dias"]["campanha_nome"] == itens["Bruno Alves"]["campanha_nome"] == "Instrumentação Industrial"
+    assert itens["Carla Dias"]["formulario"] == "Instrumentação Industrial (v5)"
+    # Colunas internas da Meta não poluem as respostas extras
+    assert "Estágio" not in itens["Carla Dias"]["dados_extras"]
+    assert itens["Carla Dias"]["dados_extras"]["Fonte"] == "Pago"
+
+    # Reimportar não duplica, mesmo o lead sem telefone nem e-mail (Diego)
+    r2 = await client.post("/api/v1/crm/leads/importar-csv", headers=admin,
+                           files={"arquivo": ("leads.csv", CSV_CENTRAL_LEADS, "text/csv")})
+    assert r2.json()["inseridos"] == 0 and r2.json()["duplicados"] == 3

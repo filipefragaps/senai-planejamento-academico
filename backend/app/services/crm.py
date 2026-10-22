@@ -234,7 +234,6 @@ ALIASES = {
     "meta_lead_id": ["id", "leadid", "idlead"],
     "recebido_em": ["createdtime", "datadecriacao", "data", "datahora", "datarecebimento", "criadoem"],
     "nome": ["fullname", "nomecompleto", "nome", "name"],
-    "telefone": ["phonenumber", "telefone", "phone", "celular", "whatsapp", "numerodetelefone"],
     "email": ["email", "emailaddress"],
     "campanha": ["campaignname", "campanha", "nomedacampanha"],
     "meta_campaign_id": ["campaignid", "iddacampanha"],
@@ -243,7 +242,17 @@ ALIASES = {
     "formulario": ["formname", "formulario", "nomedoformulario"],
     "plataforma": ["platform", "plataforma"],
 }
-IGNORAR_EXTRAS = {"adid", "adsetid", "formid", "isorganic", "leadstatus", "inboxurl"}
+# Colunas de telefone em ordem de preferência: usa a primeira preenchida em cada linha.
+# A Central de Leads em português traz "Telefone", "Número do WhatsApp" e "Número de telefone secundário".
+TELEFONE_COLUNAS = [
+    "phonenumber", "telefone", "phone", "celular", "numerodetelefone",
+    "numerodowhatsapp", "whatsapp", "whatsappnumber", "numerodewhatsapp",
+    "numerodetelefonesecundario", "telefonesecundario", "secondaryphonenumber",
+]
+IGNORAR_EXTRAS = {
+    "adid", "adsetid", "formid", "isorganic", "leadstatus", "inboxurl",
+    "estagio", "proprietario", "rotulos", "stage", "owner", "labels",
+}
 
 
 def _decodificar(conteudo: bytes) -> str:
@@ -266,6 +275,15 @@ def _parse_data(valor: str) -> datetime | None:
         return dt if dt.tzinfo else dt.replace(tzinfo=FUSO_BR)
     except ValueError:
         pass
+    # Central de Leads da Meta: formato americano com am/pm ("10/20/2026 4:57pm")
+    if re.search(r"[ap]\.?m\.?$", v, re.I):
+        v12 = re.sub(r"\s*([ap])\.?m\.?$", lambda m: f" {m.group(1).upper()}M", v, flags=re.I)
+        for fmt in ("%m/%d/%Y %I:%M %p", "%m/%d/%Y %I:%M:%S %p"):
+            try:
+                return datetime.strptime(v12, fmt).replace(tzinfo=FUSO_BR)
+            except ValueError:
+                continue
+        return None
     for fmt in ("%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%d/%m/%Y", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
         try:
             return datetime.strptime(v, fmt).replace(tzinfo=FUSO_BR)
@@ -294,9 +312,10 @@ def ler_csv_meta(conteudo: bytes) -> tuple[list[dict], list[str]]:
             if h in nomes:
                 mapa[campo] = i
                 break
-    if "nome" not in mapa or ("telefone" not in mapa and "email" not in mapa):
+    cols_telefone = [i for nome_col in TELEFONE_COLUNAS for i, h in enumerate(cabecalho) if h == nome_col]
+    if "nome" not in mapa or (not cols_telefone and "email" not in mapa):
         return [], ["Cabeçalho não reconhecido: o arquivo precisa ter colunas de nome e telefone ou e-mail."]
-    usados = set(mapa.values())
+    usados = set(mapa.values()) | set(cols_telefone)
 
     resultado, erros = [], []
     for n, row in enumerate(linhas[1:], start=2):
@@ -312,7 +331,10 @@ def ler_csv_meta(conteudo: bytes) -> tuple[list[dict], list[str]]:
             continue
         recebido = _parse_data(val("recebido_em"))
         lead_id = val("meta_lead_id").removeprefix("l:") or None
-        telefone = val("telefone").removeprefix("p:")
+        telefone = next((row[i].strip() for i in cols_telefone if row[i].strip()), "").removeprefix("p:")
+        formulario = val("formulario") or None
+        # Sem coluna de campanha (Central de Leads): usa o formulário, sem o sufixo de versão "(v5)"
+        campanha = val("campanha") or (re.sub(r"\s*\(v\d+\)\s*$", "", formulario, flags=re.I) if formulario else None)
         extras = {
             linhas[0][i].strip(): row[i].strip()
             for i, h in enumerate(cabecalho)
@@ -323,11 +345,11 @@ def ler_csv_meta(conteudo: bytes) -> tuple[list[dict], list[str]]:
             "nome": nome,
             "telefone": telefone,
             "email": val("email"),
-            "campanha": val("campanha") or None,
+            "campanha": campanha,
             "meta_campaign_id": val("meta_campaign_id").removeprefix("c:") or None,
             "conjunto_anuncio": val("conjunto_anuncio") or None,
             "anuncio": val("anuncio") or None,
-            "formulario": val("formulario") or None,
+            "formulario": formulario,
             "plataforma": val("plataforma") or None,
             "recebido_em": recebido,
             "dados_extras": extras,
