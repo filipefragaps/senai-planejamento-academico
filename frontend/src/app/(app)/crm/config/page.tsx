@@ -9,7 +9,7 @@ import { crmApi } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { OfertaPicker } from "@/components/crm/oferta-picker";
 import { CrmOpcoes } from "@/lib/crm";
-import { getCurrentUser } from "@/lib/auth";
+import { useCurrentUser } from "@/lib/use-current-user";
 
 function Secao({ icon: Icon, titulo, descricao, children }: {
   icon: React.ElementType; titulo: string; descricao?: string; children: React.ReactNode;
@@ -29,7 +29,9 @@ function Secao({ icon: Icon, titulo, descricao, children }: {
 }
 
 export default function CrmConfigPage() {
-  if (getCurrentUser()?.perfil !== "admin") {
+  const me = useCurrentUser();
+  if (me === undefined) return null;
+  if (me?.perfil !== "admin") {
     return <p className="py-10 text-center text-sm text-gray-500">Somente o administrador acessa as configurações do CRM.</p>;
   }
   return <CrmConfig />;

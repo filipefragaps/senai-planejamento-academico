@@ -10,7 +10,7 @@ import {
   Inbox, UserX, GraduationCap, Percent, Timer, CalendarClock, ArrowRight, Loader2,
 } from "lucide-react";
 import { crmApi, CrmFiltros } from "@/lib/api";
-import { getCurrentUser } from "@/lib/auth";
+import { useCurrentUser } from "@/lib/use-current-user";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
 import { OfertaPicker } from "@/components/crm/oferta-picker";
@@ -115,7 +115,7 @@ function DiaTooltip({ active, payload }: any) {
 }
 
 export default function CrmPainelPage() {
-  const me = getCurrentUser();
+  const me = useCurrentUser();
   const isAdmin = me?.perfil === "admin";
 
   const [periodo, setPeriodo] = useState("30");

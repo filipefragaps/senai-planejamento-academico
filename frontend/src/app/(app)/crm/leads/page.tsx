@@ -8,7 +8,7 @@ import {
   Search, Plus, Upload, Download, MessageCircle, ChevronLeft, ChevronRight, Loader2, UserPlus, Shuffle, X,
 } from "lucide-react";
 import { crmApi, downloadBlob, CrmFiltros } from "@/lib/api";
-import { getCurrentUser } from "@/lib/auth";
+import { useCurrentUser } from "@/lib/use-current-user";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
 import { LeadDrawer } from "@/components/crm/lead-drawer";
@@ -108,7 +108,7 @@ function NovoLeadModal({ opcoes, campanhas, isAdmin, onClose, onCreated }: {
 function LeadsPageInner() {
   const qc = useQueryClient();
   const params = useSearchParams();
-  const me = getCurrentUser();
+  const me = useCurrentUser();
   const isAdmin = me?.perfil === "admin";
 
   const [filtros, setFiltros] = useState<Filtros>(() => ({

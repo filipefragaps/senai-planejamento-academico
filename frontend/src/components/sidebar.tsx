@@ -28,7 +28,8 @@ import {
   Settings2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { clearAuth, getCurrentUser } from "@/lib/auth";
+import { clearAuth } from "@/lib/auth";
+import { useCurrentUser } from "@/lib/use-current-user";
 import { useRouter } from "next/navigation";
 
 type NavItem = {
@@ -97,7 +98,7 @@ const NAV_GROUPS: NavGroup[] = [
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const me = getCurrentUser();
+  const me = useCurrentUser();
   const perfil: string = me?.perfil ?? "";
   const isAdmin = perfil === "admin";
 
