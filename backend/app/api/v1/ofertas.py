@@ -146,9 +146,17 @@ async def importar_ofertas(
     }
 
 
+def _filtro_ano(query, ano: int | None):
+    """Ano de início do evento (data_inicio), como intervalo para funcionar em PostgreSQL e SQLite."""
+    if ano:
+        query = query.where(OfertaCurso.data_inicio >= date(ano, 1, 1), OfertaCurso.data_inicio < date(ano + 1, 1, 1))
+    return query
+
+
 @router.get("/")
 async def listar_ofertas(
     semestre: int | None = None,
+    ano: int | None = None,
     status: str | None = None,
     modalidade: str | None = None,
     area: str | None = None,
@@ -160,7 +168,7 @@ async def listar_ofertas(
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    query = select(OfertaCurso)
+    query = _filtro_ano(select(OfertaCurso), ano)
     if semestre:
         query = query.where(OfertaCurso.semestre == semestre)
     if status:
@@ -190,27 +198,28 @@ async def listar_ofertas(
 @router.get("/stats")
 async def estatisticas_ofertas(
     semestre: int | None = None,
+    ano: int | None = None,
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    base = select(OfertaCurso.status, func.count().label("qtd"))
+    base = _filtro_ano(select(OfertaCurso.status, func.count().label("qtd")), ano)
     if semestre:
         base = base.where(OfertaCurso.semestre == semestre)
     base = base.group_by(OfertaCurso.status)
     result = await db.execute(base)
     por_status = {row.status: row.qtd for row in result}
 
-    total_q = select(func.count()).select_from(OfertaCurso)
+    total_q = _filtro_ano(select(func.count()).select_from(OfertaCurso), ano)
     if semestre:
         total_q = total_q.where(OfertaCurso.semestre == semestre)
     total = (await db.execute(total_q)).scalar() or 0
 
-    vagas_q = select(func.sum(OfertaCurso.vagas)).select_from(OfertaCurso)
+    vagas_q = _filtro_ano(select(func.sum(OfertaCurso.vagas)).select_from(OfertaCurso), ano)
     if semestre:
         vagas_q = vagas_q.where(OfertaCurso.semestre == semestre)
     vagas = (await db.execute(vagas_q)).scalar() or 0
 
-    matr_q = select(func.sum(OfertaCurso.alunos_matriculados)).select_from(OfertaCurso)
+    matr_q = _filtro_ano(select(func.sum(OfertaCurso.alunos_matriculados)).select_from(OfertaCurso), ano)
     if semestre:
         matr_q = matr_q.where(OfertaCurso.semestre == semestre)
     matriculados = (await db.execute(matr_q)).scalar() or 0
@@ -220,6 +229,8 @@ async def estatisticas_ofertas(
     area_q = await db.execute(select(OfertaCurso.area).distinct().order_by(OfertaCurso.area))
     turno_q = await db.execute(select(OfertaCurso.turno).distinct().order_by(OfertaCurso.turno))
     coord_q = await db.execute(select(OfertaCurso.coordenador).distinct().order_by(OfertaCurso.coordenador))
+    datas_q = await db.execute(select(OfertaCurso.data_inicio).where(OfertaCurso.data_inicio != None).distinct())  # noqa: E711
+    anos = sorted({d.year for (d,) in datas_q if d}, reverse=True)
 
     return {
         "total": total,
@@ -230,6 +241,7 @@ async def estatisticas_ofertas(
         "areas": [r[0] for r in area_q if r[0]],
         "turnos": [r[0] for r in turno_q if r[0]],
         "coordenadores": [r[0] for r in coord_q if r[0]],
+        "anos": anos,
     }
 
 

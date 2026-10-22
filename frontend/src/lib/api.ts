@@ -168,11 +168,11 @@ export const dashboardApi = {
 export const ofertasApi = {
   obter: (id: number) => api.get(`/ofertas/${id}`).then((r) => r.data),
   listar: (params?: {
-    semestre?: number; status?: string; modalidade?: string;
+    semestre?: number; ano?: number; status?: string; modalidade?: string;
     area?: string; turno?: string; coordenador?: string; busca?: string; skip?: number; limit?: number;
   }) => api.get("/ofertas/", { params }).then((r) => r.data),
-  stats: (semestre?: number) =>
-    api.get("/ofertas/stats", { params: { semestre } }).then((r) => r.data),
+  stats: (semestre?: number, ano?: number) =>
+    api.get("/ofertas/stats", { params: { semestre, ano } }).then((r) => r.data),
   criar: (dados: Record<string, unknown>) =>
     api.post("/ofertas/", dados).then((r) => r.data),
   atualizar: (id: number, dados: Record<string, unknown>) =>

@@ -86,6 +86,7 @@ export default function OfertasPage() {
   const [selectedOferta, setSelectedOferta] = useState<Oferta | null>(null);
   const [novoEventoAberto, setNovoEventoAberto] = useState(false);
   const [semestre, setSemestre] = useState<number | undefined>(undefined);
+  const [ano, setAno] = useState<number | undefined>(undefined);
   const [filtroModalidade, setFiltroModalidade] = useState("");
   const [filtroStatus, setFiltroStatus] = useState("");
   const [filtroTurno, setFiltroTurno] = useState("");
@@ -94,15 +95,16 @@ export default function OfertasPage() {
 
   // ── Queries ──────────────────────────────────────────────────────────────
   const { data: stats } = useQuery({
-    queryKey: ["ofertas-stats", semestre],
-    queryFn: () => ofertasApi.stats(semestre),
+    queryKey: ["ofertas-stats", semestre, ano],
+    queryFn: () => ofertasApi.stats(semestre, ano),
   });
 
   const { data: ofertas = [], isLoading, refetch } = useQuery({
-    queryKey: ["ofertas", semestre, filtroModalidade, filtroStatus, filtroTurno, filtroCoordenador, busca],
+    queryKey: ["ofertas", semestre, ano, filtroModalidade, filtroStatus, filtroTurno, filtroCoordenador, busca],
     queryFn: () =>
       ofertasApi.listar({
         semestre,
+        ano,
         modalidade: filtroModalidade || undefined,
         status: filtroStatus || undefined,
         turno: filtroTurno || undefined,
@@ -149,6 +151,7 @@ export default function OfertasPage() {
 
   function limparFiltros() {
     setSemestre(undefined);
+    setAno(undefined);
     setFiltroModalidade("");
     setFiltroStatus("");
     setFiltroTurno("");
@@ -156,7 +159,7 @@ export default function OfertasPage() {
     setBusca("");
   }
 
-  const temFiltro = !!semestre || !!filtroModalidade || !!filtroStatus || !!filtroTurno || !!filtroCoordenador || !!busca;
+  const temFiltro = !!semestre || !!ano || !!filtroModalidade || !!filtroStatus || !!filtroTurno || !!filtroCoordenador || !!busca;
 
   const iniciou   = stats?.por_status?.["INICIOU"] ?? 0;
   const emMatr    = stats?.por_status?.["EM MATRÍCULA"] ?? 0;
@@ -258,6 +261,19 @@ export default function OfertasPage() {
             <option value="">Ambos os semestres</option>
             <option value="1">1º Semestre</option>
             <option value="2">2º Semestre</option>
+          </select>
+
+          {/* Ano de início */}
+          <select
+            className="input w-36"
+            value={ano ?? ""}
+            onChange={(e) => setAno(e.target.value ? +e.target.value : undefined)}
+            title="Ano da data de início do evento"
+          >
+            <option value="">Todos os anos</option>
+            {(stats?.anos ?? []).map((a: number) => (
+              <option key={a} value={a}>Início em {a}</option>
+            ))}
           </select>
 
           {/* Modalidade */}
