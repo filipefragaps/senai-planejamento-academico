@@ -99,6 +99,8 @@ async def alterar_aula(
                 sync_fields["professor2_id"] = alteracoes["professor2_id"]
             if "ambiente" in alteracoes:
                 sync_fields["ambiente"] = alteracoes["ambiente"]
+            if "ambiente2" in alteracoes:
+                sync_fields["ambiente2"] = alteracoes["ambiente2"]
             if sync_fields:
                 res_siblings = await db.execute(
                     select(Aula).where(

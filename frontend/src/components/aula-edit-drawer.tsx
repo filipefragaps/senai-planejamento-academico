@@ -40,6 +40,7 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
     professor_id: "" as string | number,
     professor2_id: "" as string | number,
     ambiente: "",
+    ambiente2: "",
     subturma: "",
     status: "Agendada",
     observacoes: "",
@@ -92,6 +93,7 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
         professor_id: aula.professor_id ?? "",
         professor2_id: (aula as any).professor2_id ?? "",
         ambiente: aula.ambiente ?? "",
+        ambiente2: (aula as any).ambiente2 ?? "",
         subturma: aula.subturma ?? "",
         status: aula.status,
         observacoes: aula.observacoes ?? "",
@@ -292,6 +294,9 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
       // professor2_id: inclui sempre para permitir remover
       alteracoes.professor2_id = form.professor2_id !== "" ? Number(form.professor2_id) : null;
       if (form.ambiente !== aula.ambiente) alteracoes.ambiente = form.ambiente || null;
+      // Sem 2º professor não há 2º ambiente
+      const ambiente2 = form.professor2_id !== "" ? form.ambiente2 : "";
+      if (ambiente2 !== ((aula as any).ambiente2 ?? "")) alteracoes.ambiente2 = ambiente2 || null;
       if (form.subturma !== (aula.subturma ?? "")) alteracoes.subturma = form.subturma || null;
       if (form.status !== aula.status) alteracoes.status = form.status;
       if (form.observacoes !== (aula.observacoes ?? "")) alteracoes.observacoes = form.observacoes || null;
@@ -441,7 +446,7 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
             )}
           </Field>
 
-          <Field label="Ambiente / Sala">
+          <Field label={form.professor2_id !== "" ? "Ambiente / Sala — 1º Professor" : "Ambiente / Sala"}>
             <select
               className="input w-full text-sm"
               value={form.ambiente}
@@ -458,6 +463,29 @@ export function AulaEditDrawer({ aula, eventoId, onClose, onSaved }: Props) {
               })}
             </select>
           </Field>
+
+          {form.professor2_id !== "" && (
+            <Field label="Ambiente / Sala — 2º Professor">
+              <select
+                className="input w-full text-sm"
+                value={form.ambiente2}
+                onChange={(e) => set("ambiente2", e.target.value)}
+              >
+                <option value="">— Mesmo ambiente / não definido —</option>
+                {(ambientes as any[]).map((a: any) => {
+                  const sigla = a.sigla ?? a.nome;
+                  return (
+                    <option key={a.id} value={sigla}>
+                      {sigla}
+                    </option>
+                  );
+                })}
+              </select>
+              {form.ambiente2 !== "" && form.ambiente2 === form.ambiente && (
+                <p className="text-xs text-amber-600 mt-1">⚠ Mesmo ambiente nos dois grupos.</p>
+              )}
+            </Field>
+          )}
 
           <Field label="Subturma">
             <input

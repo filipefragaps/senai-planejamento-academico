@@ -21,6 +21,7 @@ class Aula(Base):
     horario_fim: Mapped[time] = mapped_column(Time, nullable=False)
     sala: Mapped[str | None] = mapped_column(String(100))
     ambiente: Mapped[str | None] = mapped_column(String(100))   # nome completo do ambiente/laboratório
+    ambiente2: Mapped[str | None] = mapped_column(String(100))  # ambiente do 2º professor (divisão de turma)
     numero_aula: Mapped[int | None] = mapped_column(Integer)    # sequência dentro do evento
     subturma: Mapped[str | None] = mapped_column(String(20))    # subgrupo: A, B, C...
     etapa: Mapped[str | None] = mapped_column(String(50))       # módulo/etapa (denorm da UC)

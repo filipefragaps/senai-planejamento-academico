@@ -218,6 +218,7 @@ def _serializar_aula(a: Aula, nome_prof: str | None = None, nome_uc: str | None 
         "professor2_id": a.professor2_id,
         "professor2_nome": nome_prof2,
         "ambiente": a.ambiente or a.sala,
+        "ambiente2": a.ambiente2,
         "etapa": a.etapa,
         "tipo_contrato": a.tipo_contrato,
         "observacoes": a.observacoes,
@@ -2231,7 +2232,7 @@ async def totem_display(
     )
     aulas = result.scalars().all()
 
-    prof_ids = {a.professor_id for a in aulas if a.professor_id}
+    prof_ids = {p for a in aulas for p in (a.professor_id, a.professor2_id) if p}
     uc_ids = {a.unidade_curricular_id for a in aulas if a.unidade_curricular_id}
     ev_ids = {a.evento_id for a in aulas if a.evento_id}
 
@@ -2273,8 +2274,9 @@ async def totem_display(
             "evento": codigos.get(a.evento_id, "") if a.evento_id else "",
             "turma": _turma_label(a.evento_id),
             "uc_nome": ucs.get(a.unidade_curricular_id) or a.uc_nome_original or "",
-            "professor": profs.get(a.professor_id) or "",
-            "ambiente": a.ambiente or a.sala or "",
+            # Divisão de turma: "Prof A / Prof B" e "Lab 1 / Lab 2"
+            "professor": " / ".join(n for n in (profs.get(a.professor_id), profs.get(a.professor2_id)) if n),
+            "ambiente": " / ".join(x for x in (a.ambiente or a.sala, a.ambiente2) if x),
             "status": a.status,
             "subturma": a.subturma,
             "etapa": a.etapa,

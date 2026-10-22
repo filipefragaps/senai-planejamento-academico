@@ -79,6 +79,7 @@ class AulaUpdate(BaseModel):
     horario_fim: time | None = None
     sala: str | None = None
     ambiente: str | None = None
+    ambiente2: str | None = None
     status: str | None = None
     tipo: str | None = None
     observacoes: str | None = None
@@ -88,6 +89,7 @@ class AulaUpdate(BaseModel):
 class AulaOut(AulaBase):
     id: int
     professor2_id: int | None = None
+    ambiente2: str | None = None
     alterada_manualmente: bool
     dados_anteriores: dict | None = None
     criado_em: datetime

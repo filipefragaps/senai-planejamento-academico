@@ -26,6 +26,7 @@ export interface AulaRow {
   professor_id?: number | null;
   professor2_id?: number | null;
   professor2_nome?: string | null;
+  ambiente2?: string | null;
   grupo_aula_id?: number | null;
   tipo_modalidade?: string | null;
 }
@@ -124,7 +125,10 @@ export function CronogramaTable({ aulas, onClickRow, mostrarEvento = true }: Pro
                     <p className="truncate text-[10px] text-indigo-600" title={a.professor2_nome}>+ {a.professor2_nome}</p>
                   )}
                 </td>
-                <td className="px-2 py-2 whitespace-nowrap text-gray-600">{a.ambiente ?? "—"}</td>
+                <td className="px-2 py-2 whitespace-nowrap text-gray-600">
+                  {a.ambiente ?? "—"}
+                  {a.ambiente2 && <p className="text-[10px] text-indigo-600">+ {a.ambiente2}</p>}
+                </td>
                 <td className="px-2 py-2 whitespace-nowrap text-gray-600">{a.etapa ?? "—"}</td>
                 <td className="px-2 py-2 whitespace-nowrap">
                   {a.tipo_contrato ? (

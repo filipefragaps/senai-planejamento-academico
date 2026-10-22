@@ -280,10 +280,11 @@ export default function CronogramaPage() {
     const salaGrupos: Record<string, any[]> = {};
     const profGrupos: Record<string, any[]> = {};
     for (const a of aulasNoDia as any[]) {
-      const sala = (a.ambiente || a.sala || "").trim();
-      if (sala) { salaGrupos[sala] ??= []; salaGrupos[sala].push(a); }
-      const prof = String(a.professor_id ?? "");
-      if (prof && prof !== "null") { profGrupos[prof] ??= []; profGrupos[prof].push(a); }
+      // Divisão de turma: o 2º ambiente e o 2º professor também ficam ocupados no horário
+      const salas = new Set([(a.ambiente || a.sala || "").trim(), (a.ambiente2 || "").trim()].filter(Boolean));
+      for (const sala of salas) { salaGrupos[sala] ??= []; salaGrupos[sala].push(a); }
+      const profs = new Set([a.professor_id, a.professor2_id].filter((p: any) => p != null).map(String));
+      for (const prof of profs) { profGrupos[prof] ??= []; profGrupos[prof].push(a); }
     }
     // Aulas do mesmo grupo (vinculadas intencionalmente) não são conflito
     const mesmoGrupo = (a: any, b: any) =>
@@ -332,7 +333,7 @@ export default function CronogramaPage() {
         <td style="padding:8px 12px;font-weight:500">${a.uc_nome ?? "—"}</td>
         <td style="padding:8px 12px;color:#4338ca;font-size:11px">${a.etapa ?? "—"}</td>
         <td style="padding:8px 12px;color:${a.professor_nome ? "#111827" : "#9ca3af"}">${a.professor_nome ?? "Não definido"}</td>
-        <td style="padding:8px 12px;color:#6b7280">${a.ambiente ?? a.sala ?? "—"}</td>
+        <td style="padding:8px 12px;color:#6b7280">${a.ambiente ?? a.sala ?? "—"}${a.ambiente2 ? ` / ${a.ambiente2}` : ""}</td>
       </tr>`;
     }).join("");
     const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"/>
@@ -1032,11 +1033,15 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
                       </td>
                       <td className="px-4 py-3 text-gray-500">
                         <span className="flex items-center gap-1">
-                          {choqueAmbientes.has((a.ambiente || a.sala || "").trim()) && (
+                          {(choqueAmbientes.has((a.ambiente || a.sala || "").trim()) ||
+                            ((a as any).ambiente2 && choqueAmbientes.has((a as any).ambiente2.trim()))) && (
                             <span title="Sala com choque de horário"><Zap className="h-3.5 w-3.5 text-red-500 shrink-0" /></span>
                           )}
                           {a.ambiente || a.sala || "—"}
                         </span>
+                        {(a as any).ambiente2 && (
+                          <span className="text-xs text-indigo-600">+ {(a as any).ambiente2}</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <span className={cn(
