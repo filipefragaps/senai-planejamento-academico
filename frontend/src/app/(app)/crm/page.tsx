@@ -7,7 +7,7 @@ import {
   Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import {
-  Inbox, UserX, GraduationCap, Percent, Timer, CalendarClock, ArrowRight, Loader2,
+  Inbox, UserX, GraduationCap, Percent, Timer, CalendarClock, ArrowRight, Loader2, Wallet, AlertTriangle,
 } from "lucide-react";
 import { crmApi, CrmFiltros } from "@/lib/api";
 import { useCurrentUser } from "@/lib/use-current-user";
@@ -231,6 +231,22 @@ export default function CrmPainelPage() {
             <Tile icon={Timer} label="1º atendimento (média)" valor={d.tempo_medio_primeiro_atendimento_h == null ? "—" : `${d.tempo_medio_primeiro_atendimento_h.toLocaleString("pt-BR")}h`}
                   detalhe="do recebimento ao 1º contato" />
           </div>
+
+          {/* 1ª parcela: a matrícula só é efetivada após o pagamento */}
+          {d.matriculados > 0 && (
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Tile icon={GraduationCap} label="Matrículas efetivadas" valor={d.matriculas_pagas} destaque="sucesso"
+                    detalhe="1ª parcela paga" />
+              <Tile icon={Wallet} label="Aguardando pagamento" valor={d.matriculas_aguardando_pagamento}
+                    detalhe="matriculados com 1ª parcela em aberto" href="/crm/leads?status=matriculado" />
+              <Tile icon={CalendarClock} label="1ª parcela a vencer" valor={d.parcelas_a_vencer}
+                    destaque={d.parcelas_a_vencer ? "alerta" : undefined}
+                    detalhe={`nos próximos ${d.dias_alerta_parcela} dia(s)`} href="/crm/leads?alerta=parcela_a_vencer" />
+              <Tile icon={AlertTriangle} label="1ª parcela vencida" valor={d.parcelas_vencidas}
+                    destaque={d.parcelas_vencidas ? "alerta" : undefined}
+                    detalhe="sem pagamento registrado" href="/crm/leads?alerta=parcela_vencida" />
+            </div>
+          )}
 
           {/* Temperatura */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

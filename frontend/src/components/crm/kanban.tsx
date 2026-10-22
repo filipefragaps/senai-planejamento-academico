@@ -107,7 +107,10 @@ export function KanbanLeads({ filtros, opcoes, isAdmin, onAbrirLead }: Props) {
       return setPendente({ lead, para, dados: { motivo_perda: lead.motivo_perda ?? "", motivo_perda_comentario: lead.motivo_perda_comentario ?? "" } });
     }
     if (para === "matriculado") {
-      return setPendente({ lead, para, dados: { data_matricula: lead.data_matricula ?? hojeISO() } });
+      return setPendente({ lead, para, dados: {
+        data_matricula: lead.data_matricula ?? hojeISO(),
+        vencimento_primeira_parcela: lead.vencimento_primeira_parcela ?? "",
+      } });
     }
     if (para === "aguardando_retorno") {
       return setPendente({ lead, para, dados: { proximo_retorno: lead.proximo_retorno ?? "" } });
@@ -123,6 +126,7 @@ export function KanbanLeads({ filtros, opcoes, isAdmin, onAbrirLead }: Props) {
       if (d.motivo_perda === "outro" && !d.motivo_perda_comentario?.trim()) return toast.error("Descreva o motivo no comentário");
     }
     if (pendente.para === "matriculado" && !d.data_matricula) return toast.error("Informe a data da matrícula");
+    if (pendente.para === "matriculado" && !d.vencimento_primeira_parcela) return toast.error("Informe o vencimento da 1ª parcela");
     if (pendente.para === "aguardando_retorno" && !d.proximo_retorno) return toast.error("Informe a data do próximo retorno");
     const extra = Object.fromEntries(Object.entries(d).map(([k, v]) => [k, v === "" ? null : v]));
     const { lead, para } = pendente;
@@ -219,8 +223,8 @@ function CardLead({ lead, opcoes, isAdmin, salvando, arrastavel, onAbrir, onDrag
 }) {
   const temp = lead.temperatura ? TEMPERATURA_STYLE[lead.temperatura] : null;
   const wa = linkWhatsApp(lead.telefone);
-  const urgente = lead.alertas.includes("novo_sem_atendimento") || lead.alertas.includes("retorno_atrasado");
-  const hoje = lead.alertas.includes("retorno_hoje");
+  const urgente = ["novo_sem_atendimento", "retorno_atrasado", "parcela_vencida"].some((a) => lead.alertas.includes(a));
+  const hoje = lead.alertas.includes("retorno_hoje") || lead.alertas.includes("parcela_a_vencer");
   const iniciais = lead.nome.split(/\s+/).filter(Boolean).slice(0, 2).map((p: string) => p[0]).join("").toUpperCase();
 
   return (
@@ -281,6 +285,14 @@ function CardLead({ lead, opcoes, isAdmin, salvando, arrastavel, onAbrir, onDrag
         ) : (
           <span>{new Date(lead.recebido_em).toLocaleDateString("pt-BR")}</span>
         )}
+        {lead.status === "matriculado" && (lead.parcela_paga_em ? (
+          <span className="font-semibold text-green-700" title={`1ª parcela paga em ${data(lead.parcela_paga_em)}`}>✓ Paga</span>
+        ) : lead.vencimento_primeira_parcela ? (
+          <span className={cn(lead.alertas.includes("parcela_vencida") ? "font-semibold text-red-600"
+            : lead.alertas.includes("parcela_a_vencer") ? "font-semibold text-amber-700" : "")}>
+            1ª parc. {data(lead.vencimento_primeira_parcela)}
+          </span>
+        ) : null)}
         {isAdmin && lead.vendedor_nome && <span className="ml-auto truncate">{lead.vendedor_nome.split(" ")[0]}</span>}
       </div>
 
@@ -340,10 +352,18 @@ function ModalDestino({ pendente, opcoes, onChange, onCancelar, onConfirmar }: {
             </>
           )}
           {pendente.para === "matriculado" && (
-            <label className="block space-y-1">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Data da matrícula *</span>
-              <input type="date" className="input" autoFocus max={hojeISO()} value={d.data_matricula} onChange={(e) => set("data_matricula", e.target.value)} />
-            </label>
+            <>
+              <label className="block space-y-1">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Data da matrícula *</span>
+                <input type="date" className="input" max={hojeISO()} value={d.data_matricula} onChange={(e) => set("data_matricula", e.target.value)} />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Vencimento da 1ª parcela *</span>
+                <input type="date" className="input" autoFocus value={d.vencimento_primeira_parcela}
+                       onChange={(e) => set("vencimento_primeira_parcela", e.target.value)} />
+              </label>
+              <p className="text-xs text-gray-500">A matrícula só é efetivada após o pagamento. Registre o pagamento na ficha do lead.</p>
+            </>
           )}
           {pendente.para === "aguardando_retorno" && (
             <label className="block space-y-1">

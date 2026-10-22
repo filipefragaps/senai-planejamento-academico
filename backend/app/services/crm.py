@@ -11,6 +11,7 @@ import io
 import re
 import unicodedata
 from datetime import date, datetime, timedelta, timezone
+from typing import NamedTuple
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -53,6 +54,7 @@ PERFIS_CRM = {"admin", "vendedor"}
 
 CONFIG_PADRAO = {
     "horas_alerta_novo": "2",
+    "dias_alerta_parcela": "3",
 }
 
 FUSO_BR = timezone(timedelta(hours=-3))
@@ -105,14 +107,42 @@ async def horas_alerta_novo(db: AsyncSession) -> float:
         return 2.0
 
 
-def calcular_alertas(lead: CrmLead, horas_alerta: float, ref: datetime | None = None) -> list[str]:
-    """Alertas visuais da lista: novo_sem_atendimento | retorno_hoje | retorno_atrasado | sem_vendedor."""
+async def dias_alerta_parcela(db: AsyncSession) -> int:
+    try:
+        return int(await get_config(db, "dias_alerta_parcela") or 3)
+    except ValueError:
+        return 3
+
+
+class ParamsAlerta(NamedTuple):
+    horas_novo: float = 2.0
+    dias_parcela: int = 3
+
+
+async def parametros_alerta(db: AsyncSession) -> ParamsAlerta:
+    return ParamsAlerta(await horas_alerta_novo(db), await dias_alerta_parcela(db))
+
+
+def parcela_pendente(lead: CrmLead) -> bool:
+    """Matriculado com 1ª parcela informada e ainda não paga (matrícula não efetivada)."""
+    return lead.status == "matriculado" and bool(lead.vencimento_primeira_parcela) and lead.parcela_paga_em is None
+
+
+def calcular_alertas(lead: CrmLead, params: ParamsAlerta, ref: datetime | None = None) -> list[str]:
+    """Alertas visuais: novo_sem_atendimento | retorno_hoje | retorno_atrasado | sem_vendedor |
+    parcela_a_vencer | parcela_vencida."""
     ref = ref or agora()
     alertas: list[str] = []
     if lead.status == "novo":
         recebido = como_utc(lead.recebido_em)
-        if recebido and ref - recebido > timedelta(hours=horas_alerta):
+        if recebido and ref - recebido > timedelta(hours=params.horas_novo):
             alertas.append("novo_sem_atendimento")
+    if parcela_pendente(lead):
+        hoje = hoje_br()
+        if lead.vencimento_primeira_parcela < hoje:
+            alertas.append("parcela_vencida")
+        elif lead.vencimento_primeira_parcela <= hoje + timedelta(days=params.dias_parcela):
+            alertas.append("parcela_a_vencer")
     if lead.status not in STATUS_FINAIS and lead.proximo_retorno:
         hoje = hoje_br()
         if lead.proximo_retorno < hoje:

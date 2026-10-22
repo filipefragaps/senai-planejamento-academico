@@ -45,8 +45,11 @@ function CrmConfig() {
   const { data: campanhas = [] } = useQuery({ queryKey: ["crm-campanhas"], queryFn: crmApi.campanhas });
 
   const [horas, setHoras] = useState("");
+  const [diasParcela, setDiasParcela] = useState("");
   const [novaCampanha, setNovaCampanha] = useState("");
-  useEffect(() => { if (config) setHoras(String(config.horas_alerta_novo)); }, [config]);
+  useEffect(() => {
+    if (config) { setHoras(String(config.horas_alerta_novo)); setDiasParcela(String(config.dias_alerta_parcela)); }
+  }, [config]);
 
   const invalidar = () => {
     qc.invalidateQueries({ queryKey: ["crm-campanhas"] });
@@ -55,7 +58,9 @@ function CrmConfig() {
   };
 
   const salvarHoras = useMutation({
-    mutationFn: () => crmApi.salvarConfig({ horas_alerta_novo: Number(horas.replace(",", ".")) }),
+    mutationFn: () => crmApi.salvarConfig({
+      horas_alerta_novo: Number(horas.replace(",", ".")), dias_alerta_parcela: Number(diasParcela),
+    }),
     onSuccess: () => {
       toast.success("Configuração salva");
       qc.invalidateQueries({ queryKey: ["crm-config"] });
@@ -164,11 +169,21 @@ function CrmConfig() {
           </p>
         </Secao>
 
-        <Secao icon={Bell} titulo="Alerta de lead sem atendimento" descricao="Leads em “Novo lead” há mais tempo que isso ficam destacados em vermelho.">
-          <div className="flex items-center gap-2">
-            <input type="number" min={0.5} step={0.5} className="input w-28" value={horas} onChange={(e) => setHoras(e.target.value)} />
-            <span className="text-sm text-gray-600">horas</span>
-            <button className="btn-primary ml-2" disabled={!horas || salvarHoras.isPending || Number(horas) === config?.horas_alerta_novo}
+        <Secao icon={Bell} titulo="Alertas" descricao="Prazos usados nos destaques da lista, do quadro e do painel.">
+          <div className="space-y-3 text-sm text-gray-600">
+            <label className="flex flex-wrap items-center gap-2">
+              <span className="w-56">Lead em “Novo lead” há mais de</span>
+              <input type="number" min={0.5} step={0.5} className="input w-24" value={horas} onChange={(e) => setHoras(e.target.value)} />
+              <span>horas</span>
+            </label>
+            <label className="flex flex-wrap items-center gap-2">
+              <span className="w-56">1ª parcela vencendo nos próximos</span>
+              <input type="number" min={0} max={60} step={1} className="input w-24" value={diasParcela} onChange={(e) => setDiasParcela(e.target.value)} />
+              <span>dias</span>
+            </label>
+            <button className="btn-primary"
+                    disabled={!horas || diasParcela === "" || salvarHoras.isPending
+                      || (Number(horas) === config?.horas_alerta_novo && Number(diasParcela) === config?.dias_alerta_parcela)}
                     onClick={() => salvarHoras.mutate()}>Salvar</button>
           </div>
         </Secao>

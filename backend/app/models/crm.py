@@ -50,6 +50,9 @@ class CrmLead(Base):
     motivo_perda: Mapped[str | None] = mapped_column(String(50))
     motivo_perda_comentario: Mapped[str | None] = mapped_column(Text)
     data_matricula: Mapped[date | None] = mapped_column(Date)
+    # A matrícula só é efetivada com o pagamento da 1ª parcela
+    vencimento_primeira_parcela: Mapped[date | None] = mapped_column(Date, index=True)
+    parcela_paga_em: Mapped[date | None] = mapped_column(Date)
     primeiro_atendimento_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     atualizado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

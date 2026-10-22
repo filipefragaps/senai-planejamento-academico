@@ -22,6 +22,8 @@ export const ALERTA_INFO: Record<string, { label: string; cls: string }> = {
   retorno_atrasado:     { label: "Retorno atrasado",     cls: "bg-red-100 text-red-700" },
   retorno_hoje:         { label: "Retorno hoje",         cls: "bg-amber-100 text-amber-800" },
   sem_vendedor:         { label: "Sem vendedor",         cls: "bg-gray-200 text-gray-700" },
+  parcela_vencida:      { label: "1ª parcela vencida",   cls: "bg-red-100 text-red-700" },
+  parcela_a_vencer:     { label: "1ª parcela a vencer",  cls: "bg-amber-100 text-amber-800" },
 };
 
 export const CAMPO_LABEL: Record<string, string> = {
@@ -37,6 +39,8 @@ export const CAMPO_LABEL: Record<string, string> = {
   motivo_perda: "Motivo da perda",
   motivo_perda_comentario: "Comentário da perda",
   data_matricula: "Data da matrícula",
+  vencimento_primeira_parcela: "Vencimento da 1ª parcela",
+  parcela_paga_em: "1ª parcela paga em",
   nome: "Nome",
   telefone: "Telefone",
   email: "E-mail",
@@ -81,4 +85,5 @@ export type CrmOpcoes = {
   motivos_perda: { value: string; label: string }[];
   vendedores: { id: number; nome: string }[];
   horas_alerta_novo: number;
+  dias_alerta_parcela: number;
 };

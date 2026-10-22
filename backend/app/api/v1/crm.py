@@ -59,6 +59,8 @@ class LeadUpdate(BaseModel):
     motivo_perda: Optional[str] = None
     motivo_perda_comentario: Optional[str] = None
     data_matricula: Optional[date] = None
+    vencimento_primeira_parcela: Optional[date] = None
+    parcela_paga_em: Optional[date] = None
     oferta_id: Optional[int] = None
     nota: Optional[str] = None
     # somente admin
@@ -89,13 +91,17 @@ class CampanhaUpdate(BaseModel):
 
 
 class ConfigUpdate(BaseModel):
-    horas_alerta_novo: float
+    horas_alerta_novo: Optional[float] = None
+    dias_alerta_parcela: Optional[int] = None
 
 
 CAMPOS_VENDEDOR = {
     "temperatura", "status", "observacoes", "ultimo_contato", "proximo_retorno",
     "motivo_perda", "motivo_perda_comentario", "data_matricula", "oferta_id", "nota",
+    "vencimento_primeira_parcela", "parcela_paga_em",
 }
+# O que o vendedor ainda pode alterar num lead Matriculado (controle da 1ª parcela)
+CAMPOS_PARCELA = {"vencimento_primeira_parcela", "parcela_paga_em"}
 CAMPOS_ADMIN = CAMPOS_VENDEDOR | {"vendedor_id", "nome", "telefone", "email", "campanha_id"}
 
 
@@ -113,7 +119,7 @@ def _rotulo_oferta(o: OfertaCurso | None) -> str | None:
     return f"{o.codigo_evento} – {o.nome_curso}" if o else None
 
 
-def _serializar(lead: CrmLead, horas_alerta: float) -> dict:
+def _serializar(lead: CrmLead, params: svc.ParamsAlerta) -> dict:
     return {
         "id": lead.id,
         "meta_lead_id": lead.meta_lead_id,
@@ -144,7 +150,10 @@ def _serializar(lead: CrmLead, horas_alerta: float) -> dict:
         "motivo_perda_label": svc.MOTIVO_LABEL.get(lead.motivo_perda) if lead.motivo_perda else None,
         "motivo_perda_comentario": lead.motivo_perda_comentario,
         "data_matricula": lead.data_matricula.isoformat() if lead.data_matricula else None,
-        "alertas": svc.calcular_alertas(lead, horas_alerta),
+        "vencimento_primeira_parcela": lead.vencimento_primeira_parcela.isoformat() if lead.vencimento_primeira_parcela else None,
+        "parcela_paga_em": lead.parcela_paga_em.isoformat() if lead.parcela_paga_em else None,
+        "parcela_pendente": svc.parcela_pendente(lead),
+        "alertas": svc.calcular_alertas(lead, params),
     }
 
 
@@ -195,8 +204,14 @@ async def _filtrar(
     if alerta:
         abertos = CrmLead.status.notin_(svc.STATUS_FINAIS)
         hoje = svc.hoje_br()
-        corte = svc.agora() - timedelta(hours=await svc.horas_alerta_novo(db))
+        params = await svc.parametros_alerta(db)
+        corte = svc.agora() - timedelta(hours=params.horas_novo)
+        parcela_pendente = and_(CrmLead.status == "matriculado", CrmLead.parcela_paga_em == None,  # noqa: E711
+                                CrmLead.vencimento_primeira_parcela != None)  # noqa: E711
         filtros = {
+            "parcela_vencida": and_(parcela_pendente, CrmLead.vencimento_primeira_parcela < hoje),
+            "parcela_a_vencer": and_(parcela_pendente, CrmLead.vencimento_primeira_parcela >= hoje,
+                                     CrmLead.vencimento_primeira_parcela <= hoje + timedelta(days=params.dias_parcela)),
             "novo_sem_atendimento": and_(CrmLead.status == "novo", CrmLead.recebido_em < corte),
             "retorno_atrasado": and_(abertos, CrmLead.proximo_retorno < hoje),
             "retorno_hoje": and_(abertos, CrmLead.proximo_retorno == hoje),
@@ -228,20 +243,26 @@ async def opcoes(db: AsyncSession = Depends(get_db), user: Usuario = Depends(req
         "motivos_perda": [{"value": v, "label": l} for v, l in svc.MOTIVOS_PERDA],
         "vendedores": [{"id": u.id, "nome": u.nome} for u in vendedores],
         "horas_alerta_novo": await svc.horas_alerta_novo(db),
+        "dias_alerta_parcela": await svc.dias_alerta_parcela(db),
     }
 
 
 @router.get("/config")
 async def obter_config(db: AsyncSession = Depends(get_db), _=Depends(require_admin)):
-    return {"horas_alerta_novo": await svc.horas_alerta_novo(db)}
+    return {"horas_alerta_novo": await svc.horas_alerta_novo(db), "dias_alerta_parcela": await svc.dias_alerta_parcela(db)}
 
 
 @router.put("/config")
 async def salvar_config(data: ConfigUpdate, db: AsyncSession = Depends(get_db), _=Depends(require_admin)):
-    if not (0 < data.horas_alerta_novo <= 720):
-        raise HTTPException(400, "Informe um valor entre 0 e 720 horas")
-    await svc.set_config(db, "horas_alerta_novo", str(data.horas_alerta_novo))
-    return {"horas_alerta_novo": data.horas_alerta_novo}
+    if data.horas_alerta_novo is not None:
+        if not (0 < data.horas_alerta_novo <= 720):
+            raise HTTPException(400, "Informe um valor entre 0 e 720 horas")
+        await svc.set_config(db, "horas_alerta_novo", str(data.horas_alerta_novo))
+    if data.dias_alerta_parcela is not None:
+        if not (0 <= data.dias_alerta_parcela <= 60):
+            raise HTTPException(400, "Informe um valor entre 0 e 60 dias")
+        await svc.set_config(db, "dias_alerta_parcela", str(data.dias_alerta_parcela))
+    return {"horas_alerta_novo": await svc.horas_alerta_novo(db), "dias_alerta_parcela": await svc.dias_alerta_parcela(db)}
 
 
 # ── Leads ─────────────────────────────────────────────────────────────────────
@@ -279,9 +300,9 @@ async def listar_leads(
     q = q.offset((page - 1) * page_size).limit(page_size)
     leads = (await db.execute(q)).scalars().all()
 
-    horas = await svc.horas_alerta_novo(db)
+    params = await svc.parametros_alerta(db)
     return {"total": total, "page": page, "page_size": page_size,
-            "items": [_serializar(l, horas) for l in leads]}
+            "items": [_serializar(l, params) for l in leads]}
 
 
 @router.get("/leads/exportar")
@@ -314,7 +335,8 @@ async def exportar_leads(
         ("Recebido em", 18), ("Nome", 30), ("Telefone", 16), ("E-mail", 28), ("Campanha", 30),
         ("Curso (oferta)", 36), ("Vendedor", 22), ("Temperatura", 12), ("Status", 24),
         ("Último contato", 14), ("Próximo retorno", 15), ("Motivo da perda", 28),
-        ("Comentário da perda", 30), ("Data matrícula", 14), ("Observações", 40),
+        ("Comentário da perda", 30), ("Data matrícula", 14), ("Vencimento 1ª parcela", 16),
+        ("1ª parcela paga em", 16), ("Observações", 40),
     ]
     for i, (titulo, larg) in enumerate(cols, 1):
         c = ws.cell(row=1, column=i, value=titulo)
@@ -334,7 +356,8 @@ async def exportar_leads(
             l.vendedor.nome if l.vendedor else "", svc.TEMPERATURA_LABEL.get(l.temperatura, ""),
             svc.STATUS_LABEL.get(l.status, l.status), d(l.ultimo_contato), d(l.proximo_retorno),
             svc.MOTIVO_LABEL.get(l.motivo_perda, "") if l.motivo_perda else "",
-            l.motivo_perda_comentario or "", d(l.data_matricula), l.observacoes or "",
+            l.motivo_perda_comentario or "", d(l.data_matricula), d(l.vencimento_primeira_parcela),
+            d(l.parcela_paga_em), l.observacoes or "",
         ]
         for c, v in enumerate(valores, 1):
             ws.cell(row=r, column=c, value=v)
@@ -357,7 +380,7 @@ async def obter_lead(lead_id: int, db: AsyncSession = Depends(get_db), user: Usu
     hist = (await db.execute(
         select(CrmHistorico).where(CrmHistorico.lead_id == lead_id).order_by(CrmHistorico.id.desc())
     )).scalars().all()
-    out = _serializar(lead, await svc.horas_alerta_novo(db))
+    out = _serializar(lead, await svc.parametros_alerta(db))
     out["historico"] = [
         {
             "id": h.id, "campo": h.campo, "valor_anterior": h.valor_anterior, "valor_novo": h.valor_novo,
@@ -378,7 +401,7 @@ async def criar_lead_manual(data: LeadCreate, db: AsyncSession = Depends(get_db)
     lead = await svc.criar_lead(db, dados, "manual", user)
     await db.flush()
     lead = await _carregar_lead(db, lead.id, user)
-    return _serializar(lead, await svc.horas_alerta_novo(db))
+    return _serializar(lead, await svc.parametros_alerta(db))
 
 
 async def _descrever(db: AsyncSession, campo: str, valor) -> Optional[str]:
@@ -422,8 +445,10 @@ async def atualizar_lead(
         raise HTTPException(400, "O nome não pode ficar vazio")
     alteracoes = {c: v for c, v in alteracoes.items() if getattr(lead, c) != v}
 
-    if lead.status in svc.STATUS_FINAIS and alteracoes and user.perfil != "admin":
-        raise HTTPException(403, "Lead finalizado: somente o administrador pode corrigir. Você ainda pode registrar anotações.")
+    so_parcela = lead.status == "matriculado" and set(alteracoes) <= CAMPOS_PARCELA
+    if lead.status in svc.STATUS_FINAIS and alteracoes and user.perfil != "admin" and not so_parcela:
+        raise HTTPException(403, "Lead finalizado: somente o administrador pode corrigir. Você ainda pode registrar anotações"
+                                 + (" e o pagamento da 1ª parcela." if lead.status == "matriculado" else "."))
 
     # Validações de domínio
     if "status" in alteracoes and alteracoes["status"] not in svc.STATUS_LABEL:
@@ -442,6 +467,9 @@ async def atualizar_lead(
     def valor_final(campo):
         return alteracoes[campo] if campo in alteracoes else getattr(lead, campo)
 
+    if alteracoes.get("parcela_paga_em") and valor_final("status") != "matriculado":
+        raise HTTPException(400, "O pagamento da 1ª parcela só pode ser registrado para leads matriculados")
+
     novo_status = valor_final("status")
     if "status" in alteracoes:
         if novo_status == "perdido":
@@ -451,6 +479,8 @@ async def atualizar_lead(
                 raise HTTPException(400, "Para o motivo 'Outro', descreva o motivo no comentário")
         if novo_status == "matriculado" and not valor_final("data_matricula"):
             raise HTTPException(400, "Informe a data da matrícula")
+        if novo_status == "matriculado" and not valor_final("vencimento_primeira_parcela"):
+            raise HTTPException(400, "Informe o vencimento da 1ª parcela")
         if novo_status == "aguardando_retorno" and not valor_final("proximo_retorno"):
             raise HTTPException(400, "Informe a data do próximo retorno")
         # Saiu de "Novo lead": marca o primeiro atendimento e o último contato
@@ -558,12 +588,12 @@ async def dashboard(
     q = await _filtrar(select(CrmLead), db, user, campanha_id=campanha_id, status=status, temperatura=temperatura,
                        vendedor_id=vendedor_id, oferta_id=oferta_id, data_inicio=data_inicio, data_fim=data_fim)
     leads = (await db.execute(q.options(*_opts()))).scalars().all()
-    horas = await svc.horas_alerta_novo(db)
+    params = await svc.parametros_alerta(db)
 
     total = len(leads)
     por_status = Counter(l.status for l in leads)
     por_temp = Counter(l.temperatura or "sem" for l in leads)
-    alertas = Counter(a for l in leads for a in svc.calcular_alertas(l, horas))
+    alertas = Counter(a for l in leads for a in svc.calcular_alertas(l, params))
     matriculados = por_status.get("matriculado", 0)
 
     tempos = [
@@ -605,6 +635,11 @@ async def dashboard(
         "retornos_atrasados": alertas.get("retorno_atrasado", 0),
         "retornos_hoje": alertas.get("retorno_hoje", 0),
         "sem_vendedor": alertas.get("sem_vendedor", 0),
+        "parcelas_a_vencer": alertas.get("parcela_a_vencer", 0),
+        "parcelas_vencidas": alertas.get("parcela_vencida", 0),
+        "dias_alerta_parcela": params.dias_parcela,
+        "matriculas_pagas": sum(1 for l in leads if l.status == "matriculado" and l.parcela_paga_em),
+        "matriculas_aguardando_pagamento": sum(1 for l in leads if l.status == "matriculado" and not l.parcela_paga_em),
         "matriculados": matriculados,
         "taxa_conversao": _taxa(matriculados, total),
         "tempo_medio_primeiro_atendimento_h": round(sum(tempos) / len(tempos), 1) if tempos else None,

@@ -552,7 +552,7 @@ export const crmApi = {
   criarCampanha: (data: any) => api.post("/crm/campanhas", data).then((r) => r.data),
   atualizarCampanha: (id: number, data: any) => api.put(`/crm/campanhas/${id}`, data).then((r) => r.data),
   config: () => api.get("/crm/config").then((r) => r.data),
-  salvarConfig: (data: { horas_alerta_novo: number }) => api.put("/crm/config", data).then((r) => r.data),
+  salvarConfig: (data: { horas_alerta_novo?: number; dias_alerta_parcela?: number }) => api.put("/crm/config", data).then((r) => r.data),
   metaStatus: () => api.get("/crm/meta/status").then((r) => r.data),
   metaTestar: () => api.post("/crm/meta/testar").then((r) => r.data),
   metaAssinar: () => api.post("/crm/meta/assinar").then((r) => r.data),

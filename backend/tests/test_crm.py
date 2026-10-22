@@ -126,7 +126,10 @@ async def test_matricula_e_dashboard(client, admin_user, vendedores):
     leads = (await client.get("/api/v1/crm/leads", headers=admin)).json()["items"]
     url = f"/api/v1/crm/leads/{leads[0]['id']}"
     assert (await client.patch(url, headers=admin, json={"status": "matriculado"})).status_code == 400
-    r = await client.patch(url, headers=admin, json={"status": "matriculado", "data_matricula": "2026-10-18"})
+    # Matrícula exige também o vencimento da 1ª parcela
+    assert (await client.patch(url, headers=admin, json={"status": "matriculado", "data_matricula": "2026-10-18"})).status_code == 400
+    r = await client.patch(url, headers=admin, json={"status": "matriculado", "data_matricula": "2026-10-18",
+                                                     "vencimento_primeira_parcela": "2026-11-10"})
     assert r.status_code == 200
 
     d = (await client.get("/api/v1/crm/dashboard", headers=admin)).json()
@@ -197,3 +200,47 @@ async def test_importacao_central_de_leads_pt(client, admin_user, vendedores):
     r2 = await client.post("/api/v1/crm/leads/importar-csv", headers=admin,
                            files={"arquivo": ("leads.csv", CSV_CENTRAL_LEADS, "text/csv")})
     assert r2.json()["inseridos"] == 0 and r2.json()["duplicados"] == 3
+
+
+async def test_primeira_parcela_alertas_e_pagamento(client, admin_user, vendedores):
+    from datetime import timedelta
+    from app.services.crm import hoje_br
+
+    await _importar(client, _hdr(admin_user))
+    vend = vendedores[0]
+    h = _hdr(vend)
+    leads = (await client.get("/api/v1/crm/leads", headers=h)).json()["items"]
+    hoje = hoje_br()
+    a_vencer, vencida = leads[0], leads[1]
+
+    for lead, venc in ((a_vencer, hoje + timedelta(days=2)), (vencida, hoje - timedelta(days=1))):
+        r = await client.patch(f"/api/v1/crm/leads/{lead['id']}", headers=h, json={
+            "status": "matriculado", "data_matricula": hoje.isoformat(),
+            "vencimento_primeira_parcela": venc.isoformat()})
+        assert r.status_code == 200, r.text
+
+    assert "parcela_a_vencer" in (await client.get(f"/api/v1/crm/leads/{a_vencer['id']}", headers=h)).json()["alertas"]
+    lv = (await client.get(f"/api/v1/crm/leads/{vencida['id']}", headers=h)).json()
+    assert "parcela_vencida" in lv["alertas"] and lv["parcela_pendente"] is True
+
+    filtro = (await client.get("/api/v1/crm/leads", headers=h, params={"alerta": "parcela_vencida"})).json()
+    assert [l["id"] for l in filtro["items"]] == [vencida["id"]]
+    d = (await client.get("/api/v1/crm/dashboard", headers=h)).json()
+    assert d["parcelas_a_vencer"] == 1 and d["parcelas_vencidas"] == 1 and d["matriculas_aguardando_pagamento"] == 2
+
+    # Lead finalizado: vendedor ainda registra o pagamento, mas não muda o status
+    url = f"/api/v1/crm/leads/{vencida['id']}"
+    assert (await client.patch(url, headers=h, json={"status": "perdido", "motivo_perda": "preco"})).status_code == 403
+    r = await client.patch(url, headers=h, json={"parcela_paga_em": hoje.isoformat()})
+    assert r.status_code == 200, r.text
+    pago = r.json()
+    assert pago["alertas"] == [] and pago["parcela_pendente"] is False
+    assert any(x["campo"] == "parcela_paga_em" for x in pago["historico"])
+    d = (await client.get("/api/v1/crm/dashboard", headers=h)).json()
+    assert d["matriculas_pagas"] == 1 and d["parcelas_vencidas"] == 0
+
+    # Pagamento só para matriculado
+    admin = _hdr(admin_user)
+    novo = (await client.get("/api/v1/crm/leads", headers=admin, params={"status": "novo"})).json()["items"][0]
+    r = await client.patch(f"/api/v1/crm/leads/{novo['id']}", headers=admin, json={"parcela_paga_em": hoje.isoformat()})
+    assert r.status_code == 400

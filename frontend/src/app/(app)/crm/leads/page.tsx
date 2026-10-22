@@ -225,6 +225,8 @@ function LeadsPageInner() {
     { key: "novo_sem_atendimento", label: "Novos sem atendimento", n: resumo?.novos_sem_atendimento },
     { key: "retorno_atrasado", label: "Retorno atrasado", n: resumo?.retornos_atrasados },
     { key: "retorno_hoje", label: "Retorno hoje", n: resumo?.retornos_hoje },
+    { key: "parcela_a_vencer", label: "1ª parcela a vencer", n: resumo?.parcelas_a_vencer },
+    { key: "parcela_vencida", label: "1ª parcela vencida", n: resumo?.parcelas_vencidas },
     ...(isAdmin ? [{ key: "sem_vendedor", label: "Sem vendedor", n: resumo?.sem_vendedor }] : []),
   ];
 
@@ -398,8 +400,8 @@ function LeadsPageInner() {
               </td></tr>
             )}
             {itens.map((l) => {
-              const urgente = l.alertas.includes("novo_sem_atendimento") || l.alertas.includes("retorno_atrasado");
-              const hoje = l.alertas.includes("retorno_hoje");
+              const urgente = ["novo_sem_atendimento", "retorno_atrasado", "parcela_vencida"].some((a) => l.alertas.includes(a));
+              const hoje = l.alertas.includes("retorno_hoje") || l.alertas.includes("parcela_a_vencer");
               const temp = l.temperatura ? TEMPERATURA_STYLE[l.temperatura] : null;
               const wa = linkWhatsApp(l.telefone);
               return (

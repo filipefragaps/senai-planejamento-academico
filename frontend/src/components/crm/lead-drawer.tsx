@@ -29,6 +29,8 @@ type Form = {
   motivo_perda: string;
   motivo_perda_comentario: string;
   data_matricula: string;
+  vencimento_primeira_parcela: string;
+  parcela_paga_em: string;
   oferta_id: number | null;
   observacoes: string;
   vendedor_id: number | null;
@@ -43,6 +45,8 @@ function formDoLead(l: any): Form {
     motivo_perda: l.motivo_perda ?? "",
     motivo_perda_comentario: l.motivo_perda_comentario ?? "",
     data_matricula: l.data_matricula ?? "",
+    vencimento_primeira_parcela: l.vencimento_primeira_parcela ?? "",
+    parcela_paga_em: l.parcela_paga_em ?? "",
     oferta_id: l.oferta_id,
     observacoes: l.observacoes ?? "",
     vendedor_id: l.vendedor_id,
@@ -85,6 +89,8 @@ export function LeadDrawer({ leadId, opcoes, isAdmin, onClose }: Props) {
   }, [onClose]);
 
   const bloqueado = !!lead?.finalizado && !isAdmin;
+  // Num lead Matriculado o vendedor ainda controla a 1ª parcela
+  const parcelaEditavel = !bloqueado || lead?.status === "matriculado";
 
   const alteracoes = useMemo(() => {
     if (!lead || !form) return {};
@@ -136,6 +142,7 @@ export function LeadDrawer({ leadId, opcoes, isAdmin, onClose }: Props) {
     if (form.status === "perdido" && form.motivo_perda === "outro" && !form.motivo_perda_comentario.trim())
       return toast.error("Descreva o motivo no comentário");
     if (form.status === "matriculado" && !form.data_matricula) return toast.error("Informe a data da matrícula");
+    if (form.status === "matriculado" && !form.vencimento_primeira_parcela) return toast.error("Informe o vencimento da 1ª parcela");
     if (form.status === "aguardando_retorno" && !form.proximo_retorno) return toast.error("Informe a data do próximo retorno");
     salvar.mutate(alteracoes);
   }
@@ -215,7 +222,7 @@ export function LeadDrawer({ leadId, opcoes, isAdmin, onClose }: Props) {
             {bloqueado && (
               <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
                 <Lock className="mt-0.5 h-4 w-4 shrink-0" />
-                Lead finalizado. Somente o administrador pode corrigir os dados; você ainda pode registrar anotações.
+                Lead finalizado. Somente o administrador pode corrigir os dados; você ainda pode registrar anotações{lead.status === "matriculado" ? " e o pagamento da 1ª parcela" : ""}.
               </div>
             )}
 
@@ -271,10 +278,38 @@ export function LeadDrawer({ leadId, opcoes, isAdmin, onClose }: Props) {
               )}
 
               {form.status === "matriculado" && (
-                <Campo label="Data da matrícula" obrigatorio>
-                  <input type="date" className="input" value={form.data_matricula} disabled={bloqueado} max={hojeISO()}
-                         onChange={(e) => set("data_matricula", e.target.value)} />
-                </Campo>
+                <div className={cn("space-y-3 rounded-lg border p-3",
+                  lead.alertas.includes("parcela_vencida") ? "border-red-300 bg-red-50/50"
+                    : lead.alertas.includes("parcela_a_vencer") ? "border-amber-300 bg-amber-50/50"
+                    : form.parcela_paga_em ? "border-green-300 bg-green-50/50" : "border-gray-200")}>
+                  <Campo label="Data da matrícula" obrigatorio>
+                    <input type="date" className="input" value={form.data_matricula} disabled={bloqueado} max={hojeISO()}
+                           onChange={(e) => set("data_matricula", e.target.value)} />
+                  </Campo>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    1ª parcela <span className="font-normal normal-case text-gray-400">— a matrícula só é efetivada após o pagamento</span>
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Campo label="Vencimento" obrigatorio>
+                      <input type="date" className="input bg-white" value={form.vencimento_primeira_parcela} disabled={!parcelaEditavel}
+                             onChange={(e) => set("vencimento_primeira_parcela", e.target.value)} />
+                    </Campo>
+                    <Campo label="Paga em">
+                      <input type="date" className="input bg-white" value={form.parcela_paga_em} disabled={!parcelaEditavel} max={hojeISO()}
+                             onChange={(e) => set("parcela_paga_em", e.target.value)} />
+                    </Campo>
+                  </div>
+                  {form.parcela_paga_em ? (
+                    <p className="text-xs font-medium text-green-700">✓ Matrícula efetivada (1ª parcela paga)</p>
+                  ) : (
+                    parcelaEditavel && (
+                      <button type="button" className="text-xs font-medium text-primary hover:underline"
+                              onClick={() => set("parcela_paga_em", hojeISO())}>
+                        Marcar como paga hoje
+                      </button>
+                    )
+                  )}
+                </div>
               )}
 
               <div className="grid grid-cols-2 gap-3">
@@ -370,7 +405,7 @@ export function LeadDrawer({ leadId, opcoes, isAdmin, onClose }: Props) {
               </button>
             )}
             <button className="btn-secondary ml-auto" onClick={onClose}>Fechar</button>
-            <button className="btn-primary gap-1.5" disabled={!temAlteracoes || bloqueado || salvar.isPending} onClick={salvarAlteracoes}>
+            <button className="btn-primary gap-1.5" disabled={!temAlteracoes || (bloqueado && !Object.keys(alteracoes).every((k) => k === "vencimento_primeira_parcela" || k === "parcela_paga_em")) || salvar.isPending} onClick={salvarAlteracoes}>
               {salvar.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Salvar alterações
             </button>
