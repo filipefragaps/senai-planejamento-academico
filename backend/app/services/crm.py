@@ -355,3 +355,81 @@ def ler_csv_meta(conteudo: bytes) -> tuple[list[dict], list[str]]:
             "dados_extras": extras,
         })
     return resultado, erros
+
+
+# ── Importação em lote (CSV e API da Meta) ────────────────────────────────────
+
+def _mesmo_lead_por_horario(a: datetime, b: datetime) -> bool:
+    """Mesmo instante a menos de diferença de fuso: horas inteiras (até 26h) e mesmo minuto.
+
+    O CSV da Central de Leads usa o fuso da conta de anúncios; a API usa UTC.
+    """
+    dif = abs((como_utc(a) - como_utc(b)).total_seconds())
+    if dif > 26 * 3600:
+        return False
+    resto = dif % 3600
+    return resto <= 60 or resto >= 3540
+
+
+async def importar_lote(db: AsyncSession, linhas: list[dict], origem: str, usuario: Usuario | None) -> dict:
+    """Cria os leads que ainda não existem. Retorna {inseridos, duplicados, ids}.
+
+    Duplicado quando: mesmo id da Meta; ou mesmo nome com o mesmo horário de criação (tolerando fuso);
+    ou, sem id da Meta, mesmo telefone/e-mail na mesma campanha.
+    """
+    from app.models.crm import CrmCampanha as _Camp
+
+    ids_meta = [l["meta_lead_id"] for l in linhas if l.get("meta_lead_id")]
+    ids_existentes = set()
+    if ids_meta:
+        ids_existentes = set((await db.execute(
+            select(CrmLead.meta_lead_id).where(CrmLead.meta_lead_id.in_(ids_meta))
+        )).scalars().all())
+
+    existentes = await db.execute(
+        select(CrmLead.telefone, CrmLead.email, _Camp.nome, CrmLead.nome, CrmLead.recebido_em)
+        .outerjoin(_Camp, CrmLead.campanha_id == _Camp.id)
+    )
+    contatos: set[tuple] = set()
+    horarios: dict[str, list[datetime]] = {}
+    for tel, email, camp, nome, recebido in existentes.all():
+        camp = (camp or "").lower()
+        if tel:
+            contatos.add((tel, camp))
+        if email:
+            contatos.add((email.lower(), camp))
+        horarios.setdefault(nome.strip().lower(), []).append(recebido)
+
+    cache: dict = {}
+    ativos = await vendedores_ativos(db)
+    inseridos = duplicados = 0
+    novos_ids: list[int] = []
+    for l in linhas:
+        meta_id = l.get("meta_lead_id")
+        nome_chave = (l.get("nome") or "").strip().lower()
+        recebido = l.get("recebido_em")
+        camp = (l.get("campanha") or "").lower()
+        tel = normalizar_telefone(l.get("telefone"))
+        email = (l.get("email") or "").strip().lower() or None
+
+        duplicado = bool(meta_id and meta_id in ids_existentes)
+        if not duplicado and recebido:
+            duplicado = any(_mesmo_lead_por_horario(recebido, h) for h in horarios.get(nome_chave, []))
+        if not duplicado and not meta_id:
+            duplicado = bool((tel and (tel, camp) in contatos) or (email and (email, camp) in contatos))
+        if duplicado:
+            duplicados += 1
+            continue
+
+        lead = await criar_lead(db, l, origem, usuario, cache, ativos)
+        inseridos += 1
+        novos_ids.append(lead.id)
+        if meta_id:
+            ids_existentes.add(meta_id)
+        if tel:
+            contatos.add((tel, camp))
+        if email:
+            contatos.add((email, camp))
+        horarios.setdefault(nome_chave, []).append(lead.recebido_em)
+
+    return {"inseridos": inseridos, "duplicados": duplicados, "ids": novos_ids}

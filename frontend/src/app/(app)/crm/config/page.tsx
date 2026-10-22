@@ -4,10 +4,11 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Bell, Megaphone, Users, Plus, FileSpreadsheet, Plug } from "lucide-react";
+import { Bell, Megaphone, Users, Plus, FileSpreadsheet } from "lucide-react";
 import { crmApi } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { OfertaPicker } from "@/components/crm/oferta-picker";
+import { IntegracaoMeta } from "@/components/crm/meta-integracao";
 import { CrmOpcoes } from "@/lib/crm";
 import { useCurrentUser } from "@/lib/use-current-user";
 
@@ -91,6 +92,8 @@ function CrmConfig() {
     <div className="space-y-5">
       <PageHeader title="Configurações do CRM" description="Campanhas, distribuição de leads e alertas" />
 
+      <IntegracaoMeta />
+
       <Secao icon={Megaphone} titulo="Campanhas"
              descricao="As campanhas são criadas automaticamente na importação. Vincule cada uma ao curso anunciado e, se quiser, a um vendedor fixo.">
         <div className="overflow-x-auto">
@@ -170,7 +173,7 @@ function CrmConfig() {
           </div>
         </Secao>
 
-        <Secao icon={FileSpreadsheet} titulo="Importação por CSV" descricao="Enquanto a integração automática não estiver ativa.">
+        <Secao icon={FileSpreadsheet} titulo="Importação por CSV" descricao="Alternativa manual à integração automática.">
           <ol className="list-decimal space-y-1 pl-5 text-sm text-gray-600">
             <li>No Meta Business Suite, abra <strong>Todas as ferramentas → Central de leads</strong> (ou a página do formulário).</li>
             <li>Selecione o período e clique em <strong>Baixar → CSV</strong>.</li>
@@ -179,14 +182,6 @@ function CrmConfig() {
           <p className="mt-2 text-xs text-gray-500">Pode reimportar o mesmo arquivo: leads que já existem são ignorados.</p>
         </Secao>
 
-        <Secao icon={Plug} titulo="Integração automática com a Meta" descricao="Próxima etapa">
-          <p className="text-sm text-gray-600">
-            Os leads passarão a entrar sozinhos assim que o app da Meta for aprovado com as permissões
-            <code className="mx-1 rounded bg-gray-100 px-1 text-xs">leads_retrieval</code> e
-            <code className="mx-1 rounded bg-gray-100 px-1 text-xs">pages_manage_metadata</code>.
-            Os dados de conexão (ID da página e token) serão informados aqui.
-          </p>
-        </Secao>
       </div>
     </div>
   );

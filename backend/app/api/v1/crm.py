@@ -3,25 +3,31 @@ CRM de Gestão de Leads — Meta Ads.
 Perfis: admin (visão total + configurações) e vendedor (somente os próprios leads).
 """
 import io
+import json
+import logging
 from collections import Counter, defaultdict
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.config import settings
 from app.core.deps import get_current_user, require_admin
 from app.database import get_db
 from app.models.crm import CrmCampanha, CrmHistorico, CrmLead
 from app.models.oferta import OfertaCurso
 from app.models.usuario import Usuario
 from app.services import crm as svc
+from app.services import meta_leads as meta
 
 router = APIRouter(prefix="/crm", tags=["CRM de Leads"])
+log = logging.getLogger("crm.meta")
 
 
 async def require_crm(current_user: Usuario = Depends(get_current_user)) -> Usuario:
@@ -527,54 +533,8 @@ async def importar_csv(
     if not linhas and erros:
         raise HTTPException(400, erros[0])
 
-    # Deduplicação: id do lead na Meta; sem id, telefone/e-mail + campanha ou nome + data/hora de criação
-    ids_existentes = set((await db.execute(
-        select(CrmLead.meta_lead_id).where(CrmLead.meta_lead_id.in_([l["meta_lead_id"] for l in linhas if l["meta_lead_id"]]))
-    )).scalars().all())
-    existentes = await db.execute(
-        select(CrmLead.telefone, CrmLead.email, CrmCampanha.nome, CrmLead.nome, CrmLead.recebido_em)
-        .outerjoin(CrmCampanha, CrmLead.campanha_id == CrmCampanha.id)
-    )
-
-    def chave_nome_data(nome: str, recebido) -> tuple:
-        return ("nome_data", nome.strip().lower(), svc.como_utc(recebido).astimezone(timezone.utc).strftime("%Y%m%d%H%M"))
-
-    chaves = set()
-    for tel, email, camp, nome, recebido in existentes.all():
-        chaves.add(chave_nome_data(nome, recebido))
-        camp = (camp or "").lower()
-        if tel:
-            chaves.add((tel, camp))
-        if email:
-            chaves.add((email.lower(), camp))
-
-    cache: dict = {}
-    ativos = await svc.vendedores_ativos(db)
-    inseridos = duplicados = 0
-    for l in linhas:
-        if l["meta_lead_id"] and l["meta_lead_id"] in ids_existentes:
-            duplicados += 1
-            continue
-        camp = (l["campanha"] or "").lower()
-        tel = svc.normalizar_telefone(l["telefone"])
-        email = (l["email"] or "").lower() or None
-        nome_data = chave_nome_data(l["nome"], l["recebido_em"]) if l["recebido_em"] else None
-        if not l["meta_lead_id"] and ((tel and (tel, camp) in chaves) or (email and (email, camp) in chaves)
-                                      or (nome_data and nome_data in chaves)):
-            duplicados += 1
-            continue
-        await svc.criar_lead(db, l, "csv", user, cache, ativos)
-        inseridos += 1
-        if l["meta_lead_id"]:
-            ids_existentes.add(l["meta_lead_id"])
-        if tel:
-            chaves.add((tel, camp))
-        if email:
-            chaves.add((email, camp))
-        if nome_data:
-            chaves.add(nome_data)
-
-    return {"inseridos": inseridos, "duplicados": duplicados, "erros": erros[:20], "total_erros": len(erros)}
+    res = await svc.importar_lote(db, linhas, "csv", user)
+    return {"inseridos": res["inseridos"], "duplicados": res["duplicados"], "erros": erros[:20], "total_erros": len(erros)}
 
 
 # ── Painel ────────────────────────────────────────────────────────────────────
@@ -751,3 +711,111 @@ async def atualizar_campanha(
     await db.flush()
     await db.refresh(c, ["oferta", "vendedor_padrao"])
     return {**_serializar_campanha(c), "leads_atualizados": aplicados}
+
+
+# ── Integração Meta (Lead Ads) ────────────────────────────────────────────────
+
+@router.get("/webhook/meta", include_in_schema=False)
+async def webhook_meta_verificar(
+    modo: Optional[str] = Query(default=None, alias="hub.mode"),
+    token: Optional[str] = Query(default=None, alias="hub.verify_token"),
+    desafio: Optional[str] = Query(default=None, alias="hub.challenge"),
+):
+    """Verificação feita pela Meta ao cadastrar o webhook: devolve o hub.challenge."""
+    if modo == "subscribe" and settings.META_VERIFY_TOKEN and token == settings.META_VERIFY_TOKEN:
+        return PlainTextResponse(desafio or "")
+    raise HTTPException(403, "Token de verificação inválido")
+
+
+@router.post("/webhook/meta", include_in_schema=False)
+async def webhook_meta_receber(request: Request, db: AsyncSession = Depends(get_db)):
+    """Aviso de lead novo. Público, protegido pela assinatura X-Hub-Signature-256."""
+    corpo = await request.body()
+    if not meta.assinatura_valida(corpo, request.headers.get("X-Hub-Signature-256")):
+        raise HTTPException(403, "Assinatura inválida")
+    try:
+        payload = json.loads(corpo)
+    except ValueError:
+        raise HTTPException(400, "JSON inválido")
+    try:
+        res = await meta.processar_webhook(db, payload)
+    except (meta.MetaErro, IntegrityError) as e:
+        # Responde 200 para a Meta não desativar o webhook; a sincronização periódica recupera o lead
+        await db.rollback()
+        msg = str(e) if isinstance(e, meta.MetaErro) else "Lead já recebido por outra rotina"
+        await meta.registrar_erro(db, f"Webhook: {msg}")
+        log.warning("Webhook Meta: %s", msg)
+        return {"ok": False}
+    return {"ok": True, **res}
+
+
+@router.get("/meta/status")
+async def meta_status(request: Request, db: AsyncSession = Depends(get_db), _=Depends(require_admin)):
+    # Endereço público do backend: variável PUBLIC_API_URL ou o host desta requisição (atrás do proxy da Railway)
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    base = (settings.PUBLIC_API_URL or f"{proto}://{request.headers.get('host', request.url.netloc)}").rstrip("/")
+    return {
+        "configurado": meta.configurado(),
+        "variaveis": meta.situacao_variaveis(),
+        "versao_graph": settings.META_GRAPH_VERSION,
+        "sincronizacao_minutos": settings.META_SYNC_MINUTOS,
+        "webhook_caminho": f"{settings.API_V1_STR}/crm/webhook/meta",
+        "webhook_url": f"{base}{settings.API_V1_STR}/crm/webhook/meta",
+        **(await meta.estado(db)),
+    }
+
+
+def _erro_meta(e: Exception) -> JSONResponse:
+    return JSONResponse(status_code=502, content={"detail": str(e)})
+
+
+@router.post("/meta/testar")
+async def meta_testar(db: AsyncSession = Depends(get_db), _=Depends(require_admin)):
+    """Confere token, página, formulários e se a página está assinada para enviar leads ao app."""
+    if not meta.configurado():
+        raise HTTPException(400, "Defina META_ACCESS_TOKEN e META_PAGE_ID nas variáveis do servidor")
+    try:
+        async with meta.MetaCliente() as cli:
+            pagina = await cli.conectar_pagina()
+            forms = await cli.formularios()
+            apps = await cli.assinaturas()
+    except meta.MetaErro as e:
+        await meta.registrar_erro(db, f"Teste de conexão: {e}")
+        return _erro_meta(e)
+    assinada = any("leadgen" in (a.get("subscribed_fields") or []) for a in apps)
+    return {
+        "pagina": pagina,
+        "formularios": [{"id": f["id"], "nome": f.get("name"), "status": f.get("status")} for f in forms],
+        "webhook_assinado": assinada,
+    }
+
+
+@router.post("/meta/assinar")
+async def meta_assinar(db: AsyncSession = Depends(get_db), _=Depends(require_admin)):
+    """Assina a página para enviar os avisos de lead (campo leadgen) ao app."""
+    if not meta.configurado():
+        raise HTTPException(400, "Defina META_ACCESS_TOKEN e META_PAGE_ID nas variáveis do servidor")
+    try:
+        async with meta.MetaCliente() as cli:
+            await cli.conectar_pagina()
+            ok = await cli.assinar_leadgen()
+    except meta.MetaErro as e:
+        await meta.registrar_erro(db, f"Assinatura da página: {e}")
+        return _erro_meta(e)
+    return {"assinado": ok}
+
+
+@router.post("/meta/sincronizar")
+async def meta_sincronizar(
+    dias: Optional[int] = Query(default=None, ge=1, le=90, description="Buscar os últimos N dias (padrão: desde a última sincronização)"),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_admin),
+):
+    if not meta.configurado():
+        raise HTTPException(400, "Defina META_ACCESS_TOKEN e META_PAGE_ID nas variáveis do servidor")
+    try:
+        return await meta.sincronizar(db, dias)
+    except meta.MetaErro as e:
+        await db.rollback()
+        await meta.registrar_erro(db, f"Sincronização: {e}")
+        return _erro_meta(e)

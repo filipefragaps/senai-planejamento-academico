@@ -54,6 +54,15 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM_NAME: str = "Sistema Acadêmico SENAI"
 
+    # Meta (Lead Ads) — integração do CRM. Segredos ficam só nas variáveis de ambiente.
+    META_APP_SECRET: str = ""        # Chave secreta do app (assinatura do webhook e appsecret_proof)
+    META_ACCESS_TOKEN: str = ""      # Token do usuário do sistema (não expira)
+    META_PAGE_ID: str = ""           # ID da página que recebe os leads
+    META_VERIFY_TOKEN: str = ""      # Senha combinada no cadastro do webhook
+    META_GRAPH_VERSION: str = "v23.0"
+    META_SYNC_MINUTOS: int = 30      # Intervalo da sincronização de segurança (0 desliga)
+    PUBLIC_API_URL: str = ""         # URL pública do backend (exibe o endereço do webhook na tela)
+
     # Uploads
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE_MB: int = 50

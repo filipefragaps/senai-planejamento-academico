@@ -203,13 +203,45 @@ async def _seed_admin(engine) -> None:
         )
 
 
+async def _loop_sincronizacao_meta() -> None:
+    """Sincronização de segurança dos leads da Meta (cobre avisos de webhook perdidos)."""
+    import asyncio
+    import logging
+    from app.database import AsyncSessionLocal
+    from app.services import meta_leads
+
+    log = logging.getLogger("crm.meta")
+    await asyncio.sleep(60)  # deixa o servidor terminar de subir
+    while True:
+        if meta_leads.configurado():
+            async with AsyncSessionLocal() as db:
+                try:
+                    res = await meta_leads.sincronizar(db)
+                    await db.commit()
+                    log.info("Sincronização Meta: %s novo(s), %s já existente(s)", res["inseridos"], res["duplicados"])
+                except Exception as e:  # noqa: BLE001 — a rotina nunca pode derrubar o servidor
+                    await db.rollback()
+                    msg = str(e) if isinstance(e, meta_leads.MetaErro) else f"{type(e).__name__}"
+                    log.warning("Sincronização Meta falhou: %s", msg)
+                    try:
+                        await meta_leads.registrar_erro(db, f"Sincronização automática: {msg}")
+                        await db.commit()
+                    except Exception:  # noqa: BLE001
+                        await db.rollback()
+        await asyncio.sleep(settings.META_SYNC_MINUTOS * 60)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import asyncio
     from app.database import create_tables, engine
     await create_tables()
     await _aplicar_migracoes(engine)
     await _seed_admin(engine)
+    tarefa = asyncio.create_task(_loop_sincronizacao_meta()) if settings.META_SYNC_MINUTOS > 0 else None
     yield
+    if tarefa:
+        tarefa.cancel()
 
 
 app = FastAPI(
