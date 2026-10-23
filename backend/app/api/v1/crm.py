@@ -826,9 +826,14 @@ async def meta_testar(db: AsyncSession = Depends(get_db), _=Depends(require_admi
         raise HTTPException(400, "Defina META_ACCESS_TOKEN e META_PAGE_ID nas variáveis do servidor")
     try:
         async with meta.MetaCliente() as cli:
-            pagina = await cli.conectar_pagina()
-            forms = await cli.formularios()
-            apps = await cli.assinaturas()
+            try:
+                pagina = await cli.conectar_pagina()
+                forms = await cli.formularios()
+                apps = await cli.assinaturas()
+            except meta.MetaErro as e:
+                diag = await cli.diagnostico()
+                await meta.registrar_erro(db, f"Teste de conexão: {e}")
+                return JSONResponse(status_code=502, content={"detail": str(e), "diagnostico": diag})
     except meta.MetaErro as e:
         await meta.registrar_erro(db, f"Teste de conexão: {e}")
         return _erro_meta(e)

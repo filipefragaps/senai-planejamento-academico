@@ -69,8 +69,14 @@ class GraphFalsa:
         if caminho == "me/accounts":
             if self.modo_token != "contas":
                 return httpx.Response(400, json=erro_campo)
-            return httpx.Response(200, json={"data": [{"id": "999", "access_token": "OUTRA"},
-                                                      {"id": PAGINA, "access_token": TOKEN_PAGINA}]})
+            return httpx.Response(200, json={"data": [{"id": "999", "name": "Outra Página", "access_token": "OUTRA"},
+                                                      {"id": PAGINA, "name": "SENAI Teste", "access_token": TOKEN_PAGINA}]})
+        if caminho == "me":
+            return httpx.Response(200, json={"id": "777", "name": "Usuário do sistema CRM", "metadata": {"type": "user"}})
+        if caminho == "555":  # ID errado: perfil pessoal em vez de página
+            return httpx.Response(200, json={"id": "555", "name": "Perfil Pessoal", "metadata": {"type": "user"}})
+        if caminho == "555/leadgen_forms":
+            return httpx.Response(400, json={"error": {"message": "(#100) Tried accessing nonexisting field (leadgen_forms)", "code": 100}})
         if caminho == f"{PAGINA}/leadgen_forms":
             if p.get("after") == "cur1":
                 return httpx.Response(200, json={"data": [{"id": "f2", "name": FORMS["f2"], "status": "ACTIVE"}]})
@@ -257,3 +263,18 @@ async def test_token_da_pagina_por_qualquer_caminho(client, graph, admin_user, m
     # Os formulários foram lidos com o token esperado
     forms = [c for c in graph.chamadas if c.url.path.endswith("/leadgen_forms")]
     assert forms and all(c.headers["Authorization"] == f"Bearer {token_esperado}" for c in forms)
+
+
+
+async def test_id_que_nao_e_pagina_mostra_diagnostico(client, graph, admin_user, monkeypatch):
+    monkeypatch.setattr(settings, "META_PAGE_ID", "555")
+    h = {"Authorization": f"Bearer {create_access_token({'sub': str(admin_user.id)})}"}
+    r = await client.post("/api/v1/crm/meta/testar", headers=h)
+    assert r.status_code == 502
+    corpo = r.json()
+    assert "leadgen_forms" in corpo["detail"] and "META_PAGE_ID" in corpo["detail"]
+    d = corpo["diagnostico"]
+    assert d["id_informado"] == {"id": "555", "nome": "Perfil Pessoal", "tipo": "user"}
+    assert d["dono_do_token"]["nome"] == "Usuário do sistema CRM"
+    assert {"id": PAGINA, "nome": "SENAI Teste"} in d["paginas"]
+    assert TOKEN not in r.text and TOKEN_PAGINA not in r.text and "OUTRA" not in r.text

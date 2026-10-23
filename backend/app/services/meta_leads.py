@@ -157,6 +157,31 @@ class MetaCliente:
         self.tipo_token = "página" if self._token_pagina != self._token_sistema else "informado"
         return {"id": dados.get("id"), "nome": self.nome_pagina, "token_usado": self.tipo_token}
 
+    async def diagnostico(self) -> dict:
+        """Ajuda a achar o META_PAGE_ID certo: tipo do ID informado, dono do token e páginas acessíveis.
+
+        Cada consulta é independente (falhas são ignoradas); nenhum token é devolvido.
+        """
+        def resumo(d: dict) -> dict:
+            return {"id": d.get("id"), "nome": d.get("name"), "tipo": (d.get("metadata") or {}).get("type")}
+
+        out: dict = {"id_informado": None, "dono_do_token": None, "paginas": None}
+        try:
+            out["id_informado"] = resumo(await self._req(
+                "GET", f"/{settings.META_PAGE_ID}", {"fields": "id,name", "metadata": "1"}, pagina=False))
+        except MetaErro as e:
+            out["id_informado"] = {"id": settings.META_PAGE_ID, "erro": str(e)}
+        try:
+            out["dono_do_token"] = resumo(await self._req("GET", "/me", {"fields": "id,name", "metadata": "1"}, pagina=False))
+        except MetaErro:
+            pass
+        try:
+            contas = await self._paginar("/me/accounts", {"fields": "id,name"}, limite_paginas=20, pagina=False)
+            out["paginas"] = [{"id": c.get("id"), "nome": c.get("name")} for c in contas]
+        except MetaErro:
+            pass
+        return out
+
     async def formularios(self) -> list[dict]:
         forms = await self._paginar(f"/{settings.META_PAGE_ID}/leadgen_forms", {"fields": "id,name,status"})
         self._formularios.update({f["id"]: f.get("name") for f in forms})

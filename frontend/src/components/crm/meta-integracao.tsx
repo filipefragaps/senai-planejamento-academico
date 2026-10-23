@@ -17,6 +17,16 @@ const VARIAVEIS: { nome: string; descricao: string }[] = [
   { nome: "META_VERIFY_TOKEN", descricao: "Senha combinada no cadastro do webhook" },
 ];
 
+const TIPO_ID: Record<string, string> = {
+  page: "Página do Facebook",
+  user: "perfil de pessoa / usuário (não é uma Página)",
+  application: "app da Meta (não é uma Página)",
+  business: "portfólio empresarial (não é uma Página)",
+  adaccount: "conta de anúncios (não é uma Página)",
+  instagramuser: "conta do Instagram (não é uma Página)",
+  shadowiguser: "conta do Instagram (não é uma Página)",
+};
+
 function erroDe(e: any) {
   return e?.response?.data?.detail || "Falha ao falar com a Meta";
 }
@@ -24,6 +34,7 @@ function erroDe(e: any) {
 export function IntegracaoMeta() {
   const qc = useQueryClient();
   const [teste, setTeste] = useState<any | null>(null);
+  const [diagnostico, setDiagnostico] = useState<any | null>(null);
 
   const { data: st, isLoading } = useQuery({
     queryKey: ["crm-meta-status"],
@@ -40,8 +51,13 @@ export function IntegracaoMeta() {
 
   const testar = useMutation({
     mutationFn: crmApi.metaTestar,
-    onSuccess: (r) => { setTeste(r); toast.success(`Conectado à página ${r.pagina?.nome ?? ""}`); },
-    onError: (e) => { setTeste(null); toast.error(erroDe(e)); qc.invalidateQueries({ queryKey: ["crm-meta-status"] }); },
+    onSuccess: (r) => { setTeste(r); setDiagnostico(null); toast.success(`Conectado à página ${r.pagina?.nome ?? ""}`); },
+    onError: (e: any) => {
+      setTeste(null);
+      setDiagnostico(e?.response?.data?.diagnostico ?? null);
+      toast.error(erroDe(e));
+      qc.invalidateQueries({ queryKey: ["crm-meta-status"] });
+    },
   });
   const assinar = useMutation({
     mutationFn: crmApi.metaAssinar,
@@ -162,6 +178,61 @@ export function IntegracaoMeta() {
               </button>
             )}
           </div>
+
+          {diagnostico && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-gray-700">
+              <p className="mb-1 font-semibold text-amber-900">Diagnóstico</p>
+              {diagnostico.id_informado && (
+                <p>
+                  <span className="text-gray-500">ID em META_PAGE_ID:</span>{" "}
+                  <code className="rounded bg-white px-1 text-xs">{diagnostico.id_informado.id}</code>
+                  {diagnostico.id_informado.nome && <> — {diagnostico.id_informado.nome}</>}
+                  {diagnostico.id_informado.tipo && (
+                    <span className={cn("ml-1 font-medium", diagnostico.id_informado.tipo === "page" ? "text-green-700" : "text-red-700")}>
+                      ({TIPO_ID[diagnostico.id_informado.tipo] ?? diagnostico.id_informado.tipo})
+                    </span>
+                  )}
+                </p>
+              )}
+              {diagnostico.dono_do_token && (
+                <p className="mt-1">
+                  <span className="text-gray-500">O token pertence a:</span> {diagnostico.dono_do_token.nome}
+                  {diagnostico.dono_do_token.tipo && <> ({TIPO_ID[diagnostico.dono_do_token.tipo] ?? diagnostico.dono_do_token.tipo})</>}
+                  {" "}<code className="rounded bg-white px-1 text-xs">{diagnostico.dono_do_token.id}</code>
+                </p>
+              )}
+              {diagnostico.dono_do_token?.tipo === "page" && diagnostico.dono_do_token.id !== diagnostico.id_informado?.id && (
+                <p className="mt-1 text-xs font-medium text-amber-900">
+                  O token é da página “{diagnostico.dono_do_token.nome}”: use o ID dela em META_PAGE_ID.
+                </p>
+              )}
+              {Array.isArray(diagnostico.paginas) && (
+                <>
+                  <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    Páginas que este token acessa ({diagnostico.paginas.length})
+                  </p>
+                  {diagnostico.paginas.length === 0 ? (
+                    <p className="text-xs text-red-700">
+                      Nenhuma. Atribua a página ao usuário do sistema em Configurações do negócio → Usuários do sistema → Atribuir ativos.
+                    </p>
+                  ) : (
+                    <ul className="mt-1 space-y-1">
+                      {diagnostico.paginas.map((p: any) => (
+                        <li key={p.id} className="flex items-center gap-2 text-xs">
+                          <span className="flex-1 truncate">{p.nome}</span>
+                          <code className="rounded bg-white px-1">{p.id}</code>
+                          <button className="text-primary hover:underline" onClick={() => copiar(p.id)}>Copiar ID</button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+              <p className="mt-2 text-xs text-gray-500">
+                Cole o ID da página certa em <strong>Railway → backend → Variables → META_PAGE_ID</strong> e aguarde o deploy.
+              </p>
+            </div>
+          )}
 
           {teste && (
             <div className="rounded-md border bg-gray-50 p-3 text-sm">
