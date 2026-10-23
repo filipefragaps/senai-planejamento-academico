@@ -192,6 +192,15 @@ async def escolher_vendedor(db: AsyncSession, campanha: CrmCampanha | None,
     return proximo
 
 
+async def campanha_por_nome_anterior(db: AsyncSession, nome: str) -> CrmCampanha | None:
+    """Campanha renomeada cujo nome antigo é `nome` (sem diferenciar maiúsculas)."""
+    alvo = nome.strip().lower()
+    renomeadas = (await db.execute(
+        select(CrmCampanha).where(CrmCampanha.nomes_anteriores != None)  # noqa: E711
+    )).scalars().all()
+    return next((c for c in renomeadas if alvo in [n.lower() for n in (c.nomes_anteriores or [])]), None)
+
+
 async def obter_campanha(db: AsyncSession, nome: str | None, meta_campaign_id: str | None = None,
                          cache: dict | None = None) -> CrmCampanha | None:
     """Busca a campanha pelo id da Meta ou pelo nome; cria se não existir."""
@@ -208,6 +217,8 @@ async def obter_campanha(db: AsyncSession, nome: str | None, meta_campaign_id: s
         )).scalar_one_or_none()
     if camp is None and nome:
         camp = (await db.execute(select(CrmCampanha).where(CrmCampanha.nome == nome))).scalar_one_or_none()
+    if camp is None and nome:
+        camp = await campanha_por_nome_anterior(db, nome)
     if camp is None:
         camp = CrmCampanha(nome=nome or f"Campanha {meta_campaign_id}", meta_campaign_id=meta_campaign_id)
         db.add(camp)

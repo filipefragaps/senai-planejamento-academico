@@ -52,6 +52,7 @@ async def _aplicar_migracoes(engine) -> None:
         "ALTER TABLE aulas ADD COLUMN ambiente2 VARCHAR(100)",
         "ALTER TABLE crm_leads ADD COLUMN vencimento_primeira_parcela DATE",
         "ALTER TABLE crm_leads ADD COLUMN parcela_paga_em DATE",
+        "ALTER TABLE crm_campanhas ADD COLUMN nomes_anteriores JSON",
         "ALTER TABLE contratos_virtuais ALTER COLUMN cpf DROP NOT NULL",
         """CREATE TABLE IF NOT EXISTS gp_balances_mensais (
             id SERIAL PRIMARY KEY,

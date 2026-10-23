@@ -15,6 +15,8 @@ class CrmCampanha(Base):
     oferta_id: Mapped[int | None] = mapped_column(ForeignKey("ofertas_cursos.id", ondelete="SET NULL"))
     vendedor_padrao_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id", ondelete="SET NULL"))
     ativa: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Nomes antigos (após renomear): importações que ainda trazem o nome antigo caem nesta campanha
+    nomes_anteriores: Mapped[list | None] = mapped_column(JSON)
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     oferta: Mapped["OfertaCurso | None"] = relationship("OfertaCurso")

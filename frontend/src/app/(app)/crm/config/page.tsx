@@ -4,13 +4,59 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Bell, Megaphone, Users, Plus, FileSpreadsheet } from "lucide-react";
+import { Bell, Megaphone, Users, Plus, FileSpreadsheet, Pencil, Check, X } from "lucide-react";
 import { crmApi } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { OfertaPicker } from "@/components/crm/oferta-picker";
 import { IntegracaoMeta } from "@/components/crm/meta-integracao";
+import { LimparCrm } from "@/components/crm/limpar-crm";
 import { CrmOpcoes } from "@/lib/crm";
 import { useCurrentUser } from "@/lib/use-current-user";
+
+/** Nome da campanha com edição no lugar (lápis → campo → Enter salva, Esc cancela). */
+function NomeCampanha({ campanha, salvando, onSalvar }: {
+  campanha: any; salvando: boolean; onSalvar: (nome: string) => Promise<unknown>;
+}) {
+  const [editando, setEditando] = useState(false);
+  const [nome, setNome] = useState(campanha.nome);
+
+  async function salvar() {
+    const novo = nome.trim();
+    if (!novo || novo === campanha.nome) { setEditando(false); setNome(campanha.nome); return; }
+    try {
+      await onSalvar(novo);
+      setEditando(false);
+    } catch {
+      /* erro já exibido; mantém o campo aberto para corrigir */
+    }
+  }
+
+  if (editando) {
+    return (
+      <div className="flex items-center gap-1">
+        <input className="input h-8 min-w-[200px]" value={nome} autoFocus disabled={salvando}
+               onChange={(e) => setNome(e.target.value)}
+               onKeyDown={(e) => { if (e.key === "Enter") salvar(); if (e.key === "Escape") { setEditando(false); setNome(campanha.nome); } }} />
+        <button className="rounded p-1 text-green-600 hover:bg-green-50" title="Salvar" disabled={salvando} onClick={salvar}>
+          <Check className="h-4 w-4" />
+        </button>
+        <button className="rounded p-1 text-gray-400 hover:bg-gray-100" title="Cancelar" disabled={salvando}
+                onClick={() => { setEditando(false); setNome(campanha.nome); }}>
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="group flex items-center gap-1.5">
+      <p className="font-medium text-gray-800">{campanha.nome}</p>
+      <button className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-primary" title="Editar nome da campanha"
+              onClick={() => { setNome(campanha.nome); setEditando(true); }}>
+        <Pencil className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
 
 function Secao({ icon: Icon, titulo, descricao, children }: {
   icon: React.ElementType; titulo: string; descricao?: string; children: React.ReactNode;
@@ -120,8 +166,14 @@ function CrmConfig() {
               {(campanhas as any[]).map((c) => (
                 <tr key={c.id} className="border-b last:border-0 align-middle">
                   <td className="py-2 pr-3">
-                    <p className="font-medium text-gray-800">{c.nome}</p>
+                    <NomeCampanha campanha={c} salvando={atualizarCampanha.isPending}
+                                  onSalvar={(nome) => atualizarCampanha.mutateAsync({ id: c.id, data: { nome } })} />
                     {c.meta_campaign_id && <p className="font-mono text-[11px] text-gray-400">ID Meta {c.meta_campaign_id}</p>}
+                    {c.nomes_anteriores?.length > 0 && (
+                      <p className="text-[11px] text-gray-400" title="Importações com estes nomes entram nesta campanha">
+                        Antes: {c.nomes_anteriores.join(", ")}
+                      </p>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">{c.total_leads}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{c.matriculados}</td>
@@ -198,6 +250,8 @@ function CrmConfig() {
         </Secao>
 
       </div>
+
+      <LimparCrm />
     </div>
   );
 }

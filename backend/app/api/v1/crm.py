@@ -669,6 +669,7 @@ async def dashboard(
 def _serializar_campanha(c: CrmCampanha, total: int = 0, matriculados: int = 0) -> dict:
     return {
         "id": c.id, "nome": c.nome, "meta_campaign_id": c.meta_campaign_id, "ativa": c.ativa,
+        "nomes_anteriores": c.nomes_anteriores or [],
         "oferta_id": c.oferta_id, "oferta_label": _rotulo_oferta(c.oferta),
         "vendedor_padrao_id": c.vendedor_padrao_id,
         "vendedor_padrao_nome": c.vendedor_padrao.nome if c.vendedor_padrao else None,
@@ -726,8 +727,22 @@ async def atualizar_campanha(
     enviados = data.model_fields_set
     await _validar_campanha(db, data.oferta_id if "oferta_id" in enviados else None,
                             data.vendedor_padrao_id if "vendedor_padrao_id" in enviados else None)
-    if "nome" in enviados and data.nome and data.nome.strip():
-        c.nome = data.nome.strip()
+    if "nome" in enviados:
+        novo = (data.nome or "").strip()
+        if not novo:
+            raise HTTPException(400, "Informe o nome da campanha")
+        if novo != c.nome:
+            outra = (await db.execute(
+                select(CrmCampanha).where(CrmCampanha.nome == novo, CrmCampanha.id != c.id)
+            )).scalar_one_or_none()
+            if outra:
+                raise HTTPException(400, f"Já existe outra campanha chamada “{novo}”")
+            # Guarda o nome antigo para reconhecer importações futuras (CSV) que ainda o usam
+            anteriores = [n for n in (c.nomes_anteriores or []) if n.lower() != novo.lower()]
+            if c.nome.lower() not in [n.lower() for n in anteriores]:
+                anteriores.append(c.nome)
+            c.nomes_anteriores = anteriores
+            c.nome = novo
     for campo in ("oferta_id", "vendedor_padrao_id", "ativa"):
         if campo in enviados:
             setattr(c, campo, getattr(data, campo))
@@ -854,3 +869,30 @@ async def meta_sincronizar(
         await db.rollback()
         await meta.registrar_erro(db, f"Sincronização: {e}")
         return _erro_meta(e)
+
+
+# ── Limpeza do banco do CRM ───────────────────────────────────────────────────
+
+class LimparCrmRequest(BaseModel):
+    senha: str
+    confirmacao: str
+    incluir_campanhas: bool = False
+
+
+@router.post("/limpar")
+async def limpar_crm(data: LimparCrmRequest, db: AsyncSession = Depends(get_db), user: Usuario = Depends(require_admin)):
+    """Apaga todos os leads e o histórico (e, opcionalmente, as campanhas). Exige a senha do administrador."""
+    from sqlalchemy import delete
+    from app.core.security import verify_password
+
+    if data.confirmacao.strip().upper() != "EXCLUIR":
+        raise HTTPException(400, "Digite EXCLUIR para confirmar")
+    if not verify_password(data.senha, user.hashed_password):
+        raise HTTPException(403, "Senha incorreta")
+
+    historico = (await db.execute(delete(CrmHistorico))).rowcount
+    leads = (await db.execute(delete(CrmLead))).rowcount
+    campanhas = (await db.execute(delete(CrmCampanha))).rowcount if data.incluir_campanhas else 0
+    await svc.set_config(db, "rodizio_ultimo_id", None)
+    log.warning("CRM limpo por %s: %s lead(s), %s campanha(s)", user.email, leads, campanhas)
+    return {"leads": leads, "historico": historico, "campanhas": campanhas}

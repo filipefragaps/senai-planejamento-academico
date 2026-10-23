@@ -244,3 +244,48 @@ async def test_primeira_parcela_alertas_e_pagamento(client, admin_user, vendedor
     novo = (await client.get("/api/v1/crm/leads", headers=admin, params={"status": "novo"})).json()["items"][0]
     r = await client.patch(f"/api/v1/crm/leads/{novo['id']}", headers=admin, json={"parcela_paga_em": hoje.isoformat()})
     assert r.status_code == 400
+
+
+async def test_renomear_campanha_mantem_nome_antigo_para_importacao(client, admin_user, vendedores):
+    admin = _hdr(admin_user)
+    await _importar(client, admin)
+    camps = {c["nome"]: c for c in (await client.get("/api/v1/crm/campanhas", headers=admin)).json()}
+    sold = camps["Soldagem Out"]
+
+    # Não pode usar o nome de outra campanha nem ficar vazio
+    assert (await client.put(f"/api/v1/crm/campanhas/{sold['id']}", headers=admin, json={"nome": "CNC Out"})).status_code == 400
+    assert (await client.put(f"/api/v1/crm/campanhas/{sold['id']}", headers=admin, json={"nome": "  "})).status_code == 400
+
+    r = await client.put(f"/api/v1/crm/campanhas/{sold['id']}", headers=admin, json={"nome": "Soldagem MIG/TIG 2026"})
+    assert r.status_code == 200 and r.json()["nome"] == "Soldagem MIG/TIG 2026"
+    assert r.json()["nomes_anteriores"] == ["Soldagem Out"]
+
+    # CSV novo que ainda usa o nome antigo (sem id da campanha) cai na campanha renomeada
+    csv = ("full_name,phone_number,campaign_name,created_time\n"
+           "Pedro Novo,+5562911112222,Soldagem Out,2026-10-22T10:00:00-03:00\n").encode()
+    await client.post("/api/v1/crm/leads/importar-csv", headers=admin, files={"arquivo": ("n.csv", csv, "text/csv")})
+    nomes = [c["nome"] for c in (await client.get("/api/v1/crm/campanhas", headers=admin)).json()]
+    assert "Soldagem Out" not in nomes
+    pedro = (await client.get("/api/v1/crm/leads", headers=admin, params={"busca": "Pedro Novo"})).json()["items"][0]
+    assert pedro["campanha_id"] == sold["id"]
+
+
+async def test_limpar_crm_exige_admin_senha_e_confirmacao(client, admin_user, vendedores):
+    admin = _hdr(admin_user)
+    await _importar(client, admin)
+    url = "/api/v1/crm/limpar"
+    ok = {"senha": "Senha@123", "confirmacao": "EXCLUIR"}
+
+    assert (await client.post(url, headers=_hdr(vendedores[0]), json=ok)).status_code == 403
+    assert (await client.post(url, headers=admin, json={**ok, "senha": "errada"})).status_code == 403
+    assert (await client.post(url, headers=admin, json={**ok, "confirmacao": "sim"})).status_code == 400
+    assert (await client.get("/api/v1/crm/leads", headers=admin)).json()["total"] == 3
+
+    r = await client.post(url, headers=admin, json=ok)
+    assert r.status_code == 200 and r.json()["leads"] == 3 and r.json()["campanhas"] == 0
+    assert (await client.get("/api/v1/crm/leads", headers=admin)).json()["total"] == 0
+    assert len((await client.get("/api/v1/crm/campanhas", headers=admin)).json()) == 2   # campanhas mantidas
+
+    r = await client.post(url, headers=admin, json={**ok, "incluir_campanhas": True})
+    assert r.json()["campanhas"] == 2
+    assert (await client.get("/api/v1/crm/campanhas", headers=admin)).json() == []
