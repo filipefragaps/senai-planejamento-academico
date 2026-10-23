@@ -19,7 +19,7 @@ from sqlalchemy import select
 
 from app.database import get_db
 from app.models.gestao_ponto import (
-    GpColaborador, GpRegistroDiario, GpOcorrencia, GpBancoHoras, GpBalanceMensal, GpImportacao,
+    GpColaborador, GpRegistroDiario, GpOcorrencia, GpBancoHoras, GpBalanceMensal, GpImportacao, GpPainel,
 )
 from app.core.deps import get_current_user, require_admin, require_admin_ou_rh
 
@@ -433,3 +433,171 @@ async def info(
         "ocorrencias": total_occ,
         "bancoHoras": total_banco,
     }
+
+
+# ─── Painel v1.5 (mesmo visual da versão local; dados no banco) ───────────────
+# A tela da v1.5 lê e grava um único "snapshot" (base FPW + análise + ocorrências).
+# Aqui ele fica numa linha de gp_painel, compartilhada por todos os usuários do RH.
+
+import gzip as _gzip
+import re as _re
+from datetime import datetime as _dt, timezone as _tz
+from fastapi import Request
+from fastapi.responses import Response
+from app.models.usuario import Usuario
+
+_PAINEL_ID = 1
+_EMAIL_RE = _re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+_MAX_CORPO = 200 * 1024 * 1024  # 200 MB descompactado
+
+
+def _acesso(user: Usuario) -> dict:
+    return {
+        "role": "admin", "canManage": True, "label": "RH · Dados no sistema",
+        "supervisorEmails": [], "email": user.email, "displayName": user.nome,
+    }
+
+
+async def _painel(db: AsyncSession) -> GpPainel:
+    painel = await db.get(GpPainel, _PAINEL_ID)
+    if painel is None:
+        painel = GpPainel(id=_PAINEL_ID, analysis_version=0, dados=None, rh_email="", updated_by="")
+        db.add(painel)
+        await db.flush()
+    return painel
+
+
+def _iso(valor) -> str:
+    if not valor:
+        return ""
+    if valor.tzinfo is None:
+        valor = valor.replace(tzinfo=_tz.utc)
+    return valor.isoformat()
+
+
+def _resumo(painel: GpPainel) -> dict:
+    return {"analysisVersion": painel.analysis_version, "updatedAt": _iso(painel.updated_at),
+            "updatedByEmail": painel.updated_by}
+
+
+async def _corpo_json(request: Request):
+    corpo = await request.body()
+    if request.headers.get("content-encoding", "").lower() == "gzip":
+        try:
+            corpo = _gzip.decompress(corpo)
+        except OSError:
+            raise HTTPException(400, "Corpo compactado inválido")
+    if len(corpo) > _MAX_CORPO:
+        raise HTTPException(413, "Dados grandes demais")
+    try:
+        return json.loads(corpo)
+    except ValueError:
+        raise HTTPException(400, "JSON inválido")
+
+
+@router.get("/painel")
+async def painel_obter(db: AsyncSession = Depends(get_db), user: Usuario = Depends(require_admin_ou_rh)):
+    """Snapshot do painel + acesso do usuário + e-mail do RH (o JSON salvo é devolvido sem reprocessar)."""
+    painel = await db.get(GpPainel, _PAINEL_ID)
+    acesso = json.dumps(_acesso(user), ensure_ascii=False)
+    rh = json.dumps(painel.rh_email if painel else "", ensure_ascii=False)
+    if not painel or not painel.dados:
+        corpo = f'{{"access":{acesso},"rhEmail":{rh},"snapshot":null}}'
+    else:
+        meta = _resumo(painel)
+        corpo = (f'{{"access":{acesso},"rhEmail":{rh},"snapshot":{{"analysisVersion":{meta["analysisVersion"]},'
+                 f'"updatedAt":{json.dumps(meta["updatedAt"])},"updatedByEmail":{json.dumps(meta["updatedByEmail"])},'
+                 f'"data":{painel.dados}}}}}')
+    return Response(content=corpo, media_type="application/json")
+
+
+def _aplicar_status_legados(dados: dict, legados: dict[str, str]) -> int:
+    """Primeira gravação no painel: aproveita os status já registrados na versão anterior."""
+    alterados = 0
+    for item in dados.get("items") or []:
+        st = legados.get(item.get("id"))
+        if st and st != "pending" and item.get("status") == "pending":
+            item["status"] = st
+            alterados += 1
+    return alterados
+
+
+@router.post("/painel")
+async def painel_salvar(request: Request, db: AsyncSession = Depends(get_db), user: Usuario = Depends(require_admin_ou_rh)):
+    """Grava o snapshot inteiro (importação da base, dos TXT mensais ou limpeza)."""
+    payload = await _corpo_json(request)
+    dados = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(dados, dict) or not isinstance(dados.get("contacts", []), list) or not isinstance(dados.get("items", []), list):
+        raise HTTPException(400, "Formato de dados inválido")
+    versao = payload.get("analysisVersion")
+    if not isinstance(versao, int):
+        raise HTTPException(400, "analysisVersion ausente")
+
+    painel = await _painel(db)
+    migrados = 0
+    # Painel ainda sem ocorrências (vazio ou só com a base FPW): aproveita os status da versão anterior.
+    # `dados` é gravado sem espaços, então a lista vazia aparece exatamente como "items":[]
+    sem_ocorrencias = not painel.dados or '"items":[]' in painel.dados
+    if sem_ocorrencias and dados.get("items"):
+        res = await db.execute(select(GpOcorrencia.occurrence_id, GpOcorrencia.status).where(GpOcorrencia.status != "pending"))
+        migrados = _aplicar_status_legados(dados, {i: st for i, st in res.all()})
+
+    painel.analysis_version = versao
+    painel.dados = json.dumps(dados, ensure_ascii=False, separators=(",", ":"))
+    painel.updated_by = user.email
+    painel.updated_at = _dt.now(_tz.utc)
+    await db.flush()
+    return {"snapshot": _resumo(painel), "statusAproveitados": migrados}
+
+
+class _MudancaItem(BaseModel):
+    id: str
+    status: Literal["pending", "approved", "ignored"]
+    notifiedAt: str | None = None
+    notificationMethod: str | None = None
+
+
+class _MudancasItens(BaseModel):
+    changes: list[_MudancaItem]
+
+
+@router.patch("/painel/itens")
+async def painel_itens(data: _MudancasItens, db: AsyncSession = Depends(get_db), user: Usuario = Depends(require_admin_ou_rh)):
+    """Atualiza só o status das ocorrências (evita reenviar o snapshot inteiro a cada clique)."""
+    painel = await db.get(GpPainel, _PAINEL_ID)
+    if not painel or not painel.dados:
+        raise HTTPException(409, "Painel sem dados: importe a base e os TXT mensais")
+    dados = json.loads(painel.dados)
+    mudancas = {m.id: m for m in data.changes}
+    alterados = 0
+    for item in dados.get("items") or []:
+        m = mudancas.get(item.get("id"))
+        if not m:
+            continue
+        item["status"] = m.status
+        for campo in ("notifiedAt", "notificationMethod"):
+            valor = getattr(m, campo)
+            if valor:
+                item[campo] = valor
+            else:
+                item.pop(campo, None)
+        alterados += 1
+    painel.dados = json.dumps(dados, ensure_ascii=False, separators=(",", ":"))
+    painel.updated_by = user.email
+    painel.updated_at = _dt.now(_tz.utc)
+    await db.flush()
+    return {"snapshot": _resumo(painel), "alterados": alterados}
+
+
+class _ConfigPainel(BaseModel):
+    rhEmail: str
+
+
+@router.put("/painel/config")
+async def painel_config(data: _ConfigPainel, db: AsyncSession = Depends(get_db), _=Depends(require_admin_ou_rh)):
+    email = data.rhEmail.strip().lower()
+    if email and not _EMAIL_RE.match(email):
+        raise HTTPException(400, "Informe um e-mail válido do RH")
+    painel = await _painel(db)
+    painel.rh_email = email
+    return {"rhEmail": email}

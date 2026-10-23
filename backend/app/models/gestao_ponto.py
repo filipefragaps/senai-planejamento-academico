@@ -133,3 +133,21 @@ class GpImportacao(Base):
     imported_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class GpPainel(Base):
+    """Painel da Gestão de Ponto v1.5: o mesmo "snapshot" que a versão local guarda no navegador,
+    aqui no banco e compartilhado por todo o RH (linha única, id = 1).
+
+    `dados` é o JSON de `SharedSnapshot.data` (base FPW, resultado da análise e ocorrências).
+    """
+    __tablename__ = "gp_painel"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    analysis_version: Mapped[int] = mapped_column(Integer, default=0)
+    dados: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rh_email: Mapped[str] = mapped_column(String(300), default="")
+    updated_by: Mapped[str] = mapped_column(String(300), default="")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
