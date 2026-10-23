@@ -166,6 +166,9 @@ export function IntegracaoMeta() {
           {teste && (
             <div className="rounded-md border bg-gray-50 p-3 text-sm">
               <p><span className="text-gray-500">Página:</span> <strong>{teste.pagina?.nome}</strong> <span className="text-xs text-gray-400">({teste.pagina?.id})</span></p>
+              <p className="text-xs text-gray-500">
+                Token em uso: {teste.pagina?.token_usado === "página" ? "token da página (obtido automaticamente)" : "o token informado em META_ACCESS_TOKEN"}
+              </p>
               <p className="mt-1 flex items-center gap-1.5">
                 {teste.webhook_assinado ? (
                   <><CheckCircle2 className="h-4 w-4 text-green-600" /> Página enviando avisos de lead ao app</>

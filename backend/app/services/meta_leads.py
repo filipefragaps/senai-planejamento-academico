@@ -34,6 +34,23 @@ class MetaErro(Exception):
     """Erro devolvido pela Graph API (mensagem já legível, sem dados sensíveis)."""
 
 
+def _dica(codigo, mensagem: str) -> str:
+    """Orientação em português para os erros mais comuns da Graph API."""
+    m = (mensagem or "").lower()
+    if codigo == 190:
+        return "Token inválido ou expirado: gere um novo token do usuário do sistema e atualize META_ACCESS_TOKEN."
+    if codigo in (10, 200) or "permission" in m:
+        return ("Permissão faltando: o token precisa de leads_retrieval, pages_show_list, pages_read_engagement, "
+                "pages_manage_metadata, pages_manage_ads e ads_read, e o usuário do sistema precisa ter a página atribuída.")
+    if codigo == 100 and ("leadgen_forms" in m or "nonexisting field" in m) and "access_token" not in m:
+        return "Confira META_PAGE_ID: ele deve ser o ID da Página do Facebook (não do app, do portfólio nem da conta de anúncios)."
+    if codigo == 803 or "do not exist" in m or "does not exist" in m:
+        return "ID não encontrado: confira META_PAGE_ID e se o usuário do sistema tem acesso à página."
+    if "leads access" in m or "lead access" in m:
+        return "Libere o app em Configurações do negócio → Integrações → Acesso a leads."
+    return ""
+
+
 def configurado() -> bool:
     return bool(settings.META_ACCESS_TOKEN and settings.META_PAGE_ID)
 
@@ -95,16 +112,17 @@ class MetaCliente:
             raise MetaErro(f"Resposta inválida da Meta (HTTP {r.status_code})") from None
         if isinstance(dados, dict) and "error" in dados:
             e = dados["error"]
-            raise MetaErro(f"{e.get('message', 'Erro da Meta')} (código {e.get('code')})")
+            dica = _dica(e.get("code"), e.get("message", ""))
+            raise MetaErro(f"{e.get('message', 'Erro da Meta')} (código {e.get('code')})" + (f" — {dica}" if dica else ""))
         if r.status_code >= 400:
             raise MetaErro(f"Erro da Meta (HTTP {r.status_code})")
         return dados
 
-    async def _paginar(self, caminho: str, params: dict, limite_paginas: int = 50) -> list[dict]:
+    async def _paginar(self, caminho: str, params: dict, limite_paginas: int = 50, pagina: bool = True) -> list[dict]:
         itens: list[dict] = []
         params = {**params, "limit": 100}
         for _ in range(limite_paginas):
-            dados = await self._req("GET", caminho, params)
+            dados = await self._req("GET", caminho, params, pagina=pagina)
             itens.extend(dados.get("data", []))
             depois = (dados.get("paging") or {}).get("cursors", {}).get("after")
             if not depois or not (dados.get("paging") or {}).get("next"):
@@ -113,11 +131,31 @@ class MetaCliente:
         return itens
 
     async def conectar_pagina(self) -> dict:
-        """Obtém o token da página a partir do token do usuário do sistema."""
-        dados = await self._req("GET", f"/{settings.META_PAGE_ID}", {"fields": "id,name,access_token"}, pagina=False)
-        self._token_pagina = dados.get("access_token") or self._token_sistema
+        """Confere a página e obtém o token dela.
+
+        Ordem: lista de páginas do usuário do sistema (/me/accounts) → campo access_token da página →
+        o próprio token informado (que pode já ser um token de página). O campo access_token não existe
+        em todos os casos (ex.: quando o token já é de página), por isso não é obrigatório.
+        """
+        dados = await self._req("GET", f"/{settings.META_PAGE_ID}", {"fields": "id,name"}, pagina=False)
         self.nome_pagina = dados.get("name")
-        return {"id": dados.get("id"), "nome": self.nome_pagina}
+        self._token_pagina = None
+        try:
+            contas = await self._paginar("/me/accounts", {"fields": "id,access_token"}, limite_paginas=20, pagina=False)
+            self._token_pagina = next(
+                (c.get("access_token") for c in contas if str(c.get("id")) == str(settings.META_PAGE_ID)), None
+            )
+        except MetaErro:
+            pass
+        if not self._token_pagina:
+            try:
+                extra = await self._req("GET", f"/{settings.META_PAGE_ID}", {"fields": "access_token"}, pagina=False)
+                self._token_pagina = extra.get("access_token")
+            except MetaErro:
+                pass
+        self._token_pagina = self._token_pagina or self._token_sistema
+        self.tipo_token = "página" if self._token_pagina != self._token_sistema else "informado"
+        return {"id": dados.get("id"), "nome": self.nome_pagina, "token_usado": self.tipo_token}
 
     async def formularios(self) -> list[dict]:
         forms = await self._paginar(f"/{settings.META_PAGE_ID}/leadgen_forms", {"fields": "id,name,status"})

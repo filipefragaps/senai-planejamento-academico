@@ -49,6 +49,9 @@ class GraphFalsa:
         self.chamadas: list[httpx.Request] = []
         self.assinado = False
         self.erro: dict | None = None
+        # Como a Meta entrega o token da página: "contas" (/me/accounts), "campo" (access_token da página)
+        # ou "nenhum" (o token informado já é de página: os dois caminhos respondem erro #100)
+        self.modo_token = "contas"
 
     def __call__(self, req: httpx.Request) -> httpx.Response:
         self.chamadas.append(req)
@@ -56,8 +59,18 @@ class GraphFalsa:
             return httpx.Response(400, json={"error": self.erro})
         caminho = req.url.path.split("/", 2)[-1]  # remove "/v23.0/"
         p = req.url.params
+        erro_campo = {"error": {"message": "(#100) Tried accessing nonexisting field (access_token)", "code": 100}}
         if caminho == PAGINA:
-            return httpx.Response(200, json={"id": PAGINA, "name": "SENAI Teste", "access_token": TOKEN_PAGINA})
+            if "access_token" in p.get("fields", ""):
+                if self.modo_token != "campo":
+                    return httpx.Response(400, json=erro_campo)
+                return httpx.Response(200, json={"id": PAGINA, "access_token": TOKEN_PAGINA})
+            return httpx.Response(200, json={"id": PAGINA, "name": "SENAI Teste"})
+        if caminho == "me/accounts":
+            if self.modo_token != "contas":
+                return httpx.Response(400, json=erro_campo)
+            return httpx.Response(200, json={"data": [{"id": "999", "access_token": "OUTRA"},
+                                                      {"id": PAGINA, "access_token": TOKEN_PAGINA}]})
         if caminho == f"{PAGINA}/leadgen_forms":
             if p.get("after") == "cur1":
                 return httpx.Response(200, json={"data": [{"id": "f2", "name": FORMS["f2"], "status": "ACTIVE"}]})
@@ -230,3 +243,17 @@ async def test_nao_configurado(client, admin_user, monkeypatch):
     h = {"Authorization": f"Bearer {create_access_token({'sub': str(admin_user.id)})}"}
     assert (await client.post("/api/v1/crm/meta/sincronizar", headers=h)).status_code == 400
     assert (await client.get("/api/v1/crm/meta/status", headers=h)).json()["configurado"] is False
+
+
+
+@pytest.mark.parametrize("modo,token_esperado", [("contas", TOKEN_PAGINA), ("campo", TOKEN_PAGINA), ("nenhum", TOKEN)])
+async def test_token_da_pagina_por_qualquer_caminho(client, graph, admin_user, modo, token_esperado):
+    """Erro #100 'nonexisting field (access_token)' não pode impedir a conexão."""
+    graph.modo_token = modo
+    h = {"Authorization": f"Bearer {create_access_token({'sub': str(admin_user.id)})}"}
+    r = await client.post("/api/v1/crm/meta/testar", headers=h)
+    assert r.status_code == 200, r.text
+    assert r.json()["pagina"]["nome"] == "SENAI Teste" and len(r.json()["formularios"]) == 2
+    # Os formulários foram lidos com o token esperado
+    forms = [c for c in graph.chamadas if c.url.path.endswith("/leadgen_forms")]
+    assert forms and all(c.headers["Authorization"] == f"Bearer {token_esperado}" for c in forms)
