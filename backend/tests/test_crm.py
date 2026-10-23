@@ -289,3 +289,40 @@ async def test_limpar_crm_exige_admin_senha_e_confirmacao(client, admin_user, ve
     r = await client.post(url, headers=admin, json={**ok, "incluir_campanhas": True})
     assert r.json()["campanhas"] == 2
     assert (await client.get("/api/v1/crm/campanhas", headers=admin)).json() == []
+
+
+async def test_excluir_campanha_mantendo_ou_excluindo_leads(client, admin_user, vendedores):
+    admin = _hdr(admin_user)
+    await _importar(client, admin)
+    camps = {c["nome"]: c for c in (await client.get("/api/v1/crm/campanhas", headers=admin)).json()}
+
+    # Mantendo os leads: ficam sem campanha (não exige senha)
+    r = await client.post(f"/api/v1/crm/campanhas/{camps['CNC Out']['id']}/excluir", headers=admin, json={})
+    assert r.status_code == 200 and r.json()["leads_sem_campanha"] == 1 and r.json()["leads_excluidos"] == 0
+    ana = (await client.get("/api/v1/crm/leads", headers=admin, params={"busca": "Ana Reis"})).json()["items"][0]
+    assert ana["campanha_id"] is None
+    detalhe = (await client.get(f"/api/v1/crm/leads/{ana['id']}", headers=admin)).json()
+    assert any(h["campo"] == "campanha_id" and h["valor_anterior"] == "CNC Out" for h in detalhe["historico"])
+
+    # Excluindo os leads: exige senha
+    url = f"/api/v1/crm/campanhas/{camps['Soldagem Out']['id']}/excluir"
+    assert (await client.post(url, headers=admin, json={"excluir_leads": True})).status_code == 403
+    assert (await client.post(url, headers=admin, json={"excluir_leads": True, "senha": "errada"})).status_code == 403
+    r = await client.post(url, headers=admin, json={"excluir_leads": True, "senha": "Senha@123"})
+    assert r.status_code == 200 and r.json()["leads_excluidos"] == 2
+    assert (await client.get("/api/v1/crm/leads", headers=admin)).json()["total"] == 1
+    assert (await client.get("/api/v1/crm/campanhas", headers=admin)).json() == []
+    # Vendedor não exclui
+    assert (await client.post(url, headers=_hdr(vendedores[0]), json={})).status_code == 403
+
+
+async def test_excluir_leads_selecionados(client, admin_user, vendedores):
+    admin = _hdr(admin_user)
+    await _importar(client, admin)
+    ids = [l["id"] for l in (await client.get("/api/v1/crm/leads", headers=admin)).json()["items"]][:2]
+    url = "/api/v1/crm/leads/excluir"
+    assert (await client.post(url, headers=admin, json={"lead_ids": ids, "senha": "errada"})).status_code == 403
+    assert (await client.post(url, headers=_hdr(vendedores[0]), json={"lead_ids": ids, "senha": "Senha@123"})).status_code == 403
+    r = await client.post(url, headers=admin, json={"lead_ids": ids, "senha": "Senha@123"})
+    assert r.status_code == 200 and r.json()["excluidos"] == 2
+    assert (await client.get("/api/v1/crm/leads", headers=admin)).json()["total"] == 1

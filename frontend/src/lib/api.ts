@@ -551,6 +551,10 @@ export const crmApi = {
   campanhas: () => api.get("/crm/campanhas").then((r) => r.data),
   criarCampanha: (data: any) => api.post("/crm/campanhas", data).then((r) => r.data),
   atualizarCampanha: (id: number, data: any) => api.put(`/crm/campanhas/${id}`, data).then((r) => r.data),
+  excluirCampanha: (id: number, data: { excluir_leads: boolean; senha?: string }) =>
+    api.post(`/crm/campanhas/${id}/excluir`, data).then((r) => r.data),
+  excluirLeads: (lead_ids: number[], senha: string) =>
+    api.post("/crm/leads/excluir", { lead_ids, senha }).then((r) => r.data),
   config: () => api.get("/crm/config").then((r) => r.data),
   salvarConfig: (data: { horas_alerta_novo?: number; dias_alerta_parcela?: number }) => api.put("/crm/config", data).then((r) => r.data),
   limpar: (data: { senha: string; confirmacao: string; incluir_campanhas: boolean }) =>

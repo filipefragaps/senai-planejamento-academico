@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
-  Search, Plus, Upload, Download, MessageCircle, ChevronLeft, ChevronRight, Loader2, UserPlus, Shuffle, X, List, SquareKanban,
+  Search, Plus, Upload, Download, MessageCircle, ChevronLeft, ChevronRight, Loader2, UserPlus, Shuffle, X, List, SquareKanban, Trash2,
 } from "lucide-react";
 import { crmApi, downloadBlob, CrmFiltros } from "@/lib/api";
 import { useCurrentUser } from "@/lib/use-current-user";
@@ -14,6 +14,7 @@ import { PageHeader } from "@/components/page-header";
 import { LeadDrawer } from "@/components/crm/lead-drawer";
 import { OfertaPicker } from "@/components/crm/oferta-picker";
 import { KanbanLeads } from "@/components/crm/kanban";
+import { ModalConfirmacao } from "@/components/crm/modal-confirmacao";
 import {
   ALERTA_INFO, STATUS_STYLE, TEMPERATURA_STYLE, CrmOpcoes, data, dataHora, formatarTelefone, linkWhatsApp,
 } from "@/lib/crm";
@@ -128,6 +129,7 @@ function LeadsPageInner() {
   const [vendedorLote, setVendedorLote] = useState("");
   const [exportando, setExportando] = useState(false);
   const [visao, setVisao] = useState<"lista" | "quadro">("quadro");
+  const [confirmarExclusao, setConfirmarExclusao] = useState(false);
   const inputCsv = useRef<HTMLInputElement>(null);
 
   // Visualização preferida fica salva no navegador
@@ -178,6 +180,19 @@ function LeadsPageInner() {
       qc.invalidateQueries({ queryKey: ["crm-dashboard"] });
     },
     onError: (e: any) => toast.error(e?.response?.data?.detail || "Erro ao atribuir"),
+  });
+
+  const excluirSelecionados = useMutation({
+    mutationFn: (senha: string) => crmApi.excluirLeads([...selecionados], senha),
+    onSuccess: (r) => {
+      toast.success(`${r.excluidos} lead(s) excluído(s)`);
+      setSelecionados(new Set());
+      setConfirmarExclusao(false);
+      qc.invalidateQueries({ queryKey: ["crm-leads"] });
+      qc.invalidateQueries({ queryKey: ["crm-dashboard"] });
+      qc.invalidateQueries({ queryKey: ["crm-campanhas"] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.detail || "Erro ao excluir leads"),
   });
 
   const distribuir = useMutation({
@@ -363,8 +378,23 @@ function LeadsPageInner() {
             {opcoes?.vendedores.map((v) => <option key={v.id} value={v.id}>{v.nome}</option>)}
           </select>
           <button className="btn-primary h-8 py-0" disabled={!vendedorLote || atribuir.isPending} onClick={() => atribuir.mutate()}>Atribuir</button>
+          <button className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-md border border-red-300 bg-white px-3 text-sm font-medium text-red-700 hover:bg-red-50"
+                  onClick={() => setConfirmarExclusao(true)}>
+            <Trash2 className="h-4 w-4" /> Excluir selecionados
+          </button>
           <button className="text-xs text-gray-500 hover:underline" onClick={() => setSelecionados(new Set())}>Cancelar</button>
         </div>
+      )}
+      {confirmarExclusao && (
+        <ModalConfirmacao
+          titulo={`Excluir ${selecionados.size} lead(s) selecionado(s)?`}
+          exigirSenha
+          carregando={excluirSelecionados.isPending}
+          onCancelar={() => setConfirmarExclusao(false)}
+          onConfirmar={(senha) => excluirSelecionados.mutate(senha)}
+        >
+          <p>Os leads serão apagados com histórico e anotações. Para guardar uma cópia, exporte o Excel antes.</p>
+        </ModalConfirmacao>
       )}
 
       {/* Tabela */}

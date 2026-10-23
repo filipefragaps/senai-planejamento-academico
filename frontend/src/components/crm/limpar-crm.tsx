@@ -39,9 +39,10 @@ export function LimparCrm() {
       <div className="flex flex-wrap items-start gap-3">
         <div className="rounded-lg bg-red-50 p-2"><Trash2 className="h-5 w-5 text-red-600" /></div>
         <div className="min-w-0 flex-1">
-          <h2 className="font-semibold text-gray-800">Excluir dados do CRM</h2>
+          <h2 className="font-semibold text-gray-800">Excluir todos os dados do CRM</h2>
           <p className="text-xs text-gray-500">
-            Apaga <strong>todos os leads</strong>, com histórico e anotações. Não afeta o restante do sistema
+            Apaga <strong>todos os leads</strong>, com histórico e anotações. Para excluir só uma campanha, use a lixeira na tabela
+            de campanhas; para excluir leads escolhidos, selecione-os na lista de Leads. Não afeta o restante do sistema
             (cursos, eventos, cronograma) nem as configurações e a integração com a Meta.
           </p>
           <label className="mt-3 flex items-center gap-2 text-sm text-gray-700">
@@ -51,7 +52,7 @@ export function LimparCrm() {
         </div>
         <button className="inline-flex items-center gap-1.5 rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
                 onClick={() => setAberto(true)}>
-          <Trash2 className="h-4 w-4" /> Excluir dados do CRM
+          <Trash2 className="h-4 w-4" /> Excluir tudo
         </button>
       </div>
 

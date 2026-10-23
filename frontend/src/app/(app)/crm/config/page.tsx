@@ -4,12 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Bell, Megaphone, Users, Plus, FileSpreadsheet, Pencil, Check, X } from "lucide-react";
+import { Bell, Megaphone, Users, Plus, FileSpreadsheet, Pencil, Check, X, Trash2 } from "lucide-react";
 import { crmApi } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { OfertaPicker } from "@/components/crm/oferta-picker";
 import { IntegracaoMeta } from "@/components/crm/meta-integracao";
 import { LimparCrm } from "@/components/crm/limpar-crm";
+import { ModalConfirmacao } from "@/components/crm/modal-confirmacao";
 import { CrmOpcoes } from "@/lib/crm";
 import { useCurrentUser } from "@/lib/use-current-user";
 
@@ -93,6 +94,7 @@ function CrmConfig() {
   const [horas, setHoras] = useState("");
   const [diasParcela, setDiasParcela] = useState("");
   const [novaCampanha, setNovaCampanha] = useState("");
+  const [excluindo, setExcluindo] = useState<{ campanha: any; excluirLeads: boolean } | null>(null);
   useEffect(() => {
     if (config) { setHoras(String(config.horas_alerta_novo)); setDiasParcela(String(config.dias_alerta_parcela)); }
   }, [config]);
@@ -132,6 +134,18 @@ function CrmConfig() {
     onError: (e: any) => toast.error(e?.response?.data?.detail || "Erro ao salvar campanha"),
   });
 
+  const excluirCampanha = useMutation({
+    mutationFn: ({ id, excluirLeads, senha }: { id: number; excluirLeads: boolean; senha: string }) =>
+      crmApi.excluirCampanha(id, { excluir_leads: excluirLeads, senha: senha || undefined }),
+    onSuccess: (r) => {
+      toast.success(`Campanha “${r.campanha}” excluída` +
+        (r.leads_excluidos ? ` com ${r.leads_excluidos} lead(s)` : r.leads_sem_campanha ? ` · ${r.leads_sem_campanha} lead(s) ficaram sem campanha` : ""));
+      setExcluindo(null);
+      invalidar();
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.detail || "Erro ao excluir campanha"),
+  });
+
   function definirOferta(c: any, id: number | null) {
     const semCurso = c.total_leads > 0 && id
       ? confirm(`Aplicar este curso também aos leads já recebidos desta campanha que estão sem curso?`)
@@ -157,11 +171,12 @@ function CrmConfig() {
                 <th className="px-3 py-2 min-w-[260px]">Curso (oferta)</th>
                 <th className="px-3 py-2 min-w-[180px]">Vendedor padrão</th>
                 <th className="px-3 py-2 text-center">Ativa</th>
+                <th className="px-1 py-2" />
               </tr>
             </thead>
             <tbody>
               {(campanhas as any[]).length === 0 && (
-                <tr><td colSpan={6} className="py-6 text-center text-gray-400">Nenhuma campanha ainda.</td></tr>
+                <tr><td colSpan={7} className="py-6 text-center text-gray-400">Nenhuma campanha ainda.</td></tr>
               )}
               {(campanhas as any[]).map((c) => (
                 <tr key={c.id} className="border-b last:border-0 align-middle">
@@ -190,6 +205,12 @@ function CrmConfig() {
                   <td className="px-3 py-2 text-center">
                     <input type="checkbox" className="h-4 w-4 rounded" checked={c.ativa}
                            onChange={(e) => atualizarCampanha.mutate({ id: c.id, data: { ativa: e.target.checked } })} />
+                  </td>
+                  <td className="px-1 py-2 text-center">
+                    <button className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Excluir campanha"
+                            onClick={() => setExcluindo({ campanha: c, excluirLeads: false })}>
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -252,6 +273,34 @@ function CrmConfig() {
       </div>
 
       <LimparCrm />
+
+      {excluindo && (
+        <ModalConfirmacao
+          titulo={`Excluir a campanha “${excluindo.campanha.nome}”?`}
+          exigirSenha={excluindo.excluirLeads && excluindo.campanha.total_leads > 0}
+          carregando={excluirCampanha.isPending}
+          onCancelar={() => setExcluindo(null)}
+          onConfirmar={(senha) => excluirCampanha.mutate({ id: excluindo.campanha.id, excluirLeads: excluindo.excluirLeads, senha })}
+        >
+          {excluindo.campanha.total_leads === 0 ? (
+            <p>Esta campanha não tem leads.</p>
+          ) : (
+            <>
+              <p>Ela tem <strong>{excluindo.campanha.total_leads} lead(s)</strong>. O que fazer com eles?</p>
+              <label className="flex items-start gap-2">
+                <input type="radio" className="mt-1" checked={!excluindo.excluirLeads}
+                       onChange={() => setExcluindo({ ...excluindo, excluirLeads: false })} />
+                <span><strong>Manter os leads</strong> — ficam “sem campanha”, com todo o histórico.</span>
+              </label>
+              <label className="flex items-start gap-2">
+                <input type="radio" className="mt-1" checked={excluindo.excluirLeads}
+                       onChange={() => setExcluindo({ ...excluindo, excluirLeads: true })} />
+                <span className="text-red-700"><strong>Excluir os leads também</strong> — com histórico e anotações.</span>
+              </label>
+            </>
+          )}
+        </ModalConfirmacao>
+      )}
     </div>
   );
 }

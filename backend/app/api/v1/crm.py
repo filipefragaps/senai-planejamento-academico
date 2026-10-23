@@ -514,6 +514,30 @@ async def excluir_lead(lead_id: int, db: AsyncSession = Depends(get_db), _=Depen
     await db.delete(lead)
 
 
+class ExcluirLeadsRequest(BaseModel):
+    lead_ids: list[int]
+    senha: str
+
+
+def _conferir_senha(user: Usuario, senha: Optional[str]) -> None:
+    from app.core.security import verify_password
+    if not senha or not verify_password(senha, user.hashed_password):
+        raise HTTPException(403, "Senha incorreta")
+
+
+@router.post("/leads/excluir")
+async def excluir_leads(data: ExcluirLeadsRequest, db: AsyncSession = Depends(get_db), user: Usuario = Depends(require_admin)):
+    """Exclui os leads selecionados (com histórico). Exige a senha do administrador."""
+    from sqlalchemy import delete
+    if not data.lead_ids:
+        raise HTTPException(400, "Nenhum lead selecionado")
+    _conferir_senha(user, data.senha)
+    await db.execute(delete(CrmHistorico).where(CrmHistorico.lead_id.in_(data.lead_ids)))
+    n = (await db.execute(delete(CrmLead).where(CrmLead.id.in_(data.lead_ids)))).rowcount
+    log.warning("CRM: %s lead(s) excluído(s) por %s", n, user.email)
+    return {"excluidos": n}
+
+
 @router.post("/leads/atribuir")
 async def atribuir_leads(data: AtribuirRequest, db: AsyncSession = Depends(get_db), user: Usuario = Depends(require_admin)):
     if data.vendedor_id:
@@ -932,3 +956,35 @@ async def limpar_crm(data: LimparCrmRequest, db: AsyncSession = Depends(get_db),
     await svc.set_config(db, "rodizio_ultimo_id", None)
     log.warning("CRM limpo por %s: %s lead(s), %s campanha(s)", user.email, leads, campanhas)
     return {"leads": leads, "historico": historico, "campanhas": campanhas}
+
+
+class ExcluirCampanhaRequest(BaseModel):
+    excluir_leads: bool = False
+    senha: Optional[str] = None
+
+
+@router.post("/campanhas/{campanha_id}/excluir")
+async def excluir_campanha(
+    campanha_id: int, data: ExcluirCampanhaRequest, db: AsyncSession = Depends(get_db), user: Usuario = Depends(require_admin),
+):
+    """Exclui a campanha. Os leads dela são excluídos (exige senha) ou ficam sem campanha."""
+    from sqlalchemy import delete, update
+    c = await db.get(CrmCampanha, campanha_id)
+    if not c:
+        raise HTTPException(404, "Campanha não encontrada")
+    ids = list((await db.execute(select(CrmLead.id).where(CrmLead.campanha_id == campanha_id))).scalars().all())
+    if data.excluir_leads and ids:
+        _conferir_senha(user, data.senha)
+        await db.execute(delete(CrmHistorico).where(CrmHistorico.lead_id.in_(ids)))
+        await db.execute(delete(CrmLead).where(CrmLead.id.in_(ids)))
+        excluidos, desvinculados = len(ids), 0
+    else:
+        for lead_id in ids:
+            db.add(CrmHistorico(lead_id=lead_id, usuario_id=user.id, usuario_nome=user.nome, campo="campanha_id",
+                                valor_anterior=c.nome, valor_novo=None, criado_em=svc.agora()))
+        await db.execute(update(CrmLead).where(CrmLead.campanha_id == campanha_id).values(campanha_id=None))
+        excluidos, desvinculados = 0, len(ids)
+    await db.delete(c)
+    log.warning("CRM: campanha '%s' excluída por %s (%s lead(s) excluído(s), %s sem campanha)",
+                c.nome, user.email, excluidos, desvinculados)
+    return {"campanha": c.nome, "leads_excluidos": excluidos, "leads_sem_campanha": desvinculados}
