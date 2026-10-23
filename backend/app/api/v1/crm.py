@@ -799,18 +799,22 @@ async def webhook_meta_receber(request: Request, db: AsyncSession = Depends(get_
     return {"ok": True, **res}
 
 
-@router.get("/meta/status")
-async def meta_status(request: Request, db: AsyncSession = Depends(get_db), _=Depends(require_admin)):
-    # Endereço público do backend: variável PUBLIC_API_URL ou o host desta requisição (atrás do proxy da Railway)
+def _url_webhook(request: Request) -> str:
+    """Endereço público do webhook: PUBLIC_API_URL ou o host desta requisição (atrás do proxy da Railway)."""
     proto = request.headers.get("x-forwarded-proto", request.url.scheme)
     base = (settings.PUBLIC_API_URL or f"{proto}://{request.headers.get('host', request.url.netloc)}").rstrip("/")
+    return f"{base}{settings.API_V1_STR}/crm/webhook/meta"
+
+
+@router.get("/meta/status")
+async def meta_status(request: Request, db: AsyncSession = Depends(get_db), _=Depends(require_admin)):
     return {
         "configurado": meta.configurado(),
         "variaveis": meta.situacao_variaveis(),
         "versao_graph": settings.META_GRAPH_VERSION,
         "sincronizacao_minutos": settings.META_SYNC_MINUTOS,
         "webhook_caminho": f"{settings.API_V1_STR}/crm/webhook/meta",
-        "webhook_url": f"{base}{settings.API_V1_STR}/crm/webhook/meta",
+        "webhook_url": _url_webhook(request),
         **(await meta.estado(db)),
     }
 
@@ -820,7 +824,7 @@ def _erro_meta(e: Exception) -> JSONResponse:
 
 
 @router.post("/meta/testar")
-async def meta_testar(db: AsyncSession = Depends(get_db), _=Depends(require_admin)):
+async def meta_testar(request: Request, db: AsyncSession = Depends(get_db), _=Depends(require_admin)):
     """Confere token, página, formulários e se a página está assinada para enviar leads ao app."""
     if not meta.configurado():
         raise HTTPException(400, "Defina META_ACCESS_TOKEN e META_PAGE_ID nas variáveis do servidor")
@@ -830,6 +834,13 @@ async def meta_testar(db: AsyncSession = Depends(get_db), _=Depends(require_admi
                 pagina = await cli.conectar_pagina()
                 forms = await cli.formularios()
                 apps = await cli.assinaturas()
+                webhook_app = None
+                try:  # informativo: não impede o teste
+                    app = await cli.app()
+                    webhook_app = {"app": app, **((await cli.webhook_do_app(app["id"])) or {"url": None, "leadgen": False})}
+                    webhook_app["url_correta"] = webhook_app.get("url") == _url_webhook(request)
+                except meta.MetaErro as e:
+                    webhook_app = {"erro": str(e)}
             except meta.MetaErro as e:
                 diag = await cli.diagnostico()
                 await meta.registrar_erro(db, f"Teste de conexão: {e}")
@@ -842,7 +853,27 @@ async def meta_testar(db: AsyncSession = Depends(get_db), _=Depends(require_admi
         "pagina": pagina,
         "formularios": [{"id": f["id"], "nome": f.get("name"), "status": f.get("status")} for f in forms],
         "webhook_assinado": assinada,
+        "webhook_app": webhook_app,
     }
+
+
+@router.post("/meta/webhook-app")
+async def meta_cadastrar_webhook_app(request: Request, db: AsyncSession = Depends(get_db), _=Depends(require_admin)):
+    """Cadastra o webhook no app da Meta (objeto Página, campo leadgen) sem usar o painel da Meta."""
+    if not meta.configurado() or not settings.META_APP_SECRET or not settings.META_VERIFY_TOKEN:
+        raise HTTPException(400, "Defina META_ACCESS_TOKEN, META_PAGE_ID, META_APP_SECRET e META_VERIFY_TOKEN")
+    url = _url_webhook(request)
+    if not url.startswith("https://"):
+        raise HTTPException(400, f"A Meta só aceita endereço https; este servidor está em {url}")
+    try:
+        async with meta.MetaCliente() as cli:
+            app = await cli.app()
+            ok = await cli.cadastrar_webhook_do_app(app["id"], url)
+            situacao = await cli.webhook_do_app(app["id"])
+    except meta.MetaErro as e:
+        await meta.registrar_erro(db, f"Cadastro do webhook: {e}")
+        return _erro_meta(e)
+    return {"cadastrado": ok, "app": app, "url": url, "webhook": situacao}
 
 
 @router.post("/meta/assinar")

@@ -99,10 +99,13 @@ class MetaCliente:
             p["appsecret_proof"] = hmac.new(settings.META_APP_SECRET.encode(), token.encode(), hashlib.sha256).hexdigest()
         return p
 
-    async def _req(self, metodo: str, caminho: str, params: dict | None = None, pagina: bool = True) -> dict:
-        token = (self._token_pagina or self._token_sistema) if pagina else self._token_sistema
+    async def _req(self, metodo: str, caminho: str, params: dict | None = None, pagina: bool = True,
+                   token_app: str | None = None) -> dict:
+        """Chamada à Graph API. `token_app` (app_id|chave) é usado nas assinaturas do app, sem appsecret_proof."""
+        token = token_app or ((self._token_pagina or self._token_sistema) if pagina else self._token_sistema)
+        params_req = dict(params or {}) if token_app else self._params(token, params)
         try:
-            r = await self._http.request(metodo, caminho, params=self._params(token, params),
+            r = await self._http.request(metodo, caminho, params=params_req,
                                          headers={"Authorization": f"Bearer {token}"})
         except httpx.HTTPError as e:
             raise MetaErro(f"Sem conexão com a Meta ({type(e).__name__})") from None
@@ -203,6 +206,35 @@ class MetaCliente:
 
     async def lead(self, leadgen_id: str) -> dict:
         return await self._req("GET", f"/{leadgen_id}", {"fields": CAMPOS_LEAD})
+
+    # ── Webhook do app (equivale a Webhooks → Página → leadgen no painel da Meta) ──
+
+    async def app(self) -> dict:
+        """App ao qual o token pertence (id e nome)."""
+        dados = await self._req("GET", "/app", {"fields": "id,name"}, pagina=False)
+        return {"id": str(dados.get("id")), "nome": dados.get("name")}
+
+    def _token_do_app(self, app_id: str) -> str:
+        if not settings.META_APP_SECRET:
+            raise MetaErro("Defina META_APP_SECRET para cadastrar o webhook do app")
+        return f"{app_id}|{settings.META_APP_SECRET}"
+
+    async def webhook_do_app(self, app_id: str) -> dict | None:
+        """Assinatura do objeto 'page' do app: URL cadastrada e se o campo leadgen está ativo."""
+        dados = await self._req("GET", f"/{app_id}/subscriptions", token_app=self._token_do_app(app_id))
+        pag = next((x for x in dados.get("data", []) if x.get("object") == "page"), None)
+        if not pag:
+            return None
+        campos = [f.get("name") if isinstance(f, dict) else f for f in pag.get("fields", [])]
+        return {"url": pag.get("callback_url"), "ativo": bool(pag.get("active")), "leadgen": "leadgen" in campos}
+
+    async def cadastrar_webhook_do_app(self, app_id: str, url: str) -> bool:
+        """A Meta chama a URL na hora (hub.challenge) para confirmar; por isso ela precisa estar no ar."""
+        dados = await self._req("POST", f"/{app_id}/subscriptions", {
+            "object": "page", "callback_url": url, "fields": "leadgen",
+            "verify_token": settings.META_VERIFY_TOKEN, "include_values": "true",
+        }, token_app=self._token_do_app(app_id))
+        return bool(dados.get("success"))
 
     async def assinaturas(self) -> list[dict]:
         return (await self._req("GET", f"/{settings.META_PAGE_ID}/subscribed_apps")).get("data", [])

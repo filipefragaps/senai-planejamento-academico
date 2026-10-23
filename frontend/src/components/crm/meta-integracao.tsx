@@ -64,6 +64,15 @@ export function IntegracaoMeta() {
     onSuccess: () => { toast.success("Página assinada: os leads novos serão enviados ao CRM"); testar.mutate(); },
     onError: (e) => toast.error(erroDe(e)),
   });
+  const cadastrarWebhook = useMutation({
+    mutationFn: crmApi.metaWebhookApp,
+    onSuccess: (r) => {
+      toast.success(`Webhook cadastrado no app ${r.app?.nome ?? ""}`);
+      testar.mutate();
+    },
+    onError: (e) => { toast.error(erroDe(e)); qc.invalidateQueries({ queryKey: ["crm-meta-status"] }); },
+  });
+
   const sincronizar = useMutation({
     mutationFn: (dias?: number) => crmApi.metaSincronizar(dias),
     onSuccess: (r) => {
@@ -139,6 +148,13 @@ export function IntegracaoMeta() {
             <p className="mt-1 text-xs text-gray-500">
               Campo a assinar: <code className="rounded bg-gray-100 px-1">leadgen</code> · Token de verificação: o valor de <code className="rounded bg-gray-100 px-1">META_VERIFY_TOKEN</code>.
             </p>
+            <button className="btn-secondary mt-2 gap-1.5 text-xs"
+                    disabled={!st.configurado || !st.variaveis?.META_APP_SECRET || !st.variaveis?.META_VERIFY_TOKEN || cadastrarWebhook.isPending}
+                    onClick={() => cadastrarWebhook.mutate()}
+                    title="Cadastra este endereço no app da Meta (objeto Página, campo leadgen), sem usar o painel da Meta">
+              {cadastrarWebhook.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Webhook className="h-3.5 w-3.5" />}
+              Cadastrar webhook automaticamente
+            </button>
           </div>
         </div>
 
@@ -252,6 +268,24 @@ export function IntegracaoMeta() {
                   </>
                 )}
               </p>
+              {teste.webhook_app && (
+                <p className="mt-1 flex flex-wrap items-center gap-1.5">
+                  {teste.webhook_app.erro ? (
+                    <><AlertTriangle className="h-4 w-4 text-amber-600" /> Não foi possível ler o webhook do app: <span className="text-xs">{teste.webhook_app.erro}</span></>
+                  ) : teste.webhook_app.leadgen && teste.webhook_app.url_correta ? (
+                    <><CheckCircle2 className="h-4 w-4 text-green-600" /> Webhook cadastrado no app {teste.webhook_app.app?.nome}</>
+                  ) : (
+                    <>
+                      <AlertTriangle className="h-4 w-4 text-amber-600" />
+                      {teste.webhook_app.leadgen ? "Webhook do app aponta para outro endereço" : "Webhook ainda não cadastrado no app"}
+                      <button className="ml-2 text-xs font-medium text-primary hover:underline" disabled={cadastrarWebhook.isPending}
+                              onClick={() => cadastrarWebhook.mutate()}>
+                        {cadastrarWebhook.isPending ? "Cadastrando..." : "Cadastrar agora"}
+                      </button>
+                    </>
+                  )}
+                </p>
+              )}
               <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Formulários ({teste.formularios.length})</p>
               <ul className="mt-1 max-h-32 space-y-0.5 overflow-y-auto text-xs text-gray-700">
                 {teste.formularios.map((f: any) => (

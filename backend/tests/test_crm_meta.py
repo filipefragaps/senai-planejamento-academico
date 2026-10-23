@@ -52,6 +52,7 @@ class GraphFalsa:
         # Como a Meta entrega o token da página: "contas" (/me/accounts), "campo" (access_token da página)
         # ou "nenhum" (o token informado já é de página: os dois caminhos respondem erro #100)
         self.modo_token = "contas"
+        self.webhook_app: dict | None = None   # assinatura do objeto "page" no app
 
     def __call__(self, req: httpx.Request) -> httpx.Response:
         self.chamadas.append(req)
@@ -71,6 +72,15 @@ class GraphFalsa:
                 return httpx.Response(400, json=erro_campo)
             return httpx.Response(200, json={"data": [{"id": "999", "name": "Outra Página", "access_token": "OUTRA"},
                                                       {"id": PAGINA, "name": "SENAI Teste", "access_token": TOKEN_PAGINA}]})
+        if caminho == "app":
+            return httpx.Response(200, json={"id": "app42", "name": "CRM SENAI"})
+        if caminho == "app42/subscriptions":
+            assert req.headers["Authorization"] == f"Bearer app42|{SEGREDO}" and "appsecret_proof" not in p
+            if req.method == "POST":
+                self.webhook_app = {"object": "page", "callback_url": p["callback_url"], "active": True,
+                                    "fields": [{"name": f, "version": "v23.0"} for f in p["fields"].split(",")]}
+                return httpx.Response(200, json={"success": True})
+            return httpx.Response(200, json={"data": [self.webhook_app] if self.webhook_app else []})
         if caminho == "me":
             return httpx.Response(200, json={"id": "777", "name": "Usuário do sistema CRM", "metadata": {"type": "user"}})
         if caminho == "555":  # ID errado: perfil pessoal em vez de página
@@ -278,3 +288,25 @@ async def test_id_que_nao_e_pagina_mostra_diagnostico(client, graph, admin_user,
     assert d["dono_do_token"]["nome"] == "Usuário do sistema CRM"
     assert {"id": PAGINA, "nome": "SENAI Teste"} in d["paginas"]
     assert TOKEN not in r.text and TOKEN_PAGINA not in r.text and "OUTRA" not in r.text
+
+
+
+async def test_cadastrar_webhook_do_app(client, graph, admin_user):
+    h = {"Authorization": f"Bearer {create_access_token({'sub': str(admin_user.id)})}"}
+    https = {**h, "X-Forwarded-Proto": "https"}
+
+    t = (await client.post("/api/v1/crm/meta/testar", headers=https)).json()
+    assert t["webhook_app"]["app"]["nome"] == "CRM SENAI" and t["webhook_app"]["leadgen"] is False
+
+    # Só aceita https (a Meta recusa http)
+    assert (await client.post("/api/v1/crm/meta/webhook-app", headers=h)).status_code == 400
+
+    r = await client.post("/api/v1/crm/meta/webhook-app", headers=https)
+    assert r.status_code == 200, r.text
+    corpo = r.json()
+    assert corpo["cadastrado"] is True and corpo["url"] == "https://test/api/v1/crm/webhook/meta"
+    assert corpo["webhook"] == {"url": "https://test/api/v1/crm/webhook/meta", "ativo": True, "leadgen": True}
+    assert SEGREDO not in r.text
+
+    t = (await client.post("/api/v1/crm/meta/testar", headers=https)).json()
+    assert t["webhook_app"]["leadgen"] is True and t["webhook_app"]["url_correta"] is True

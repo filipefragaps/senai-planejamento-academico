@@ -558,5 +558,6 @@ export const crmApi = {
   metaStatus: () => api.get("/crm/meta/status").then((r) => r.data),
   metaTestar: () => api.post("/crm/meta/testar").then((r) => r.data),
   metaAssinar: () => api.post("/crm/meta/assinar").then((r) => r.data),
+  metaWebhookApp: () => api.post("/crm/meta/webhook-app").then((r) => r.data),
   metaSincronizar: (dias?: number) => api.post("/crm/meta/sincronizar", null, { params: dias ? { dias } : {} }).then((r) => r.data),
 };
