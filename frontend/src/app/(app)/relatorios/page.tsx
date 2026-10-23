@@ -809,12 +809,12 @@ export default function RelatoriosPage() {
               </div>
               <div>
                 <h3 className="font-semibold text-gray-800">Histórico de Aulas</h3>
-                <p className="text-xs text-gray-400">Formato idêntico ao da importação</p>
+                <p className="text-xs text-gray-400">Mesmo formato do “Baixar Modelo BD” do Planejamento</p>
               </div>
             </div>
             <p className="text-sm text-gray-500 mb-3">
-              Exporta todas as aulas com as 17 colunas do histórico. Filtre por turma para exportar
-              apenas um evento específico.
+              Exporta as aulas com as 16 colunas do Modelo BD (horário em HORA_INICIO e HORA_TERMINO).
+              Filtre por turma para exportar apenas um evento específico.
             </p>
             <div className="mb-4">
               <select

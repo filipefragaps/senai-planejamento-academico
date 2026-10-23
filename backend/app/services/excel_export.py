@@ -502,6 +502,14 @@ async def exportar_cronograma_contrato(
     return buf.read()
 
 
+# Colunas do "Baixar Modelo BD" (frontend/src/lib/templates.ts → downloadModeloBancoDados)
+COLUNAS_MODELO_BD = [
+    "Data", "Evento", "Turno", "HORA_INICIO", "HORA_TERMINO",
+    "Curso", "Unidade Curricular", "Aula", "Subturma", "Professor",
+    "Ambiente", "Carga Horária", "Etapa", "Modalidade", "Área", "Status",
+]
+
+
 async def exportar_historico_aulas(
     db: AsyncSession,
     evento_id: int | None = None,
@@ -556,11 +564,9 @@ async def exportar_historico_aulas(
     wb = Workbook()
     ws = wb.active
     ws.title = "Cronograma"
-    _apply_header(ws, 1, [
-        "Data", "Evento", "Turno", "Horário", "Curso", "Unidade C",
-        "Aula", "Subturma", "Professor", "Ambiente", "Hora Aula",
-        "Etapa", "Modalidade", "Área", "Contrato", "Obs", "Status",
-    ])
+    # Mesmas colunas, ordem e formatos do "Baixar Modelo BD" (Planejamento) — o arquivo pode ser
+    # reimportado pelo mesmo importador (horário em HORA_INICIO / HORA_TERMINO separados).
+    _apply_header(ws, 1, COLUNAS_MODELO_BD)
 
     rows = []
     for aula in aulas:
@@ -572,28 +578,30 @@ async def exportar_historico_aulas(
 
         inicio_dt = dt.combine(aula.data, aula.horario_inicio)
         fim_dt = dt.combine(aula.data, aula.horario_fim)
-        hora_aula = round((fim_dt - inicio_dt).seconds / 3600, 1)
+        carga = round((fim_dt - inicio_dt).seconds / 3600, 2)
+        carga = int(carga) if carga == int(carga) else carga
         area = (oferta.area if oferta else None) or (curso.area if curso else "") or ""
-        contrato = aula.tipo_contrato or (prof.tipo if prof else "") or ""
-        nome_curso = (curso.nome if curso else None) or (ev.disciplina if ev else "") or ""
+        # Curso no formato do modelo ("NOME DO CURSO - PASTA"), que é o gravado no evento
+        nome_curso = (ev.disciplina if ev else None) or (curso.nome if curso else "") or ""
+        modalidade = ((ev.tipo_modalidade if ev else None) or (oferta.modalidade if oferta else None)
+                      or (ev.modalidade if ev else "") or "")
 
         rows.append([
             aula.data.strftime("%d/%m/%Y"),
             ev.nome_turma if ev else "",
             aula.turno or "",
-            f"{str(aula.horario_inicio)[:5]} - {str(aula.horario_fim)[:5]}",
+            str(aula.horario_inicio)[:5],
+            str(aula.horario_fim)[:5],
             nome_curso,
-            uc.nome if uc else "",
+            (uc.nome if uc else None) or aula.uc_nome_original or "",
             aula.numero_aula or "",
             aula.subturma or "",
             prof.nome if prof else "",
             aula.ambiente or aula.sala or "",
-            hora_aula,
+            carga,
             aula.etapa or "",
-            ev.modalidade if ev else "",
+            modalidade,
             area,
-            contrato,
-            aula.observacoes or "",
             aula.status,
         ])
     _fill_sheet(ws, rows)
