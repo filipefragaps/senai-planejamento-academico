@@ -13,7 +13,7 @@ import {
   MONTHLY_ANALYSIS_START,
   attachOfficialMonthlyBalances, balanceExportRows, dailyExportRows,
   dateKey, downloadCsv, downloadExcel, durationLabel, emailBodyFor,
-  hoursSummaryExportRows, isInNotificationWindow, isNotificationEligible,
+  hoursSummaryExportRows, isInNotificationWindow, isInWindow, isNotificationEligible,
   isRhOnly, isoDate, monthlyBalanceExportRows, monthlyDayFromRecord,
   needsAutomaticNotification, needsPointAdjustment, normalize,
   notificationDrafts, notificationWindow, occurrenceExportRows,
@@ -161,6 +161,11 @@ export default function GestaoPontoPage() {
     [responsibleFilter]);
 
   const filteredItems = useMemo(() => items.filter((item) => matchesResponsible(item.supervisor, item.supervisorEmail)), [items, matchesResponsible]);
+  // v1.5: cartões, filtros, correções, alertas e e-mails mostram só o período ainda corrigível
+  const operationalItems = useMemo(
+    () => filteredItems.filter((item) => isInWindow(item, currentNotificationWindow)),
+    [filteredItems, currentNotificationWindow.startKey, currentNotificationWindow.endKey], // eslint-disable-line react-hooks/exhaustive-deps
+  );
   const filteredBalances = useMemo(() => (result?.balances || []).filter((b) => matchesResponsible(b.supervisor, b.supervisorEmail)), [result, matchesResponsible]);
   const filteredDays = useMemo(() => (result?.days || []).filter((d) => matchesResponsible(d.supervisor, d.supervisorEmail)), [result, matchesResponsible]);
 
@@ -175,22 +180,22 @@ export default function GestaoPontoPage() {
 
   const hoursTotals = useMemo(() => visibleHoursSummaries.reduce((t, row) => ({ expected: t.expected + row.expectedMinutes, worked: t.worked + row.workedMinutes, bank: t.bank + row.bankMinutes }), { expected: 0, worked: 0, bank: 0 }), [visibleHoursSummaries]);
 
-  const adjustmentItems = useMemo(() => filteredItems.filter(needsPointAdjustment), [filteredItems]);
+  const adjustmentItems = useMemo(() => operationalItems.filter(needsPointAdjustment), [operationalItems]);
   const counts = useMemo(() => ({
     pending: adjustmentItems.filter((i) => i.status === "pending").length,
     approved: adjustmentItems.filter((i) => i.status === "approved").length,
     ignored: adjustmentItems.filter((i) => i.status === "ignored").length,
     rhOnly: adjustmentItems.filter(isRhOnly).length,
     emailCases: adjustmentItems.filter((i) => i.status === "pending" && isNotificationEligible(i, rhEmail)).length,
-    notificationReady: notificationDrafts(filteredItems.filter((i) => i.status === "pending"), rhEmail).length,
-    notifiedPeople: new Set(filteredItems.filter((i) => isNotificationEligible(i, rhEmail) && i.status === "approved").map((i) => i.matricula)).size,
+    notificationReady: notificationDrafts(operationalItems.filter((i) => i.status === "pending"), rhEmail).length,
+    notifiedPeople: new Set(operationalItems.filter((i) => isNotificationEligible(i, rhEmail) && i.status === "approved").map((i) => i.matricula)).size,
     missing: adjustmentItems.filter((i) => ["Ausência de batida", "Batidas incompletas", "Marcação irregular", "Marcação errada", "Falta"].includes(i.category)).length,
     schedules: adjustmentItems.filter((i) => i.category === "Fora da escala").length,
-    interval: filteredItems.filter((i) => i.category === "Intervalo não respeitado" || i.category === "Intervalo irregular").length,
-    intershift: filteredItems.filter((i) => i.category === "Interjornada menor que 11h").length,
-    threeShifts: filteredItems.filter((i) => i.category === "Três turnos no mesmo dia").length,
-    criticalBalances: filteredItems.filter((i) => i.category === "Saldo crítico de banco de horas").length,
-  }), [filteredItems, adjustmentItems, rhEmail]);
+    interval: operationalItems.filter((i) => i.category === "Intervalo não respeitado" || i.category === "Intervalo irregular").length,
+    intershift: operationalItems.filter((i) => i.category === "Interjornada menor que 11h").length,
+    threeShifts: operationalItems.filter((i) => i.category === "Três turnos no mesmo dia").length,
+    criticalBalances: operationalItems.filter((i) => i.category === "Saldo crítico de banco de horas").length,
+  }), [operationalItems, adjustmentItems, rhEmail]);
 
   const visible = useMemo(() => {
     const term = normalize(query);
@@ -206,9 +211,9 @@ export default function GestaoPontoPage() {
     return filteredBalances.filter((b) => (!criticalBalancesOnly || b.critical) && (!term || normalize(`${b.collaborator} ${b.matricula} ${b.area}`).includes(term)));
   }, [filteredBalances, balanceQuery, criticalBalancesOnly]);
 
-  const pendingOutlookItems = filteredItems.filter((i) => i.status === "pending" && isNotificationEligible(i, rhEmail));
+  const pendingOutlookItems = operationalItems.filter((i) => i.status === "pending" && isNotificationEligible(i, rhEmail));
   const pendingOutlookDrafts = notificationDrafts(pendingOutlookItems, rhEmail);
-  const allPriorityItems = filteredItems.filter((i) => ["Intervalo não respeitado", "Intervalo irregular", "Interjornada menor que 11h", "Três turnos no mesmo dia", "Saldo crítico de banco de horas"].includes(i.category));
+  const allPriorityItems = operationalItems.filter((i) => ["Intervalo não respeitado", "Intervalo irregular", "Interjornada menor que 11h", "Três turnos no mesmo dia", "Saldo crítico de banco de horas"].includes(i.category));
 
   // ─── Actions ─────────────────────────────────────────────────────────────────
 
@@ -246,9 +251,19 @@ export default function GestaoPontoPage() {
     const w = window.open(`https://outlook.office.com/mail/deeplink/compose?${query2}`, "_blank");
     if (!w) { setNotice("O navegador bloqueou a nova janela. Libere pop-ups e tente novamente."); return; }
     w.opener = null;
-    setSelected(new Set());
-    setNotice(`Mensagem de ${draft.dates.length} data(s) aberta no Outlook. Confira e selecione "${rhEmail}" no campo De.`);
+    // v1.4: o rascunho aberto registra como notificadas todas as ocorrências agrupadas do colaborador
+    void changeStatus(draft.ids, "approved");
+    setNotice(`E-mail de ${draft.item.collaborator} (${draft.dates.length} data(s)) registrado como enviado e retirado de "Enviar e-mail". Se fechar o Outlook sem enviar, use "Desfazer registro do envio" nos detalhes.`);
   };
+
+  /** v1.4: desfaz o registro de envio de todas as ocorrências notificadas do colaborador. */
+  function undoNotification(item: Occurrence) {
+    const ids = items
+      .filter((i) => i.matricula === item.matricula && i.status === "approved" && isNotificationEligible(i, rhEmail))
+      .map((i) => i.id);
+    void changeStatus(ids.length ? ids : [item.id], "pending");
+    setNotice(`Registro de envio de ${item.collaborator} desfeito. As datas voltaram para "Enviar e-mail".`);
+  }
 
   async function processFiles(files: File[]) {
     if (!contacts.length) { setNotice("Importe primeiro o Relatório - Cargos e Funções - Empregados.csv e depois os TXT mensais do ponto."); return; }
@@ -293,11 +308,14 @@ export default function GestaoPontoPage() {
       setItems(apiData.occurrences || []);
       setFileName(sourceName);
 
-      const adjustments = (apiData.occurrences || []).filter(needsPointAdjustment).length;
-      setNotice(adjustments > 0 ? `${adjustments} ajuste(s) identificado(s) para ${parsed.people} pessoa(s). Dados salvos.` : `${parsed.people} pessoa(s) importada(s). Nenhum ajuste. Dados salvos.`);
+      // v1.5: quantitativos só do período ainda corrigível
+      const adjustments = (apiData.occurrences || []).filter((i: Occurrence) => isInNotificationWindow(i) && needsPointAdjustment(i)).length;
+      setNotice(adjustments > 0
+        ? `${parsed.sourceFiles.length} competência(s) validada(s) · ${adjustments} ajuste(s) no período corrigível (${notificationWindow().label}). Dados salvos.`
+        : `${parsed.people} pessoa(s) importada(s). Nenhum ajuste no período corrigível. Dados salvos.`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      setNotice(`Erro ao processar: ${msg.slice(0, 200)}`);
+      setNotice(`Erro ao processar: ${msg.slice(0, 200)} Os dados anteriores foram mantidos.`);
     }
   }
 
@@ -363,6 +381,14 @@ export default function GestaoPontoPage() {
       { name: "Alertas Prioritários", rows: occurrenceExportRows(allPriorityItems, filteredBalances) },
       { name: "Arquivos Mensais", rows: responsibleFilter === "all" ? sourceFilesExportRows(result.sourceFiles) : [] },
       { name: "Não Localizados", rows: responsibleFilter === "all" ? unmatchedExportRows(result.unmatchedPeople) : [] },
+      { name: "Resumo", rows: [{
+        "Arquivo fonte": fileName, "Período acumulado do arquivo": result.period,
+        "Período ainda corrigível": currentNotificationWindow.label, "Prazo final para correção": currentNotificationWindow.deadlineLabel,
+        "Ajustes a realizar": counts.pending, "Análise exclusiva do RH": counts.rhOnly,
+        "Mensagens acumuladas a preparar": counts.notificationReady, "Batidas para corrigir": counts.missing,
+        "Escalas para analisar": counts.schedules, "Saldos acima de ±16h": counts.criticalBalances,
+        "Alertas prioritários": allPriorityItems.length,
+      }] },
     ]);
   }
 
@@ -435,7 +461,8 @@ export default function GestaoPontoPage() {
               <div className="text-right text-sm text-slate-500">
                 <div className="flex items-center justify-end gap-2"><FileText size={15} /><span className="font-semibold text-slate-700">{fileName}</span></div>
                 <p className="mt-0.5">Período acumulado: {result?.period}</p>
-                <p className="font-bold text-[#003B8E]">Período operacional: {result?.editablePeriod}</p>
+                <p className="font-bold text-[#003B8E]">Período corrigível: {currentNotificationWindow.label}</p>
+                <p className="text-xs text-slate-500">{currentNotificationWindow.deadlineText}</p>
               </div>
               {result && <button onClick={downloadCompleteWorkbook} className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800"><Download size={15} />Excel completo para Power BI</button>}
             </div>
@@ -642,7 +669,8 @@ export default function GestaoPontoPage() {
               <Mail className="mt-0.5 shrink-0" size={17} />
               <div>
                 <p><strong>Envio manual pelo Outlook Web.</strong> Somente ausência de batida e batidas incompletas são notificadas ao colaborador e supervisor.</p>
-                <p className="mt-1 font-bold text-blue-900">Período liberado: {currentNotificationWindow.label}.</p>
+                <p className="mt-1 font-bold text-blue-900">Período liberado para envio: {currentNotificationWindow.label}. {currentNotificationWindow.deadlineText} Registros anteriores não entram nos quantitativos nem nos e-mails.</p>
+                <p className="mt-1 text-xs text-blue-900">Ao abrir o rascunho no Outlook, as datas do colaborador ficam registradas como enviadas.</p>
                 <div className="mt-3 flex gap-2">
                   <button disabled={!pendingOutlookDrafts.length || !rhEmail} onClick={() => downloadCsv(pendingOutlookItems, rhEmail, "lote-outlook-ponto")} className="inline-flex items-center gap-2 rounded-lg bg-[#003B8E] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#002d6e] disabled:cursor-not-allowed disabled:opacity-40"><Mail size={14} />Exportar CSV ({pendingOutlookDrafts.length} pessoa{pendingOutlookDrafts.length !== 1 ? "s" : ""})</button>
                 </div>
@@ -652,8 +680,8 @@ export default function GestaoPontoPage() {
             {/* Occurrences table */}
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-200 px-5 py-4">
-                <h3 className="font-bold">Correções desde 21/08/2026</h3>
-                <p className="mt-1 text-sm text-slate-500">O envio de e-mail fica limitado ao período aberto: {currentNotificationWindow.label}.</p>
+                <h3 className="font-bold">Correções do período disponível</h3>
+                <p className="mt-1 text-sm text-slate-500">Somente ocorrências de {currentNotificationWindow.label}. {currentNotificationWindow.deadlineText}</p>
               </div>
               <div className="flex flex-col gap-4 border-b border-slate-200 p-4 xl:flex-row xl:items-center xl:justify-between">
                 <div className="flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1">
@@ -859,6 +887,7 @@ export default function GestaoPontoPage() {
               <button onClick={() => { void changeStatus([detail.id], "ignored"); setDetail(null); }} className="flex-1 rounded-lg border border-slate-300 px-4 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50">Não enviar</button>
               {detail.status !== "approved" && isNotificationEligible(detail, rhEmail) && <button onClick={() => openOutlookWeb([detail])} className="flex-1 rounded-lg bg-[#003B8E] px-4 py-3 text-sm font-bold text-white hover:bg-[#002d6e]"><Mail size={15} className="mr-1 inline" />Abrir no Outlook</button>}
               {detail.status !== "approved" && <button onClick={() => { if (confirm("Confirme somente após enviar a mensagem pelo Outlook.")) { void changeStatus([detail.id], "approved"); setDetail(null); } }} className="flex-1 rounded-lg border border-emerald-300 px-4 py-3 text-sm font-bold text-emerald-800 hover:bg-emerald-50">Registrar envio</button>}
+              {detail.status === "approved" && isNotificationEligible(detail, rhEmail) && <button onClick={() => { undoNotification(detail); setDetail(null); }} className="flex-1 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900 hover:bg-amber-100">Desfazer registro do envio</button>}
             </div>
           </aside>
         </div>

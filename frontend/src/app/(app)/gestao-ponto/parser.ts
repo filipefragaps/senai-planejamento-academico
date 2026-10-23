@@ -126,9 +126,6 @@ export function displayIsoDate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   const [year, month, day] = value.split("-"); return `${day}/${month}/${year}`;
 }
-function formatDate(date: Date) {
-  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
-}
 function monthKey(value: string) {
   if (!/^\d{2}\/\d{2}\/\d{4}$/.test(value)) return "";
   const [, month, year] = value.split("/"); return `${year}-${month}`;
@@ -199,27 +196,69 @@ function median(values: number[]) {
 }
 function roundToQuarterHour(minutes: number) { return Math.max(0, Math.round(minutes / 15) * 15); }
 
-// ─── Notification window ──────────────────────────────────────────────────────
+// ─── Notification window (v1.5: prazo de correção) ────────────────────────────
+// Ciclo do ponto: dia 21 ao dia 20 do mês seguinte. Após o fechamento (dia 20), o ciclo
+// encerrado segue corrigível até o fim do 2º dia útil seguinte (sem fins de semana e
+// feriados nacionais fixos). Depois disso, a janela passa ao novo ciclo, iniciado no dia 21.
+
+const BRAZIL_NATIONAL_HOLIDAYS = new Set([
+  "01-01", "04-21", "05-01", "09-07", "10-12", "11-02", "11-15", "11-20", "12-25",
+]);
+function isBusinessDayIso(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  return weekday >= 1 && weekday <= 5 && !BRAZIL_NATIONAL_HOLIDAYS.has(value.slice(5));
+}
+function addBusinessDays(value: string, count: number) {
+  let cursor = value;
+  let added = 0;
+  while (added < count) {
+    cursor = shiftIsoDate(cursor, 1);
+    if (isBusinessDayIso(cursor)) added += 1;
+  }
+  return cursor;
+}
+function yearMonthWithOffset(year: number, month: number, offset: number) {
+  const value = new Date(Date.UTC(year, month - 1 + offset, 1));
+  return { year: value.getUTCFullYear(), month: value.getUTCMonth() + 1 };
+}
+
+export type NotificationWindow = ReturnType<typeof notificationWindow>;
 
 export function notificationWindow(today = todayIso()) {
   const [year, month, day] = today.split("-").map(Number);
-  const startMonth = day >= 21 ? month : month === 1 ? 12 : month - 1;
-  const startYear = day >= 21 ? year : month === 1 ? year - 1 : year;
-  const startIso = `${startYear}-${String(startMonth).padStart(2, "0")}-21`;
+  const currentClosingIso = `${year}-${String(month).padStart(2, "0")}-20`;
+  const currentDeadlineIso = addBusinessDays(currentClosingIso, 2);
+  const keepPreviousCycle = day <= 20 || today <= currentDeadlineIso;
+  const startMonth = yearMonthWithOffset(year, month, keepPreviousCycle ? -1 : 0);
+  const cycleEndMonth = yearMonthWithOffset(startMonth.year, startMonth.month, 1);
+  const startIso = `${startMonth.year}-${String(startMonth.month).padStart(2, "0")}-21`;
+  const cycleEndIso = `${cycleEndMonth.year}-${String(cycleEndMonth.month).padStart(2, "0")}-20`;
+  const deadlineIso = addBusinessDays(cycleEndIso, 2);
   const endIso = shiftIsoDate(today, -1);
   const startKey = startIso.replaceAll("-", "");
   const endKey = endIso.replaceAll("-", "");
   const startLabel = displayIsoDate(startIso);
   const endLabel = displayIsoDate(endIso);
+  const deadlineLabel = displayIsoDate(deadlineIso);
+  const cycleEndLabel = displayIsoDate(cycleEndIso);
+  const gracePeriod = today > cycleEndIso && today <= deadlineIso;
   return {
     startIso, endIso, startKey, endKey, startLabel, endLabel,
+    cycleEndIso, cycleEndLabel, deadlineIso, deadlineLabel, gracePeriod,
     label: startKey <= endKey ? `${startLabel} a ${endLabel}` : `novo ciclo iniciado em ${startLabel}; nenhum dia concluído disponível`,
+    deadlineText: gracePeriod
+      ? `Ciclo encerrado em ${cycleEndLabel}; correções liberadas até ${deadlineLabel}.`
+      : `Fechamento em ${cycleEndLabel}; correções liberadas até ${deadlineLabel}.`,
   };
 }
-export function isInNotificationWindow(item: Occurrence) {
-  const period = notificationWindow();
+/** Ocorrência dentro do período ainda corrigível (cartões, filtros, alertas e e-mails). */
+export function isInWindow(item: Occurrence, period: NotificationWindow = notificationWindow()) {
   const itemKey = dateKey(item.date);
   return itemKey >= period.startKey && itemKey <= period.endKey;
+}
+export function isInNotificationWindow(item: Occurrence) {
+  return isInWindow(item);
 }
 export function isNotificationEligible(item: Occurrence, rhEmail: string) {
   if (![rhEmail, item.email, item.supervisorEmail].every(validEmail)) return false;
@@ -593,7 +632,6 @@ export function parsePoint(text: string, contacts: Contact[], inactiveMatriculas
   }
 
   balances.sort((a, b) => Number(b.critical) - Number(a.critical) || Math.abs(b.minutes) - Math.abs(a.minutes) || a.collaborator.localeCompare(b.collaborator));
-  const operationalEnd = lastDate || formatDate(new Date());
   const activeOccurrences = occurrences.filter((item) => item.category === "Saldo crítico de banco de horas" || dateKey(item.date) >= OPERATIONAL_ANALYSIS_START_KEY);
   return {
     occurrences: activeOccurrences,
@@ -610,8 +648,8 @@ export function parsePoint(text: string, contacts: Contact[], inactiveMatriculas
     unmatchedPeople: [...unmatchedPeople].map(([matricula, nome]) => ({ matricula, nome })).sort((a, b) => a.nome.localeCompare(b.nome)),
     floating,
     period: firstDate && lastDate ? `${firstDate} a ${lastDate}` : "Período não identificado",
-    editablePeriod: `${OPERATIONAL_ANALYSIS_START} a ${operationalEnd}`,
-    openStart: OPERATIONAL_ANALYSIS_START, openEnd: operationalEnd,
+    editablePeriod: notificationWindow().label,
+    openStart: notificationWindow().startLabel, openEnd: notificationWindow().endLabel,
   };
 }
 
@@ -712,9 +750,9 @@ export async function parseMonthlyFileSet(files: File[], contacts: Contact[], in
     unmatchedPeople: [...unmatched.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
     floating: floatingMatriculas.size,
     period: firstDate && lastDate ? `${firstDate} a ${lastDate}` : "Período não identificado",
-    editablePeriod: `${OPERATIONAL_ANALYSIS_START} a ${lastDate || displayIsoDate(yesterdayIso())}`,
-    openStart: OPERATIONAL_ANALYSIS_START,
-    openEnd: lastDate || displayIsoDate(yesterdayIso()),
+    editablePeriod: notificationWindow().label,
+    openStart: notificationWindow().startLabel,
+    openEnd: notificationWindow().endLabel,
   };
 }
 
