@@ -53,6 +53,7 @@ async def _aplicar_migracoes(engine) -> None:
         "ALTER TABLE crm_leads ADD COLUMN vencimento_primeira_parcela DATE",
         "ALTER TABLE crm_leads ADD COLUMN parcela_paga_em DATE",
         "ALTER TABLE crm_campanhas ADD COLUMN nomes_anteriores JSON",
+        "ALTER TABLE professores ADD COLUMN coordenador BOOLEAN DEFAULT false",
         "ALTER TABLE contratos_virtuais ALTER COLUMN cpf DROP NOT NULL",
         """CREATE TABLE IF NOT EXISTS gp_balances_mensais (
             id SERIAL PRIMARY KEY,
@@ -189,6 +190,40 @@ async def _aplicar_migracoes(engine) -> None:
             pass
 
 
+# Coordenadores que ficavam fixos no código das telas de oferta (antes do cadastro em Professores)
+_COORDENADORES_LEGADO = [
+    "VIRGILIO CAPARELLI FONSECA", "TIAGO ALVES BARROS ROSA", "MARCOS MESSIAS DA CRUZ", "HÉLIA MARIA DE FARIA",
+    "WELLIGTON MARIANO DOS PASSOS", "WANDERSON RAINER HILÁRIO DE ARAÚJO", "WILLIAM CARLOS DE ANDRADE",
+    "LEANDRA PEREIRA DA SILVA",
+]
+
+
+async def _seed_coordenadores(engine) -> None:
+    """Uma única vez: marca como coordenador os professores com os nomes da antiga lista fixa.
+
+    O marcador em crm_config (tabela chave/valor) evita refazer a marcação depois que o usuário editar.
+    """
+    import logging
+    import unicodedata
+    from sqlalchemy import text
+
+    def norm(s: str) -> str:
+        s = unicodedata.normalize("NFD", s or "")
+        return " ".join("".join(c for c in s if unicodedata.category(c) != "Mn").upper().split())
+
+    async with engine.begin() as conn:
+        if (await conn.execute(text("SELECT 1 FROM crm_config WHERE chave = 'seed_coordenadores_v1'"))).fetchone():
+            return
+        alvos = {norm(n) for n in _COORDENADORES_LEGADO}
+        profs = (await conn.execute(text("SELECT id, nome FROM professores"))).fetchall()
+        ids = [pid for pid, nome in profs if norm(nome) in alvos]
+        for pid in ids:
+            await conn.execute(text("UPDATE professores SET coordenador = :v WHERE id = :id"), {"v": True, "id": pid})
+        await conn.execute(text("INSERT INTO crm_config (chave, valor) VALUES ('seed_coordenadores_v1', :v)"),
+                           {"v": f"{len(ids)} marcado(s)"})
+    logging.getLogger("app").info("Coordenadores marcados a partir da lista antiga: %s", len(ids))
+
+
 async def _seed_admin(engine) -> None:
     """Cria o usuário admin inicial se não existir (via env vars ADMIN_EMAIL e ADMIN_SENHA)."""
     admin_email = getattr(settings, "ADMIN_EMAIL", None)
@@ -242,6 +277,11 @@ async def lifespan(app: FastAPI):
     await create_tables()
     await _aplicar_migracoes(engine)
     await _seed_admin(engine)
+    try:
+        await _seed_coordenadores(engine)
+    except Exception:  # noqa: BLE001 — nunca impede o servidor de subir
+        import logging
+        logging.getLogger("app").exception("Falha ao marcar coordenadores iniciais")
     tarefa = asyncio.create_task(_loop_sincronizacao_meta()) if settings.META_SYNC_MINUTOS > 0 else None
     yield
     if tarefa:

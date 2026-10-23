@@ -7,6 +7,7 @@ from sqlalchemy import select, func, or_
 from app.database import get_db
 from app.models.oferta import OfertaCurso
 from app.models.evento import Evento
+from app.models.professor import Professor
 from app.core.deps import get_current_user, require_admin
 from app.config import settings
 
@@ -240,7 +241,12 @@ async def estatisticas_ofertas(
         "modalidades": [r[0] for r in mod_q if r[0]],
         "areas": [r[0] for r in area_q if r[0]],
         "turnos": [r[0] for r in turno_q if r[0]],
-        "coordenadores": [r[0] for r in coord_q if r[0]],
+        "coordenadores": sorted(
+            {r[0] for r in coord_q if r[0]} | set((await db.execute(
+                select(Professor.nome).where(Professor.coordenador == True, Professor.ativo == True)  # noqa: E712
+            )).scalars().all()),
+            key=lambda n: n.casefold(),
+        ),
         "anos": anos,
     }
 

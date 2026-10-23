@@ -15,6 +15,7 @@ class ProfessorBase(BaseModel):
     ativo: bool = True
     foto: str | None = None
     area: str | None = None
+    coordenador: bool = False
 
 
 class ProfessorCreate(ProfessorBase):
@@ -33,6 +34,7 @@ class ProfessorUpdate(BaseModel):
     ativo: bool | None = None
     foto: str | None = None
     area: str | None = None
+    coordenador: bool | None = None
 
 
 class AtuacaoOut(BaseModel):

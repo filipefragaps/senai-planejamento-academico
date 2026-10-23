@@ -83,8 +83,9 @@ export const cursosApi = {
 
 // Professores
 export const professoresApi = {
-  listar: (params?: { ativo?: boolean; tipo?: string }) =>
+  listar: (params?: { ativo?: boolean; tipo?: string; coordenador?: boolean }) =>
     api.get("/professores/", { params }).then((r) => r.data),
+  coordenadores: () => api.get("/professores/coordenadores").then((r) => r.data),
   obter: (id: number) => api.get(`/professores/${id}`).then((r) => r.data),
   detalhes: (id: number) => api.get(`/professores/${id}/detalhes`).then((r) => r.data),
   criar: (data: any) => api.post("/professores/", data).then((r) => r.data),

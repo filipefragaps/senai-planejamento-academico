@@ -6,6 +6,7 @@ import { ofertasApi } from "@/lib/api";
 import { toast } from "sonner";
 import { X, Pencil, Save, XCircle, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useCoordenadores } from "@/lib/use-coordenadores";
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 const MODALIDADES = [
@@ -33,16 +34,6 @@ const TURNOS = ["MATUTINO", "VESPERTINO", "NOTURNO", "INTEGRAL"];
 
 const DIAS = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB", "DOM"];
 
-const COORDENADORES = [
-  "VIRGILIO CAPARELLI FONSECA",
-  "TIAGO ALVES BARROS ROSA",
-  "MARCOS MESSIAS DA CRUZ",
-  "HÉLIA MARIA DE FARIA",
-  "WELLIGTON MARIANO DOS PASSOS",
-  "WANDERSON RAINER HILÁRIO DE ARAÚJO",
-  "WILLIAM CARLOS DE ANDRADE",
-  "LEANDRA PEREIRA DA SILVA",
-];
 
 const STATUS_TURMA = ["EM MATRÍCULA", "CANCELADO", "TURMA INICIADA", "ADIADA", "CONCLUÍDA"] as const;
 
@@ -167,6 +158,7 @@ interface OfertaDrawerProps {
 }
 
 export function OfertaDrawer({ oferta, onClose }: OfertaDrawerProps) {
+  const { nomes: coordenadoresCadastrados } = useCoordenadores();
   const qc = useQueryClient();
   const [editMode, setEditMode] = useState(false);
   const [form, setForm] = useState<FormData>({});
@@ -322,7 +314,10 @@ export function OfertaDrawer({ oferta, onClose }: OfertaDrawerProps) {
                   ? (
                     <select className="input w-full text-sm" value={form.coordenador ?? ""} onChange={(e) => set("coordenador", e.target.value || null)}>
                       <option value="">Selecionar...</option>
-                      {COORDENADORES.map((c) => <option key={c} value={c}>{c}</option>)}
+                      {/* Cadastrados em Professores + o atual, se não estiver mais na lista */}
+                      {[...new Set([...coordenadoresCadastrados, ...(form.coordenador ? [form.coordenador] : [])])].map((c) => (
+                        <option key={c} value={c}>{c}{coordenadoresCadastrados.includes(c) ? "" : " (não cadastrado)"}</option>
+                      ))}
                     </select>
                   )
                   : <span>{oferta.coordenador || "—"}</span>}

@@ -297,6 +297,7 @@ export default function ProfessoresPage() {
   const [search, setSearch] = useState("");
   const [filtroTipo, setFiltroTipo] = useState<string>("todos");
   const [filtroArea, setFiltroArea] = useState<string>("");
+  const [soCoordenadores, setSoCoordenadores] = useState(false);
   const [selected, setSelected] = useState<any | null>(null);
   const [drawer, setDrawer] = useState<null | "new" | any>(null);
   const [pagina, setPagina] = useState(1);
@@ -515,6 +516,7 @@ export default function ProfessoresPage() {
       }
       if (filtroArea === "__sem_area__" && p.area) return false;
       if (filtroArea && filtroArea !== "__sem_area__" && p.area !== filtroArea) return false;
+      if (soCoordenadores && !p.coordenador) return false;
       return true;
     })
     .sort((a: any, b: any) => a.nome.localeCompare(b.nome, "pt-BR"));
@@ -617,6 +619,21 @@ export default function ProfessoresPage() {
           })}
         </div>
 
+        {/* Coordenadores de curso */}
+        <div className="flex items-center gap-1 mb-3">
+          <button
+            onClick={() => { setSoCoordenadores((v) => !v); setPagina(1); }}
+            className={cn("px-2.5 py-1 rounded-md text-xs font-medium transition-all border",
+              soCoordenadores ? "bg-amber-500 text-white border-amber-500" : "bg-white text-amber-700 border-amber-200 hover:bg-amber-50")}
+            title="Professores marcados como Coordenador de curso"
+          >
+            Só coordenadores
+            <span className="ml-1 text-[10px] font-normal opacity-70">
+              {(professores as any[]).filter((p: any) => p.coordenador).length}
+            </span>
+          </button>
+        </div>
+
         {/* Filtro por área */}
         {areasDisponiveis.length > 0 && (
           <div className="flex items-center gap-1 flex-wrap mb-4">
@@ -686,6 +703,9 @@ export default function ProfessoresPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-semibold text-gray-900 text-sm">{p.nome}</span>
+                          {p.coordenador && (
+                            <span className="rounded bg-amber-100 px-1.5 py-px text-[10px] font-semibold text-amber-800" title="Coordenador de curso">Coord.</span>
+                          )}
                           <span className={cn(
                             "badge text-xs",
                             p.tipo === "Mensalista" ? "bg-blue-100 text-blue-700" :

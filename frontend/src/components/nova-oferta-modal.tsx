@@ -6,6 +6,7 @@ import { ofertasApi, cursosApi } from "@/lib/api";
 import { toast } from "sonner";
 import { X, Save, Loader2, Search, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useCoordenadores } from "@/lib/use-coordenadores";
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 const MODALIDADES = [
@@ -33,16 +34,6 @@ const TURNOS = ["MATUTINO", "VESPERTINO", "NOTURNO", "INTEGRAL"];
 
 const DIAS = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB", "DOM"];
 
-const COORDENADORES = [
-  "VIRGILIO CAPARELLI FONSECA",
-  "TIAGO ALVES BARROS ROSA",
-  "MARCOS MESSIAS DA CRUZ",
-  "HÉLIA MARIA DE FARIA",
-  "WELLIGTON MARIANO DOS PASSOS",
-  "WANDERSON RAINER HILÁRIO DE ARAÚJO",
-  "WILLIAM CARLOS DE ANDRADE",
-  "LEANDRA PEREIRA DA SILVA",
-];
 
 const STATUS_TURMA = ["EM MATRÍCULA", "CANCELADO", "TURMA INICIADA", "ADIADA"] as const;
 
@@ -134,6 +125,7 @@ interface NovaOfertaModalProps {
 }
 
 export function NovaOfertaModal({ open, onClose }: NovaOfertaModalProps) {
+  const { nomes: coordenadoresCadastrados } = useCoordenadores();
   const qc = useQueryClient();
   const [form, setForm] = useState<Form>(formInicial());
   const [buscaPasta, setBuscaPasta] = useState("");
@@ -359,8 +351,11 @@ export function NovaOfertaModal({ open, onClose }: NovaOfertaModalProps) {
                 <Field label="Coordenador">
                   <select className="input w-full" value={form.coordenador} onChange={(e) => set("coordenador", e.target.value)}>
                     <option value="">Selecionar coordenador...</option>
-                    {COORDENADORES.map((c) => <option key={c} value={c}>{c}</option>)}
+                    {coordenadoresCadastrados.map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
+                  {coordenadoresCadastrados.length === 0 && (
+                    <p className="mt-1 text-xs text-amber-600">Nenhum coordenador cadastrado: marque “Coordenador de curso” no cadastro do professor.</p>
+                  )}
                 </Field>
               </div>
 

@@ -22,16 +22,30 @@ router = APIRouter(prefix="/professores", tags=["Professores"])
 async def listar_professores(
     ativo: bool | None = None,
     tipo: str | None = None,
+    coordenador: bool | None = None,
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
     query = select(Professor)
     if ativo is not None:
         query = query.where(Professor.ativo == ativo)
+    if coordenador is not None:
+        query = query.where(Professor.coordenador == coordenador)
     if tipo:
         query = query.where(Professor.tipo == tipo)
     result = await db.execute(query.order_by(Professor.nome))
     return result.scalars().all()
+
+
+@router.get("/coordenadores")
+async def listar_coordenadores(db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
+    """Professores ativos marcados como coordenadores de curso (fonte das listas de seleção)."""
+    res = await db.execute(
+        select(Professor.id, Professor.nome, Professor.area)
+        .where(Professor.coordenador == True, Professor.ativo == True)  # noqa: E712
+        .order_by(Professor.nome)
+    )
+    return [{"id": i, "nome": n, "area": a} for i, n, a in res.all()]
 
 
 @router.post("/", response_model=ProfessorOut, status_code=201)

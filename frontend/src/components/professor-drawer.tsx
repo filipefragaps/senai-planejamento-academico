@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { professoresApi, cursosApi } from "@/lib/api";
+import { useAtualizarListasCoordenadores } from "@/lib/use-coordenadores";
 import { toast } from "sonner";
 import {
   X, Plus, Trash2, Save, BookOpen, Clock, User, Loader2, Check, Grid3X3, Link, Camera,
@@ -51,7 +52,7 @@ const AREAS_OPTIONS = [
 
 const BLANK_BASIC = {
   nome: "", email: "", telefone: "", tipo: "Mensalista",
-  horas_contratadas: 40, valor_hora: "", especialidades: "", titulacao: "", area: "", ativo: true,
+  horas_contratadas: 40, valor_hora: "", especialidades: "", titulacao: "", area: "", ativo: true, coordenador: false,
 };
 
 const BLANK_DISP = { dia_semana: 0, horario_inicio: "18:30", horario_fim: "22:00", tipo: "Disponível" };
@@ -98,6 +99,7 @@ export function ProfessorDrawer({ professor, onClose, onSaved, onDeleted }: Prop
           titulacao: professor.titulacao || "",
           area: professor.area || "",
           ativo: professor.ativo ?? true,
+          coordenador: professor.coordenador ?? false,
         }
       : { ...BLANK_BASIC }
   );
@@ -143,8 +145,10 @@ export function ProfessorDrawer({ professor, onClose, onSaved, onDeleted }: Prop
   });
 
   // ── mutations: dados básicos ─────────────────────────────────────
+  const atualizarListasCoordenadores = useAtualizarListasCoordenadores();
   const criarProf = useMutation({
     mutationFn: (data: any) => professoresApi.criar(data),
+    onSuccess: (novo) => { if (novo?.coordenador) atualizarListasCoordenadores(); },
   });
 
   const atualizarProf = useMutation({
@@ -152,6 +156,7 @@ export function ProfessorDrawer({ professor, onClose, onSaved, onDeleted }: Prop
     onSuccess: (updated) => {
       toast.success("Dados básicos atualizados!");
       qc.invalidateQueries({ queryKey: ["professores"] });
+      atualizarListasCoordenadores();  // seleções e filtros de coordenador
       qc.invalidateQueries({ queryKey: ["professor-detalhes", professor?.id] });
       onSaved(updated);
     },
@@ -629,6 +634,17 @@ export function ProfessorDrawer({ professor, onClose, onSaved, onDeleted }: Prop
                     <div className="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform peer-checked:translate-x-5" />
                   </label>
                   <span className="text-sm text-gray-600">Ativo</span>
+                  <label className="relative ml-6 inline-flex items-center cursor-pointer" title="Aparece nas listas de coordenador (ofertas, cronograma e relatórios)">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={!!basic.coordenador}
+                      onChange={(e) => setBasic({ ...basic, coordenador: e.target.checked })}
+                    />
+                    <div className="w-10 h-5 bg-gray-200 rounded-full peer peer-checked:bg-amber-500 transition-colors" />
+                    <div className="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform peer-checked:translate-x-5" />
+                  </label>
+                  <span className="text-sm text-gray-600">Coordenador de curso</span>
                 </div>
               </div>
 
