@@ -26,14 +26,20 @@ async def test_marcar_coordenador_e_listas(auth_client, db_session):
 
 async def _verificar_listas(auth_client, p1):
 
-    assert (await auth_client.get("/api/v1/professores/coordenadores")).json() == []
+    # Sem cadastro, o nome usado na oferta continua disponível (marcado como não cadastrado)
+    sem_cadastro = (await auth_client.get("/api/v1/professores/coordenadores")).json()
+    assert {"id": None, "nome": "NOME ANTIGO DA PLANILHA", "area": None, "cadastrado": False} in sem_cadastro
+    # Os nomes da antiga lista fixa também continuam disponíveis até serem cadastrados
+    assert any(c["nome"] == "VIRGILIO CAPARELLI FONSECA" and not c["cadastrado"] for c in sem_cadastro)
+    assert (await auth_client.get("/api/v1/professores/coordenadores", params={"incluir_ofertas": False})).json() == []
 
     r = await auth_client.put(f"/api/v1/professores/{p1.id}", json={"coordenador": True})
     assert r.status_code == 200 and r.json()["coordenador"] is True
 
     # Só ativos entram na lista de seleção
     lista = (await auth_client.get("/api/v1/professores/coordenadores")).json()
-    assert [c["nome"] for c in lista] == ["Ana Coordenadora"]
+    assert ("Ana Coordenadora", True) in [(c["nome"], c["cadastrado"]) for c in lista]
+    assert [c["nome"] for c in lista if c["cadastrado"]] == ["Ana Coordenadora"]
     # Filtro na listagem de professores
     so_coord = (await auth_client.get("/api/v1/professores/", params={"coordenador": True})).json()
     assert {p["nome"] for p in so_coord} == {"Ana Coordenadora", "Carla Inativa"}
@@ -44,7 +50,7 @@ async def _verificar_listas(auth_client, p1):
 
     # Desmarcar tira das listas
     await auth_client.put(f"/api/v1/professores/{p1.id}", json={"coordenador": False})
-    assert (await auth_client.get("/api/v1/professores/coordenadores")).json() == []
+    assert (await auth_client.get("/api/v1/professores/coordenadores", params={"incluir_ofertas": False})).json() == []
 
 
 async def test_marcacao_inicial_dos_coordenadores_antigos_uma_vez():
@@ -69,3 +75,14 @@ async def test_marcacao_inicial_dos_coordenadores_antigos_uma_vez():
         marcados = {n for (n,) in await conn.execute(text("SELECT nome FROM professores WHERE coordenador = 1"))}
         assert marcados == {"MARCOS  MESSIAS DA CRUZ"}
     await engine.dispose()
+
+
+
+async def test_nome_cadastrado_nao_duplica_com_lista_antiga(auth_client, db_session):
+    """Professor cadastrado (com acento/caixa diferentes) substitui a entrada 'não cadastrado'."""
+    p = Professor(nome="Hélia Maria de Faria", tipo="Mensalista", horas_contratadas=40, ativo=True, coordenador=True)
+    db_session.add(p)
+    await db_session.flush()
+    lista = (await auth_client.get("/api/v1/professores/coordenadores")).json()
+    helias = [c for c in lista if c["nome"].upper().replace("É", "E").startswith("HELIA")]
+    assert helias == [{"id": p.id, "nome": "Hélia Maria de Faria", "area": None, "cadastrado": True}]

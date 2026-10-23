@@ -38,14 +38,43 @@ async def listar_professores(
 
 
 @router.get("/coordenadores")
-async def listar_coordenadores(db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
-    """Professores ativos marcados como coordenadores de curso (fonte das listas de seleção)."""
+async def listar_coordenadores(
+    incluir_ofertas: bool = True,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """Coordenadores para as listas de seleção.
+
+    Professores ativos marcados como coordenador (`cadastrado: true`) e, com `incluir_ofertas`,
+    os nomes já usados nas ofertas que ainda não têm cadastro (`cadastrado: false`) — assim
+    nenhum coordenador em uso some da lista enquanto não for cadastrado em Professores.
+    """
+    import unicodedata
+    from app.models.oferta import OfertaCurso
+
+    def norm(s: str) -> str:
+        s = unicodedata.normalize("NFD", s or "")
+        return " ".join("".join(c for c in s if unicodedata.category(c) != "Mn").upper().split())
+
     res = await db.execute(
         select(Professor.id, Professor.nome, Professor.area)
         .where(Professor.coordenador == True, Professor.ativo == True)  # noqa: E712
         .order_by(Professor.nome)
     )
-    return [{"id": i, "nome": n, "area": a} for i, n, a in res.all()]
+    lista = [{"id": i, "nome": n, "area": a, "cadastrado": True} for i, n, a in res.all()]
+    if incluir_ofertas:
+        conhecidos = {norm(c["nome"]) for c in lista}
+        from app.main import _COORDENADORES_LEGADO  # lista que ficava fixa nas telas de oferta
+
+        usados = (await db.execute(
+            select(OfertaCurso.coordenador).where(OfertaCurso.coordenador != None).distinct()  # noqa: E711
+        )).scalars().all()
+        candidatos = {u.strip() for u in [*usados, *_COORDENADORES_LEGADO] if u and u.strip()}
+        for nome in sorted(candidatos, key=str.casefold):
+            if norm(nome) not in conhecidos:
+                conhecidos.add(norm(nome))
+                lista.append({"id": None, "nome": nome, "area": None, "cadastrado": False})
+    return sorted(lista, key=lambda c: c["nome"].casefold())
 
 
 @router.post("/", response_model=ProfessorOut, status_code=201)

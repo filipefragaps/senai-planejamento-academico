@@ -125,7 +125,7 @@ interface NovaOfertaModalProps {
 }
 
 export function NovaOfertaModal({ open, onClose }: NovaOfertaModalProps) {
-  const { nomes: coordenadoresCadastrados } = useCoordenadores();
+  const { nomes: coordenadoresLista, naoCadastrados } = useCoordenadores();
   const qc = useQueryClient();
   const [form, setForm] = useState<Form>(formInicial());
   const [buscaPasta, setBuscaPasta] = useState("");
@@ -351,9 +351,12 @@ export function NovaOfertaModal({ open, onClose }: NovaOfertaModalProps) {
                 <Field label="Coordenador">
                   <select className="input w-full" value={form.coordenador} onChange={(e) => set("coordenador", e.target.value)}>
                     <option value="">Selecionar coordenador...</option>
-                    {coordenadoresCadastrados.map((c) => <option key={c} value={c}>{c}</option>)}
+                    {coordenadoresLista.map((c) => <option key={c} value={c}>{c}{naoCadastrados.has(c) ? " (não cadastrado)" : ""}</option>)}
                   </select>
-                  {coordenadoresCadastrados.length === 0 && (
+                  {naoCadastrados.size > 0 && (
+                    <p className="mt-1 text-xs text-gray-500">“Não cadastrado”: marque “Coordenador de curso” no cadastro do professor.</p>
+                  )}
+                  {coordenadoresLista.length === 0 && (
                     <p className="mt-1 text-xs text-amber-600">Nenhum coordenador cadastrado: marque “Coordenador de curso” no cadastro do professor.</p>
                   )}
                 </Field>

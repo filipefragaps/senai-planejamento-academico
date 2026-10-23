@@ -158,7 +158,7 @@ interface OfertaDrawerProps {
 }
 
 export function OfertaDrawer({ oferta, onClose }: OfertaDrawerProps) {
-  const { nomes: coordenadoresCadastrados } = useCoordenadores();
+  const { nomes: coordenadoresLista, naoCadastrados } = useCoordenadores();
   const qc = useQueryClient();
   const [editMode, setEditMode] = useState(false);
   const [form, setForm] = useState<FormData>({});
@@ -314,9 +314,9 @@ export function OfertaDrawer({ oferta, onClose }: OfertaDrawerProps) {
                   ? (
                     <select className="input w-full text-sm" value={form.coordenador ?? ""} onChange={(e) => set("coordenador", e.target.value || null)}>
                       <option value="">Selecionar...</option>
-                      {/* Cadastrados em Professores + o atual, se não estiver mais na lista */}
-                      {[...new Set([...coordenadoresCadastrados, ...(form.coordenador ? [form.coordenador] : [])])].map((c) => (
-                        <option key={c} value={c}>{c}{coordenadoresCadastrados.includes(c) ? "" : " (não cadastrado)"}</option>
+                      {/* Cadastrados em Professores + nomes em uso ainda sem cadastro + o atual */}
+                      {[...new Set([...coordenadoresLista, ...(form.coordenador ? [form.coordenador] : [])])].map((c) => (
+                        <option key={c} value={c}>{c}{coordenadoresLista.includes(c) && !naoCadastrados.has(c) ? "" : " (não cadastrado)"}</option>
                       ))}
                     </select>
                   )

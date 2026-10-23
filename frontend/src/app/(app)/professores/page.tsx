@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useCoordenadores } from "@/lib/use-coordenadores";
 import { professoresApi, contratosApi, eventosApi, ofertasApi, contratoVirtualApi, planejamentoApi, type ContratoEventoRef } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
@@ -298,6 +299,7 @@ export default function ProfessoresPage() {
   const [filtroTipo, setFiltroTipo] = useState<string>("todos");
   const [filtroArea, setFiltroArea] = useState<string>("");
   const [soCoordenadores, setSoCoordenadores] = useState(false);
+  const { naoCadastrados: coordenadoresSemCadastro } = useCoordenadores();
   const [selected, setSelected] = useState<any | null>(null);
   const [drawer, setDrawer] = useState<null | "new" | any>(null);
   const [pagina, setPagina] = useState(1);
@@ -633,6 +635,14 @@ export default function ProfessoresPage() {
             </span>
           </button>
         </div>
+
+        {soCoordenadores && coordenadoresSemCadastro.size > 0 && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+            <p className="font-semibold">Coordenadores em uso sem cadastro ({coordenadoresSemCadastro.size})</p>
+            <p className="mt-0.5">Aparecem nas listas como “não cadastrado”. Abra o professor (ou cadastre-o) e ligue “Coordenador de curso”:</p>
+            <p className="mt-1">{[...coordenadoresSemCadastro].join(" · ")}</p>
+          </div>
+        )}
 
         {/* Filtro por área */}
         {areasDisponiveis.length > 0 && (
