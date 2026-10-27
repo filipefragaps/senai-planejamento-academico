@@ -1,5 +1,5 @@
 "use client";
-// Substitui o ./local.tsx da versão local da Gestão de Ponto v1.5: em vez do armazenamento do
+// Substitui o ./local.tsx da versão local da Gestão de Ponto (v1.6): em vez do armazenamento do
 // navegador (IndexedDB), o "snapshot" fica no banco da plataforma (/gestao-ponto/painel) e é
 // compartilhado por todo o RH. A tela (home.tsx) continua chamando os mesmos endereços
 // "/api/point-data" e "/api/notifications", aqui atendidos por platformFetch.
@@ -137,7 +137,7 @@ export function PlatformToolbar() {
   }
   return <section className="border-b border-orange-200 bg-orange-50 px-5 py-3 text-sm">
     <div className="mx-auto flex max-w-[1500px] flex-wrap items-center gap-3">
-      <strong>Versão 1.5 · prazo de correções</strong>
+      <strong>Versão 1.6 · gráfico e cartão individual</strong>
       <label>E-mail do RH: <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="rh@suaunidade.com.br" className="rounded border bg-white px-2 py-1"/></label>
       <button disabled={busy} onClick={() => void save()} className="rounded border bg-white px-3 py-1">Salvar e-mail</button>
     </div>

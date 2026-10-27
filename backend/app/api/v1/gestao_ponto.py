@@ -522,6 +522,26 @@ def _aplicar_status_legados(dados: dict, legados: dict[str, str]) -> int:
     return alterados
 
 
+def _chave_ocorrencia(item: dict) -> str:
+    return f"{item.get('matricula')}|{item.get('date')}|{item.get('category')}"
+
+
+def _aplicar_status_versao_anterior(dados: dict, anteriores: list) -> int:
+    """Nova versão de análise: a tela reimporta do zero, então os status tratados/notificados
+    do snapshot anterior são reaplicados pela mesma chave que a tela usa (matrícula|data|categoria)."""
+    tratados = {_chave_ocorrencia(i): i for i in anteriores if isinstance(i, dict) and i.get("status", "pending") != "pending"}
+    alterados = 0
+    for item in dados.get("items") or []:
+        antes = tratados.get(_chave_ocorrencia(item))
+        if antes and item.get("status", "pending") == "pending":
+            item["status"] = antes["status"]
+            for campo in ("notifiedAt", "notificationMethod"):
+                if antes.get(campo):
+                    item[campo] = antes[campo]
+            alterados += 1
+    return alterados
+
+
 @router.post("/painel")
 async def painel_salvar(request: Request, db: AsyncSession = Depends(get_db), user: Usuario = Depends(require_admin_ou_rh)):
     """Grava o snapshot inteiro (importação da base, dos TXT mensais ou limpeza)."""
@@ -541,6 +561,9 @@ async def painel_salvar(request: Request, db: AsyncSession = Depends(get_db), us
     if sem_ocorrencias and dados.get("items"):
         res = await db.execute(select(GpOcorrencia.occurrence_id, GpOcorrencia.status).where(GpOcorrencia.status != "pending"))
         migrados = _aplicar_status_legados(dados, {i: st for i, st in res.all()})
+    elif painel.dados and painel.analysis_version != versao and dados.get("items"):
+        anteriores = json.loads(painel.dados).get("items") or []
+        migrados = _aplicar_status_versao_anterior(dados, anteriores)
 
     painel.analysis_version = versao
     painel.dados = json.dumps(dados, ensure_ascii=False, separators=(",", ":"))

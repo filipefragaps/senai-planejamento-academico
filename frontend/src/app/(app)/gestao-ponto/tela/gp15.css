@@ -1,4 +1,4 @@
-/* Estilos da Gestão de Ponto v1.5 (style.css do pacote original), limitados a esta página (.gp15). */
+/* Estilos da Gestão de Ponto (style.css do pacote original, igual na v1.5 e v1.6), limitados a esta página (.gp15). */
 .gp15 { background: #f4f7fb; color: #17233a; font-family: Arial, Helvetica, sans-serif; min-height: 100%; }
 .gp15 *, .gp15 *::before, .gp15 *::after { box-sizing: border-box; }
 .gp15 button, .gp15 input { font: inherit; }

@@ -1,6 +1,6 @@
 "use client";
-// Tela da Gestão de Ponto v1.5 (prazo de correções), copiada sem alterações de visual do
-// pacote GestaoPonto_v1.5_Prazo_Correcoes/codigo-fonte/src/Home.tsx.
+// Tela da Gestão de Ponto v1.6 (gráfico e cartão individual), copiada sem alterações de visual do
+// pacote GestaoPonto_v1.6_Grafico_Cartao_Individual/codigo-fonte/src/Home.tsx.
 // Única diferença: os dados vêm do banco da plataforma (./plataforma) em vez do navegador (./local).
 
 import {
@@ -34,8 +34,9 @@ type UnmatchedPerson = { matricula: string; nome: string };
 type BalanceRecord = { matricula: string; collaborator: string; email: string; area: string; supervisor: string; supervisorEmail: string; director: string; directorEmail: string; unidade: string; minutes: number; label: string; critical: boolean; sourceMonth: string; sourceFile: string };
 type MonthlyBalanceRecord = { matricula: string; collaborator: string; email: string; area: string; supervisor: string; supervisorEmail: string; director: string; directorEmail: string; unidade: string; month: string; monthLabel: string; initialMinutes: number; creditMinutes: number; debitMinutes: number; accumulatedMinutes: number; accumulatedLabel: string; critical: boolean; fileName: string };
 type MonthlySourceFile = { month: string; monthLabel: string; fileName: string; firstDate: string; lastDate: string; expectedLastDate: string; complete: boolean };
-type DailyRecord = { matricula: string; collaborator: string; email: string; area: string; supervisor: string; supervisorEmail: string; director: string; directorEmail: string; unidade: string; date: string; schedule: string; scheduleCode: string; timeCode: string; weeklyHours: number | null; punches: string[]; issues: string[]; workedMinutes: number; expectedMinutes: number; overtimeMinutes: number; bankMinutes: number; nonWorkingReason: string; weeklyMinutes: number };
-type MonthlyDay = { matricula: string; collaborator: string; area: string; supervisor: string; date: string; weeklyHours: number | null; schedule: string; scheduleCode: string; expectedMinutes: number; workedMinutes: number; nonWorkingReason: string; hasPunches: boolean; incomplete: boolean };
+type PointIssue = { label: string; detail: string; quantityMinutes: number | null; justification: string };
+type DailyRecord = { matricula: string; collaborator: string; email: string; area: string; supervisor: string; supervisorEmail: string; director: string; directorEmail: string; unidade: string; date: string; schedule: string; scheduleCode: string; timeCode: string; weeklyHours: number | null; punches: string[]; issues: string[]; issueEntries: PointIssue[]; nightAdditionalMinutes: number; workedMinutes: number; expectedMinutes: number; overtimeMinutes: number; bankMinutes: number; nonWorkingReason: string; weeklyMinutes: number };
+type MonthlyDay = { matricula: string; collaborator: string; area: string; supervisor: string; unidade?: string; date: string; weeklyHours: number | null; schedule: string; scheduleCode: string; timeCode?: string; punches?: string[]; issues?: string[]; issueEntries?: PointIssue[]; nightAdditionalMinutes?: number; expectedMinutes: number; workedMinutes: number; nonWorkingReason: string; hasPunches: boolean; incomplete: boolean };
 type HoursSummary = { matricula: string; collaborator: string; area: string; supervisor: string; month: string; monthLabel: string; weeklyHours: number | null; schedules: string[]; expectedMinutes: number; workedMinutes: number; bankMinutes: number; scheduledDays: number; nonWorkingDays: number; incompleteDays: number; officialInitialMinutes: number | null; officialCreditMinutes: number | null; officialDebitMinutes: number | null; officialAccumulatedMinutes: number | null; officialCritical: boolean; officialFileName: string };
 type PriorityFilter = "all" | "interval" | "intershift" | "three-shifts" | "balance";
 type CorrectionFilter = "all" | "Análise exclusiva do RH" | "Ausência de batida" | "Falta" | "Fora da escala" | "Batidas incompletas" | "Marcação errada" | "Marcação irregular";
@@ -59,7 +60,7 @@ const scaleOptions = scalesData as ScaleOption[];
 const RESPONSIBLES: Record<string, { name: string; email: string }> = {};
 const DEFAULT_DIRECTOR = { name: "Direção a definir", email: "" };
 const DEFAULT_UNIT = "Sua unidade SENAI";
-const ANALYSIS_VERSION = 18;
+const ANALYSIS_VERSION = 19;
 const MONTHLY_ANALYSIS_START = "2026-01-01";
 const MONTHLY_ANALYSIS_START_KEY = "20260101";
 const OPERATIONAL_ANALYSIS_START = "21/08/2026";
@@ -308,7 +309,9 @@ function monthLabel(value: string) {
 function monthlyDayFromRecord(day: DailyRecord): MonthlyDay {
   return {
     matricula: day.matricula, collaborator: day.collaborator, area: day.area, supervisor: day.supervisor,
-    date: day.date, weeklyHours: day.weeklyHours, schedule: day.schedule, scheduleCode: day.scheduleCode,
+    unidade: day.unidade, date: day.date, weeklyHours: day.weeklyHours, schedule: day.schedule, scheduleCode: day.scheduleCode,
+    timeCode: day.timeCode, punches: day.punches, issues: day.issues, issueEntries: day.issueEntries,
+    nightAdditionalMinutes: day.nightAdditionalMinutes,
     expectedMinutes: day.expectedMinutes, workedMinutes: day.workedMinutes, nonWorkingReason: day.nonWorkingReason,
     hasPunches: day.punches.length > 0, incomplete: day.punches.length % 2 !== 0,
   };
@@ -401,8 +404,8 @@ function parsePoint(text: string, contacts: Contact[], inactiveMatriculas: strin
     seenPeople.add(matricula);
     if (!contact) unmatchedPeople.set(matricula, collaborator);
     const scheduleTimes = schedule.match(/\d{2}:\d{2}/g) || [];
-    type ParsedDayIssue = { label: string; detail: string; quantityMinutes: number | null };
-    type ParsedDay = { date: string; punches: string[]; issueTexts: string[]; issueEntries: ParsedDayIssue[]; timeCode: string; scaleCode: string };
+    type ParsedDayIssue = PointIssue;
+    type ParsedDay = { date: string; punches: string[]; issueTexts: string[]; issueEntries: ParsedDayIssue[]; timeCode: string; scaleCode: string; nightAdditionalMinutes: number };
     const days = new Map<string, ParsedDay>();
     let currentDate = "";
     for (const line of block.split(/\r?\n/)) {
@@ -411,17 +414,20 @@ function parsePoint(text: string, contacts: Contact[], inactiveMatriculas: strin
       const punches = Array.from(padded.slice(13, 60).matchAll(/(?<!\d)(\d{2}:\d{2})(?!\d)/g)).map((match) => match[1]);
       const issueLabel = clean(padded.slice(60, 90));
       const quantityMinutes = parseDurationMinutes(clean(padded.slice(90, 96)));
+      const justification = clean(padded.slice(96, 125));
+      const nightAdditionalMinutes = parseDurationMinutes(clean(padded.slice(125, 131))) || 0;
       const issueText = clean([padded.slice(60, 90), padded.slice(90, 96), padded.slice(96, 125)].join(" "));
       if (!dayMatch) {
         // Some reports wrap the 5th/6th punch onto the following line without
         // repeating the date. Those punches still belong to the dated row above.
-        if (currentDate && /^\s{20,}/.test(line) && (punches.length > 0 || issueText)) {
+        if (currentDate && /^\s{20,}/.test(line) && (punches.length > 0 || issueText || nightAdditionalMinutes > 0)) {
           const current = days.get(currentDate);
           if (current) {
             current.punches.push(...punches);
+            current.nightAdditionalMinutes += nightAdditionalMinutes;
             if (issueText) {
               current.issueTexts.push(issueText);
-              current.issueEntries.push({ label: issueLabel, detail: issueText, quantityMinutes });
+              current.issueEntries.push({ label: issueLabel, detail: issueText, quantityMinutes, justification });
             }
           }
         }
@@ -434,14 +440,15 @@ function parsePoint(text: string, contacts: Contact[], inactiveMatriculas: strin
       const existing = days.get(date);
       if (existing) {
         existing.punches.push(...punches);
+        existing.nightAdditionalMinutes += nightAdditionalMinutes;
         if (issueText) {
           existing.issueTexts.push(issueText);
-          existing.issueEntries.push({ label: issueLabel, detail: issueText, quantityMinutes });
+          existing.issueEntries.push({ label: issueLabel, detail: issueText, quantityMinutes, justification });
         }
         if (timeCode) existing.timeCode = timeCode;
         if (scaleCode) existing.scaleCode = scaleCode;
       } else {
-        days.set(date, { date, punches, issueTexts: issueText ? [issueText] : [], issueEntries: issueText ? [{ label: issueLabel, detail: issueText, quantityMinutes }] : [], timeCode, scaleCode });
+        days.set(date, { date, punches, issueTexts: issueText ? [issueText] : [], issueEntries: issueText ? [{ label: issueLabel, detail: issueText, quantityMinutes, justification }] : [], timeCode, scaleCode, nightAdditionalMinutes });
       }
       if (!firstDate || dateKey(date) < dateKey(firstDate)) firstDate = date;
       if (!lastDate || dateKey(date) > dateKey(lastDate)) lastDate = date;
@@ -577,7 +584,8 @@ function parsePoint(text: string, contacts: Contact[], inactiveMatriculas: strin
         matricula, collaborator, email: contact?.email || "", area, supervisor: supervisor.name, supervisorEmail: supervisor.email,
         director: director.name, directorEmail: director.email, unidade: contact?.unidade || "",
         date: day.date, schedule, scheduleCode: day.scaleCode, timeCode: day.timeCode, weeklyHours: contact?.chSemanal || null,
-        punches: day.punches, issues: day.issueTexts, workedMinutes: actualMinutes, expectedMinutes,
+        punches: day.punches, issues: day.issueTexts, issueEntries: day.issueEntries,
+        nightAdditionalMinutes: day.nightAdditionalMinutes, workedMinutes: actualMinutes, expectedMinutes,
         overtimeMinutes: bankCredit, bankMinutes: bankCredit - reportedDeficit, nonWorkingReason: restReason,
         weeklyMinutes: weeklyWorked.get(weekKey(day.date)) || 0,
       });
@@ -919,6 +927,166 @@ function downloadExcel(filename: string, sheets: { name: string; rows: ExportRow
   XLSX.writeFile(workbook, `${filename}-${stamp}.xlsx`, { compression: true });
 }
 
+function clockDurationLabel(minutes: number | null | undefined) {
+  if (minutes === null || minutes === undefined) return "";
+  const absolute = Math.abs(minutes);
+  const value = `${String(Math.floor(absolute / 60)).padStart(2, "0")}:${String(absolute % 60).padStart(2, "0")}`;
+  return minutes < 0 ? `-${value}` : value;
+}
+function weekdayShort(value: string) {
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(value)) return "";
+  const [day, month, year] = value.split("/").map(Number);
+  return new Intl.DateTimeFormat("pt-BR", { weekday: "short", timeZone: "UTC" })
+    .format(new Date(Date.UTC(year, month - 1, day))).replace(".", "");
+}
+function pointIssueSummary(day: MonthlyDay) {
+  const entries = day.issueEntries || [];
+  const fallback = (day.issues || []).join(" | ");
+  return {
+    irregularity: entries.map((entry) => entry.label).filter(Boolean).join(" | ") || day.nonWorkingReason || fallback,
+    quantity: entries.map((entry) => clockDurationLabel(entry.quantityMinutes)).filter(Boolean).join(" | "),
+    justification: entries.map((entry) => entry.justification).filter(Boolean).join(" | "),
+  };
+}
+function pointCardExportRows(days: MonthlyDay[]): ExportRow[] {
+  return days.map((day) => {
+    const issue = pointIssueSummary(day);
+    const punches = day.punches || [];
+    return {
+      "Dia sem.": weekdayShort(day.date), "Data": day.date, "Código horário": day.timeCode || "",
+      "Código escala": day.scheduleCode || "", "Entrada 1": punches[0] || "", "Saída 1": punches[1] || "",
+      "Entrada 2": punches[2] || "", "Saída 2": punches[3] || "", "Entrada 3": punches[4] || "",
+      "Saída 3": punches[5] || "", "Irregularidade": issue.irregularity, "QTDE": issue.quantity,
+      "Justificativa": issue.justification, "ADIC NO TURNO": day.nightAdditionalMinutes ? clockDurationLabel(day.nightAdditionalMinutes) : "",
+      "Horas previstas": day.expectedMinutes / 60, "Horas batidas": day.workedMinutes / 60,
+    };
+  });
+}
+
+function MonthlyBalanceChart({ balances, start, end }: { balances: MonthlyBalanceRecord[]; start: string; end: string }) {
+  const [selectedEmployee, setSelectedEmployee] = useState("all");
+  const employeeOptions = useMemo(() => {
+    const values = new Map<string, string>();
+    for (const balance of balances) values.set(balance.matricula, balance.collaborator);
+    return [...values].map(([matricula, collaborator]) => ({ matricula, collaborator }))
+      .sort((a, b) => a.collaborator.localeCompare(b.collaborator, "pt-BR"));
+  }, [balances]);
+  useEffect(() => {
+    if (selectedEmployee !== "all" && !employeeOptions.some((option) => option.matricula === selectedEmployee)) setSelectedEmployee("all");
+  }, [employeeOptions, selectedEmployee]);
+  const bars = useMemo(() => {
+    const firstMonth = start?.slice(0, 7) || "";
+    const lastMonth = end?.slice(0, 7) || "9999-12";
+    const grouped = new Map<string, number>();
+    balances
+      .filter((balance) => (!firstMonth || balance.month >= firstMonth) && balance.month <= lastMonth)
+      .filter((balance) => selectedEmployee === "all" || balance.matricula === selectedEmployee)
+      .forEach((balance) => grouped.set(balance.month, (grouped.get(balance.month) || 0) + balance.accumulatedMinutes));
+    return [...grouped].sort(([a], [b]) => a.localeCompare(b)).map(([month, minutes]) => ({ month, label: monthLabel(month), minutes }));
+  }, [balances, start, end, selectedEmployee]);
+  const maxAbsolute = Math.max(1, ...bars.map((bar) => Math.abs(bar.minutes)));
+  const selectedName = selectedEmployee === "all" ? "Todos os colaboradores" : employeeOptions.find((option) => option.matricula === selectedEmployee)?.collaborator || "Colaborador";
+  return <div className="border-b border-slate-200 bg-slate-50/60 px-5 py-5 lg:px-6">
+    <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+      <div><p className="text-sm font-black text-slate-800">Evolução mensal do saldo oficial</p><p className="mt-1 text-xs leading-5 text-slate-500">Cada coluna usa o Saldo BH Acumulado do FPW. Positivo em verde e negativo em vermelho.</p></div>
+      <label className="w-full text-xs font-bold uppercase tracking-wide text-slate-500 lg:w-[360px]">Colaborador
+        <select value={selectedEmployee} onChange={(event) => setSelectedEmployee(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal text-slate-700 outline-none focus:border-[#123d72]">
+          <option value="all">Todos os colaboradores</option>{employeeOptions.map((option) => <option key={option.matricula} value={option.matricula}>{option.collaborator} · {option.matricula}</option>)}
+        </select>
+      </label>
+    </div>
+    {bars.length ? <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200 bg-white p-4">
+      <div className="relative" style={{ minWidth: `${Math.max(680, bars.length * 92)}px` }}>
+        <div className="pointer-events-none absolute inset-x-0 top-[128px] z-0 flex items-center"><span className="mr-2 text-[10px] font-bold text-slate-400">0h</span><span className="h-px flex-1 bg-slate-300"/></div>
+        <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${bars.length}, minmax(72px, 1fr))` }}>
+          {bars.map((bar) => {
+            const height = Math.max(2, Math.round((Math.abs(bar.minutes) / maxAbsolute) * 42));
+            const positive = bar.minutes >= 0;
+            return <div key={bar.month} className="relative z-10 text-center" title={`${selectedName} · ${bar.label}: ${signedDurationLabel(bar.minutes)}`}>
+              <div className="relative h-64">
+                <span className={`absolute left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-full px-2 py-1 text-[10px] font-black shadow-sm ${positive ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800"}`} style={positive ? { bottom: `calc(50% + ${height}% + 4px)` } : { top: `calc(50% + ${height}% + 4px)` }}>{signedDurationLabel(bar.minutes)}</span>
+                <span className={`absolute left-1/2 w-10 -translate-x-1/2 rounded-sm ${positive ? "bg-emerald-600" : "bg-red-600"}`} style={positive ? { height: `${height}%`, bottom: "50%" } : { height: `${height}%`, top: "50%" }}/>
+              </div>
+              <p className="mt-2 text-xs font-black text-slate-600">{bar.label}</p>
+            </div>;
+          })}
+        </div>
+      </div>
+    </div> : <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-white px-5 py-10 text-center text-sm text-slate-400">Não há saldos oficiais no período selecionado.</div>}
+    <p className="mt-3 text-xs text-slate-500">Em “Todos os colaboradores”, a coluna é a soma dos saldos oficiais de quem registra ponto naquela competência. Selecione uma pessoa para acompanhar sua evolução individual.</p>
+  </div>;
+}
+
+function PointCardConsultation({ days, balances }: { days: MonthlyDay[]; balances: MonthlyBalanceRecord[] }) {
+  const employeeOptions = useMemo(() => {
+    const values = new Map<string, string>();
+    for (const day of days) if ((day.punches || []).length > 0 || day.hasPunches) values.set(day.matricula, day.collaborator);
+    return [...values].map(([matricula, collaborator]) => ({ matricula, collaborator }))
+      .sort((a, b) => a.collaborator.localeCompare(b.collaborator, "pt-BR"));
+  }, [days]);
+  const latestAvailable = useMemo(() => days.reduce((latest, day) => {
+    const value = isoDate(day.date); return !latest || value > latest ? value : latest;
+  }, ""), [days]);
+  const initialEnd = latestAvailable || yesterdayIso();
+  const [selectedEmployee, setSelectedEmployee] = useState("");
+  const [start, setStart] = useState(initialEnd ? `${initialEnd.slice(0, 7)}-01` : MONTHLY_ANALYSIS_START);
+  const [end, setEnd] = useState(initialEnd);
+  useEffect(() => {
+    if (selectedEmployee && !employeeOptions.some((option) => option.matricula === selectedEmployee)) setSelectedEmployee("");
+  }, [employeeOptions, selectedEmployee]);
+  const chooseEmployee = (matricula: string) => {
+    setSelectedEmployee(matricula);
+    if (!matricula) return;
+    const employeeDates = days.filter((day) => day.matricula === matricula).map((day) => isoDate(day.date)).filter(Boolean).sort();
+    const latest = employeeDates.at(-1);
+    if (latest) { setStart(`${latest.slice(0, 7)}-01`); setEnd(latest); }
+  };
+  const cardDays = useMemo(() => days
+    .filter((day) => day.matricula === selectedEmployee)
+    .filter((day) => isoDate(day.date) >= start && isoDate(day.date) <= end)
+    .sort((a, b) => dateKey(a.date).localeCompare(dateKey(b.date))), [days, selectedEmployee, start, end]);
+  const employee = days.find((day) => day.matricula === selectedEmployee);
+  const schedules = [...new Set(cardDays.map((day) => day.scheduleCode ? `${day.scheduleCode} · ${day.schedule}` : day.schedule).filter(Boolean))];
+  const balance = [...balances]
+    .filter((item) => item.matricula === selectedEmployee && item.month <= end.slice(0, 7))
+    .sort((a, b) => b.month.localeCompare(a.month))[0];
+  const exportCard = () => {
+    if (!employee || !cardDays.length) return;
+    const summary: ExportRow = {
+      "Matrícula": employee.matricula, "Colaborador": employee.collaborator, "Lotação": employee.area,
+      "Unidade": employee.unidade || "", "Carga semanal": employee.weeklyHours ?? "", "Escala(s)": schedules.join(" | "),
+      "Data inicial": displayIsoDate(start), "Data final": displayIsoDate(end), "Competência do resumo FPW": balance?.monthLabel || "",
+      "Saldo BH inicial": balance ? clockDurationLabel(balance.initialMinutes) : "", "Créditos do mês": balance ? clockDurationLabel(balance.creditMinutes) : "",
+      "Débitos do mês": balance ? clockDurationLabel(balance.debitMinutes) : "", "Saldo BH acumulado": balance ? clockDurationLabel(balance.accumulatedMinutes) : "",
+    };
+    downloadExcel(`cartao-ponto-${employee.matricula}`, [{ name: "Cartão de Ponto", rows: pointCardExportRows(cardDays) }, { name: "Resumo", rows: [summary] }]);
+  };
+  return <section className="mb-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div className="border-b border-slate-200 px-5 py-5 lg:px-6">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div className="max-w-2xl"><p className="text-xs font-bold uppercase tracking-wider text-[#123d72]">Consulta individual</p><h3 className="mt-1 text-lg font-bold text-slate-800">Cartão de ponto por pessoa e período</h3><p className="mt-1 text-sm leading-6 text-slate-500">Escolha o colaborador e uma data específica ou um período. O visual segue a organização do cartão do FPW, sem timbrado.</p></div>
+        <button disabled={!cardDays.length} onClick={exportCard} className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-200 px-3 py-2.5 text-sm font-bold text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40"><Download size={16}/>Baixar cartão em Excel</button>
+      </div>
+      <div className="mt-5 grid gap-3 md:grid-cols-3">
+        <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Colaborador<select value={selectedEmployee} onChange={(event) => chooseEmployee(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold normal-case tracking-normal text-slate-700 outline-none focus:border-[#123d72]"><option value="">Selecione uma pessoa</option>{employeeOptions.map((option) => <option key={option.matricula} value={option.matricula}>{option.collaborator} · {option.matricula}</option>)}</select></label>
+        <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Data inicial<input type="date" min={MONTHLY_ANALYSIS_START} max={latestAvailable || yesterdayIso()} value={start} onChange={(event) => setStart(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 outline-none focus:border-[#123d72]"/></label>
+        <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Data final<input type="date" min={MONTHLY_ANALYSIS_START} max={latestAvailable || yesterdayIso()} value={end} onChange={(event) => setEnd(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 outline-none focus:border-[#123d72]"/></label>
+      </div>
+    </div>
+    {!selectedEmployee ? <div className="px-6 py-14 text-center text-sm text-slate-400">Selecione um colaborador para visualizar o cartão de ponto.</div> : start > end ? <div className="px-6 py-14 text-center text-sm font-semibold text-red-700">A data inicial não pode ser posterior à data final.</div> : <>
+      <div className="grid gap-px border-b border-slate-200 bg-slate-200 sm:grid-cols-2 xl:grid-cols-5">
+        {[{ label: "Colaborador", value: employee?.collaborator || "—" }, { label: "Matrícula", value: employee?.matricula || "—" }, { label: "Lotação", value: employee?.area || "—" }, { label: "Carga semanal", value: employee?.weeklyHours ? `${employee.weeklyHours}h` : "Não informada" }, { label: "Período", value: `${displayIsoDate(start)} a ${displayIsoDate(end)}` }].map((item) => <div key={item.label} className="bg-slate-50 px-5 py-4"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{item.label}</p><p className="mt-1 text-sm font-bold text-slate-800">{item.value}</p></div>)}
+      </div>
+      <div className="border-b border-slate-200 bg-white px-5 py-3 text-xs text-slate-600"><strong>Escala(s):</strong> {schedules.join(" | ") || employee?.schedule || "Não identificada"}</div>
+      <div className="max-h-[590px] overflow-auto"><table className="w-full min-w-[1480px] border-collapse text-left text-xs"><thead className="sticky top-0 bg-slate-100 text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-3">Dia sem.</th><th className="px-3 py-3">Data</th><th className="px-3 py-3">Horário</th><th className="px-3 py-3">Escala</th><th className="px-3 py-3">Entrada 1</th><th className="px-3 py-3">Saída 1</th><th className="px-3 py-3">Entrada 2</th><th className="px-3 py-3">Saída 2</th><th className="px-3 py-3">Entrada 3</th><th className="px-3 py-3">Saída 3</th><th className="px-3 py-3">Irregularidade</th><th className="px-3 py-3">QTDE</th><th className="px-3 py-3">Justificativa</th><th className="px-3 py-3">Adic. no turno</th></tr></thead><tbody className="divide-y divide-slate-100">{cardDays.map((day) => { const punches = day.punches || []; const issue = pointIssueSummary(day); return <tr key={`${day.matricula}-${day.date}`} className="hover:bg-slate-50"><td className="px-3 py-3 font-bold text-slate-500">{weekdayShort(day.date)}</td><td className="whitespace-nowrap px-3 py-3 font-bold text-slate-800">{day.date}</td><td className="px-3 py-3 font-mono">{day.timeCode || "—"}</td><td className="px-3 py-3 font-mono">{day.scheduleCode || "—"}</td>{[0,1,2,3,4,5].map((index) => <td key={index} className="px-3 py-3 font-mono font-semibold text-slate-700">{punches[index] || ""}</td>)}<td className="max-w-[260px] px-3 py-3 text-slate-700">{issue.irregularity}</td><td className="whitespace-nowrap px-3 py-3 font-mono">{issue.quantity}</td><td className="max-w-[230px] px-3 py-3 text-slate-600">{issue.justification}</td><td className="whitespace-nowrap px-3 py-3 font-mono">{day.nightAdditionalMinutes ? clockDurationLabel(day.nightAdditionalMinutes) : ""}</td></tr>; })}{!cardDays.length && <tr><td colSpan={14} className="px-6 py-14 text-center text-slate-400">Nenhum registro encontrado para esta pessoa no período escolhido.</td></tr>}</tbody></table></div>
+      <div className="grid gap-px border-t border-slate-200 bg-slate-200 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="bg-slate-50 px-5 py-4"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Resumo oficial FPW</p><p className="mt-1 text-sm font-bold text-slate-800">{balance?.monthLabel || "Não informado"}</p></div>
+        {[{ label: "Saldo BH inicial", minutes: balance?.initialMinutes }, { label: "Créditos do mês", minutes: balance?.creditMinutes }, { label: "Débitos do mês", minutes: balance?.debitMinutes }, { label: "Saldo BH acumulado", minutes: balance?.accumulatedMinutes }].map((item) => <div key={item.label} className="bg-slate-50 px-5 py-4"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{item.label}</p><p className={`mt-1 text-lg font-black ${item.minutes === undefined ? "text-slate-400" : item.minutes > 0 ? "text-emerald-700" : item.minutes < 0 ? "text-red-700" : "text-slate-700"}`}>{item.minutes === undefined ? "Não informado" : clockDurationLabel(item.minutes)}</p></div>)}
+      </div>
+    </>}
+  </section>;
+}
+
 function MonthlyConsultation({
   access, days, balances, unitName, sourcePeriod, updatedAt, updatedBy, loading, error, onRefresh,
 }: {
@@ -938,12 +1106,17 @@ function MonthlyConsultation({
   const [query, setQuery] = useState("");
   const [responsible, setResponsible] = useState("all");
   const responsibleOptions = useMemo(() => [...new Set(days.map((day) => day.supervisor).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR")), [days]);
+  const responsibleDays = useMemo(() => days.filter((day) => responsible === "all" || day.supervisor === responsible), [days, responsible]);
   const filteredDays = useMemo(() => {
     const term = normalize(query);
-    return days.filter((day) => responsible === "all" || day.supervisor === responsible)
-      .filter((day) => !term || normalize(`${day.collaborator} ${day.matricula} ${day.area}`).includes(term));
-  }, [days, responsible, query]);
-  const visibleRows = useMemo(() => attachOfficialMonthlyBalances(summarizeMonthlyDays(filteredDays, start, end), balances), [filteredDays, balances, start, end]);
+    return responsibleDays.filter((day) => !term || normalize(`${day.collaborator} ${day.matricula} ${day.area}`).includes(term));
+  }, [responsibleDays, query]);
+  const responsibleBalances = useMemo(() => balances.filter((balance) => responsible === "all" || balance.supervisor === responsible), [balances, responsible]);
+  const chartBalances = useMemo(() => {
+    const clocking = new Set(responsibleDays.filter((day) => day.hasPunches || (day.punches || []).length > 0).map((day) => day.matricula));
+    return responsibleBalances.filter((balance) => clocking.has(balance.matricula));
+  }, [responsibleDays, responsibleBalances]);
+  const visibleRows = useMemo(() => attachOfficialMonthlyBalances(summarizeMonthlyDays(filteredDays, start, end), responsibleBalances), [filteredDays, responsibleBalances, start, end]);
   const totals = useMemo(() => visibleRows.reduce((value, row) => ({
     expected: value.expected + row.expectedMinutes,
     worked: value.worked + row.workedMinutes,
@@ -960,13 +1133,14 @@ function MonthlyConsultation({
     </header>
     <div className="mx-auto max-w-[1500px] px-5 py-7 lg:px-8">
       <section className="mb-5 flex flex-col gap-2 rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-bold text-[#123d72]">{unitName || DEFAULT_UNIT}</p><p className="mt-1 text-sm text-blue-900/70">Consulta somente para leitura. Os dados são publicados pelo RH.</p></div><p className="text-xs text-blue-900/65">Atualizado em {updatedLabel}{updatedBy ? ` por ${updatedBy}` : ""}{sourcePeriod ? ` · arquivo: ${sourcePeriod}` : ""}</p></section>
-      {error ? <section className="grid min-h-[320px] place-items-center rounded-2xl border border-red-200 bg-white p-8 text-center shadow-sm"><div><AlertTriangle size={30} className="mx-auto text-red-600"/><h2 className="mt-4 text-xl font-bold">Não foi possível abrir a consulta</h2><p className="mt-2 text-sm text-slate-600">{error}</p></div></section> : <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      {error ? <section className="grid min-h-[320px] place-items-center rounded-2xl border border-red-200 bg-white p-8 text-center shadow-sm"><div><AlertTriangle size={30} className="mx-auto text-red-600"/><h2 className="mt-4 text-xl font-bold">Não foi possível abrir a consulta</h2><p className="mt-2 text-sm text-slate-600">{error}</p></div></section> : <><section className="mb-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-5 py-5 lg:px-6"><div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between"><div className="max-w-2xl"><p className="text-xs font-bold uppercase tracking-wider text-[#123d72]">Carga horária mensal</p><h2 className="mt-1 text-xl font-bold text-slate-800">Carga prevista, horas batidas e saldo oficial FPW</h2><p className="mt-1 text-sm leading-6 text-slate-500">Consulta de 01/01/2026 até ontem, organizada por colaborador e competência. A diferença entre batidas e carga prevista serve para conferência; a evolução oficial vem do Saldo BH Acumulado de cada arquivo mensal.</p></div><button disabled={!visibleRows.length} onClick={() => downloadExcel("consulta-mensal-do-ponto", [{ name: "Carga e Banco Mensal", rows: hoursSummaryExportRows(visibleRows, start, end) }])} className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-200 px-3 py-2.5 text-sm font-bold text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40"><Download size={16}/>Baixar Excel</button></div>
           <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-[165px_165px_220px_1fr]"><label className="text-xs font-bold uppercase tracking-wide text-slate-500">Data inicial<input type="date" min={MONTHLY_ANALYSIS_START} max={yesterdayIso()} value={start} onChange={(event) => setStart(event.target.value < MONTHLY_ANALYSIS_START ? MONTHLY_ANALYSIS_START : event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 outline-none focus:border-[#123d72]"/></label><label className="text-xs font-bold uppercase tracking-wide text-slate-500">Data final<input type="date" min={MONTHLY_ANALYSIS_START} max={yesterdayIso()} value={end} onChange={(event) => setEnd(event.target.value > yesterdayIso() ? yesterdayIso() : event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 outline-none focus:border-[#123d72]"/></label><label className="text-xs font-bold uppercase tracking-wide text-slate-500">Responsável<select value={responsible} onChange={(event) => setResponsible(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 outline-none focus:border-[#123d72]"><option value="all">Todos os responsáveis</option>{responsibleOptions.map((name) => <option key={name} value={name}>{name}</option>)}</select></label><label className="relative self-end"><span className="sr-only">Buscar colaborador</span><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar colaborador, matrícula ou área" className="w-full rounded-lg border border-slate-300 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-[#123d72]"/></label></div>
           <div className="mt-4 grid gap-3 sm:grid-cols-3"><div className="rounded-xl bg-blue-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-blue-700">Carga prevista no período</p><p className="mt-1 text-xl font-black text-[#123d72]">{durationLabel(totals.expected)}</p></div><div className="rounded-xl bg-slate-100 p-4"><p className="text-xs font-bold uppercase tracking-wide text-slate-600">Horas batidas no ponto</p><p className="mt-1 text-xl font-black text-slate-800">{durationLabel(totals.worked)}</p></div><div className={`rounded-xl p-4 ${totals.bank > 0 ? "bg-emerald-50" : totals.bank < 0 ? "bg-red-50" : "bg-slate-100"}`}><p className={`text-xs font-bold uppercase tracking-wide ${totals.bank > 0 ? "text-emerald-700" : totals.bank < 0 ? "text-red-700" : "text-slate-600"}`}>Diferença para conferência</p><p className={`mt-1 text-xl font-black ${totals.bank > 0 ? "text-emerald-700" : totals.bank < 0 ? "text-red-700" : "text-slate-700"}`}>{signedDurationLabel(totals.bank)}</p></div></div>
         </div>
+        <MonthlyBalanceChart balances={chartBalances} start={start} end={end}/>
         {start > end ? <div className="px-6 py-12 text-center text-sm font-semibold text-red-700">A data inicial não pode ser posterior à data final.</div> : <div className="max-h-[650px] overflow-auto"><table className="w-full min-w-[1320px] text-left text-sm"><thead className="sticky top-0 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Colaborador</th><th className="px-5 py-3">Mês</th><th className="px-5 py-3">Carga/escala</th><th className="px-5 py-3">Carga prevista</th><th className="px-5 py-3">Horas batidas</th><th className="px-5 py-3">Diferença</th><th className="px-5 py-3">Saldo oficial FPW</th><th className="px-5 py-3">Conferência</th></tr></thead><tbody className="divide-y divide-slate-100">{visibleRows.map((row) => <tr key={`${row.matricula}-${row.month}`} className="hover:bg-slate-50"><td className="px-5 py-4"><span className="block font-bold text-slate-800">{row.collaborator}</span><span className="text-xs text-slate-400">{row.matricula} · {row.area}</span></td><td className="whitespace-nowrap px-5 py-4 text-base font-black text-[#123d72]">{row.monthLabel}</td><td className="max-w-[300px] px-5 py-4"><span className="block font-semibold text-slate-700">{row.weeklyHours ? `${row.weeklyHours}h semanais` : "Carga semanal não informada"}</span><span className="mt-1 block truncate text-xs text-slate-500" title={row.schedules.join(" | ")}>{row.schedules.join(" | ") || "Escala não identificada"}</span></td><td className="px-5 py-4"><span className="text-lg font-black text-[#123d72]">{durationLabel(row.expectedMinutes)}</span><span className="block text-xs text-slate-400">{row.scheduledDays} dia(s) previsto(s)</span></td><td className="px-5 py-4 text-lg font-black text-slate-800">{durationLabel(row.workedMinutes)}</td><td className={`px-5 py-4 text-lg font-black ${row.bankMinutes > 0 ? "text-emerald-700" : row.bankMinutes < 0 ? "text-red-700" : "text-slate-600"}`}>{signedDurationLabel(row.bankMinutes)}</td><td className={`px-5 py-4 text-lg font-black ${row.officialAccumulatedMinutes === null ? "text-slate-400" : row.officialAccumulatedMinutes > 0 ? "text-emerald-700" : row.officialAccumulatedMinutes < 0 ? "text-red-700" : "text-slate-600"}`}>{row.officialAccumulatedMinutes === null ? "Não informado" : signedDurationLabel(row.officialAccumulatedMinutes)}{row.officialAccumulatedMinutes !== null && <span className="mt-1 block text-[11px] font-semibold text-slate-400">Inicial {signedDurationLabel(row.officialInitialMinutes || 0)} · créditos {durationLabel(row.officialCreditMinutes || 0)} · débitos {durationLabel(row.officialDebitMinutes || 0)}</span>}</td><td className="px-5 py-4">{row.incompleteDays ? <span className="severity severity-alta">{row.incompleteDays} dia(s) com batida incompleta</span> : <span className="status status-approved">Cálculo completo</span>}{row.officialCritical && <span className="ml-2 severity severity-alta">Saldo acima de ±16h</span>}<span className="mt-1 block text-xs text-slate-400">{row.nonWorkingDays} folga(s)/feriado(s)/afastamento(s)</span></td></tr>)}{!visibleRows.length && <tr><td colSpan={8} className="px-6 py-14 text-center text-slate-400">Nenhum colaborador que registra ponto foi encontrado neste período.</td></tr>}</tbody></table></div>}
-      </section>}
+      </section><PointCardConsultation days={responsibleDays} balances={responsibleBalances}/></>}
     </div>
   </main>;
 }
@@ -1459,6 +1633,10 @@ export default function Home() {
   const filteredBalances = useMemo(() => (result?.balances || []).filter((balance) => matchesResponsible(balance.supervisor, balance.supervisorEmail)), [result, matchesResponsible]);
   const filteredMonthlyBalances = useMemo(() => (result?.monthlyBalances || []).filter((balance) => matchesResponsible(balance.supervisor, balance.supervisorEmail)), [result, matchesResponsible]);
   const filteredDays = useMemo(() => (result?.days || []).filter((day) => matchesResponsible(day.supervisor, day.supervisorEmail)), [result, matchesResponsible]);
+  const chartMonthlyBalances = useMemo(() => {
+    const clocking = new Set(filteredDays.filter((day) => day.punches.length > 0).map((day) => day.matricula));
+    return filteredMonthlyBalances.filter((balance) => clocking.has(balance.matricula));
+  }, [filteredDays, filteredMonthlyBalances]);
   const hoursSummaries = useMemo(() => {
     return attachOfficialMonthlyBalances(summarizeMonthlyDays(filteredDays.map(monthlyDayFromRecord), hoursStart, hoursEnd), filteredMonthlyBalances);
   }, [filteredDays, filteredMonthlyBalances, hoursStart, hoursEnd]);
@@ -1597,9 +1775,11 @@ export default function Home() {
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-3"><div className="rounded-xl bg-blue-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-blue-700">Carga prevista no período</p><p className="mt-1 text-xl font-black text-[#123d72]">{durationLabel(hoursTotals.expected)}</p></div><div className="rounded-xl bg-slate-100 p-4"><p className="text-xs font-bold uppercase tracking-wide text-slate-600">Horas batidas no ponto</p><p className="mt-1 text-xl font-black text-slate-800">{durationLabel(hoursTotals.worked)}</p></div><div className={`rounded-xl p-4 ${hoursTotals.bank > 0 ? "bg-emerald-50" : hoursTotals.bank < 0 ? "bg-red-50" : "bg-slate-100"}`}><p className={`text-xs font-bold uppercase tracking-wide ${hoursTotals.bank > 0 ? "text-emerald-700" : hoursTotals.bank < 0 ? "text-red-700" : "text-slate-600"}`}>Diferença para conferência</p><p className={`mt-1 text-xl font-black ${hoursTotals.bank > 0 ? "text-emerald-700" : hoursTotals.bank < 0 ? "text-red-700" : "text-slate-700"}`}>{signedDurationLabel(hoursTotals.bank)}</p></div></div>
           </div>
+          <MonthlyBalanceChart balances={chartMonthlyBalances} start={hoursStart} end={hoursEnd}/>
           {hoursStart && hoursEnd && hoursStart > hoursEnd ? <div className="px-6 py-12 text-center text-sm font-semibold text-red-700">A data inicial não pode ser posterior à data final.</div> : <div className="max-h-[560px] overflow-auto"><table className="w-full min-w-[1320px] text-left text-sm"><thead className="sticky top-0 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Colaborador</th><th className="px-5 py-3">Mês</th><th className="px-5 py-3">Carga/escala</th><th className="px-5 py-3">Carga prevista</th><th className="px-5 py-3">Horas batidas</th><th className="px-5 py-3">Diferença</th><th className="px-5 py-3">Saldo oficial FPW</th><th className="px-5 py-3">Conferência</th></tr></thead><tbody className="divide-y divide-slate-100">{visibleHoursSummaries.map((row) => <tr key={`${row.matricula}-${row.month}`} className="hover:bg-slate-50"><td className="px-5 py-4"><span className="block font-bold text-slate-800">{row.collaborator}</span><span className="text-xs text-slate-400">{row.matricula} · {row.area}</span></td><td className="whitespace-nowrap px-5 py-4 text-base font-black text-[#123d72]">{row.monthLabel}</td><td className="max-w-[300px] px-5 py-4"><span className="block font-semibold text-slate-700">{row.weeklyHours ? `${row.weeklyHours}h semanais` : "Carga semanal não informada"}</span><span className="mt-1 block truncate text-xs text-slate-500" title={row.schedules.join(" | ")}>{row.schedules.join(" | ") || "Escala não identificada"}</span></td><td className="px-5 py-4"><span className="text-lg font-black text-[#123d72]">{durationLabel(row.expectedMinutes)}</span><span className="block text-xs text-slate-400">{row.scheduledDays} dia(s) previsto(s)</span></td><td className="px-5 py-4 text-lg font-black text-slate-800">{durationLabel(row.workedMinutes)}</td><td className={`px-5 py-4 text-lg font-black ${row.bankMinutes > 0 ? "text-emerald-700" : row.bankMinutes < 0 ? "text-red-700" : "text-slate-600"}`}>{signedDurationLabel(row.bankMinutes)}</td><td className={`px-5 py-4 text-lg font-black ${row.officialAccumulatedMinutes === null ? "text-slate-400" : row.officialAccumulatedMinutes > 0 ? "text-emerald-700" : row.officialAccumulatedMinutes < 0 ? "text-red-700" : "text-slate-600"}`}>{row.officialAccumulatedMinutes === null ? "Não informado" : signedDurationLabel(row.officialAccumulatedMinutes)}{row.officialAccumulatedMinutes !== null && <span className="mt-1 block text-[11px] font-semibold text-slate-400">Inicial {signedDurationLabel(row.officialInitialMinutes || 0)} · créditos {durationLabel(row.officialCreditMinutes || 0)} · débitos {durationLabel(row.officialDebitMinutes || 0)}</span>}</td><td className="px-5 py-4">{row.incompleteDays ? <span className="severity severity-alta">{row.incompleteDays} dia(s) com batida incompleta</span> : <span className="status status-approved">Cálculo completo</span>}{row.officialCritical && <span className="ml-2 severity severity-alta">Saldo acima de ±16h</span>}<span className="mt-1 block text-xs text-slate-400">{row.nonWorkingDays} folga(s)/feriado(s)/afastamento(s)</span></td></tr>)}{!visibleHoursSummaries.length && <tr><td colSpan={8} className="px-6 py-14 text-center text-slate-400">Nenhum colaborador que registra ponto foi encontrado neste período.</td></tr>}</tbody></table></div>}
           <footer className="border-t border-slate-200 bg-slate-50 px-5 py-3 text-xs text-slate-500">{visibleHoursSummaries.length} linha(s) mensais · {new Set(visibleHoursSummaries.map((row) => row.matricula)).size} colaborador(es) · o filtro por responsável do topo também é aplicado</footer>
         </section>
+        <PointCardConsultation days={filteredDays.map(monthlyDayFromRecord)} balances={filteredMonthlyBalances}/>
         <section className="mb-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between"><div><h3 className="font-bold text-slate-800">Banco de horas acumulado oficial</h3><p className="mt-1 text-sm text-slate-500">Usa o último Saldo BH Acumulado informado pelo FPW na competência mais recente importada ({result.sourceFiles.at(-1)?.monthLabel || "não identificada"}). Não soma os saldos de janeiro a outubro. Positivo em verde, negativo em vermelho; acima de +16h ou abaixo de −16h: limite ultrapassado.</p></div><div className="flex flex-col gap-2 sm:flex-row"><button onClick={() => result && downloadExcel("banco-de-horas", [{ name: "Banco de Horas", rows: balanceExportRows(visibleBalances) }])} className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-200 px-3 py-2.5 text-xs font-bold text-emerald-700 hover:bg-emerald-50"><Download size={14}/>Baixar Excel</button><button onClick={() => setCriticalBalancesOnly((value) => !value)} className={`rounded-lg border px-3 py-2.5 text-xs font-bold ${criticalBalancesOnly ? "border-red-500 bg-red-50 text-red-700" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>{criticalBalancesOnly ? "Mostrando somente críticos" : "Mostrar somente críticos"}</button><label className="relative min-w-[260px]"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input value={balanceQuery} onChange={(event) => setBalanceQuery(event.target.value)} placeholder="Buscar colaborador ou matrícula" className="w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-[#123d72]"/></label></div></div>
           <div className="max-h-[430px] overflow-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="sticky top-0 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Colaborador</th><th className="px-5 py-3">Área</th><th className="px-5 py-3">Saldo acumulado</th><th className="px-5 py-3">Situação</th><th className="px-5 py-3 text-right">Ação</th></tr></thead><tbody className="divide-y divide-slate-100">{visibleBalances.map((balance) => { const balanceAlert = items.find((item) => item.category === "Saldo crítico de banco de horas" && item.matricula === balance.matricula); return <tr key={balance.matricula} className={balance.critical ? "bg-red-50/70" : "hover:bg-slate-50"}><td className="px-5 py-4"><span className="block font-bold text-slate-800">{balance.collaborator}</span><span className="text-xs text-slate-400">Matrícula {balance.matricula}</span></td><td className="px-5 py-4 text-slate-600">{balance.area}</td><td className={`px-5 py-4 text-lg font-black ${balance.minutes > 0 ? "text-emerald-700" : balance.minutes < 0 ? "text-red-700" : "text-slate-600"}`}>{balance.label}</td><td className="px-5 py-4">{balance.critical ? <span className="severity severity-alta">Limite ultrapassado</span> : <span className="status status-approved">Dentro do limite</span>}</td><td className="px-5 py-4 text-right">{balanceAlert ? <button onClick={() => setDetail(balanceAlert)} className="rounded-md bg-red-700 px-3 py-2 text-xs font-bold text-white hover:bg-red-800">Revisar alerta</button> : <span className="text-xs text-slate-400">Acompanhar</span>}</td></tr>; })}{!visibleBalances.length && <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400">Nenhum saldo encontrado nesta visualização.</td></tr>}</tbody></table></div>

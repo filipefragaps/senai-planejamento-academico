@@ -72,6 +72,28 @@ async def test_painel_fluxo_completo(client, db_session, rh):
     assert (await client.get("/api/v1/gestao-ponto/painel", headers=rh)).json()["rhEmail"] == "rh-ib.comunica@fieg.com.br"
 
 
+async def test_nova_versao_de_analise_mantem_status_tratados(client, rh):
+    # v1.6 (análise 19): a tela reimporta do zero, mas quem já foi notificado continua notificado
+    def item(id_, data, cat, **extra):
+        return {"id": id_, "matricula": "1", "date": data, "category": cat, "status": "pending", **extra}
+    antigos = [item("1-21/10/2026-Ausência de batida-0", "21/10/2026", "Ausência de batida",
+                    status="approved", notifiedAt="2026-10-23T10:00:00Z", notificationMethod="outlook-web"),
+               item("1-22/10/2026-Falta-1", "22/10/2026", "Falta")]
+    assert (await client.post("/api/v1/gestao-ponto/painel", headers=rh, json=_snapshot(antigos))).status_code == 200
+
+    novos = _snapshot([item("1-21/10/2026-Ausência de batida-3", "21/10/2026", "Ausência de batida"),
+                       item("1-22/10/2026-Falta-4", "22/10/2026", "Falta")])
+    novos["analysisVersion"] = 19
+    r = await client.post("/api/v1/gestao-ponto/painel", headers=rh, json=novos)
+    assert r.json()["statusAproveitados"] == 1 and r.json()["snapshot"]["analysisVersion"] == 19
+    itens = (await client.get("/api/v1/gestao-ponto/painel", headers=rh)).json()["snapshot"]["data"]["items"]
+    assert itens[0]["status"] == "approved" and itens[0]["notificationMethod"] == "outlook-web"
+    assert itens[1]["status"] == "pending"
+
+    # Mesma versão: nada é reaplicado (a própria tela já concilia)
+    assert (await client.post("/api/v1/gestao-ponto/painel", headers=rh, json=novos)).json()["statusAproveitados"] == 0
+
+
 async def test_painel_permissoes_e_validacao(client, db_session, rh):
     from app.models.usuario import Usuario
     v = Usuario(nome="Vend", email=f"v_{uuid.uuid4().hex[:6]}@t.com", hashed_password=hash_password("x"), perfil="vendedor", ativo=True)

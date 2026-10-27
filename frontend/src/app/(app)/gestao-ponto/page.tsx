@@ -1,10 +1,10 @@
 "use client";
 
-// Gestão de Ponto: mesma tela da versão local v1.5 (v15/home.tsx), com os dados no banco da
-// plataforma (v15/plataforma.tsx) em vez do armazenamento do navegador.
+// Gestão de Ponto: mesma tela da versão local v1.6 (tela/home.tsx), com os dados no banco da
+// plataforma (tela/plataforma.tsx) em vez do armazenamento do navegador.
 import { useEffect, useState, type ComponentType } from "react";
 import { Loader2 } from "lucide-react";
-import "./v15/gp15.css";
+import "./tela/gp15.css";
 
 export default function GestaoPontoPage() {
   const [Tela, setTela] = useState<ComponentType | null>(null);
@@ -15,9 +15,9 @@ export default function GestaoPontoPage() {
     (async () => {
       try {
         // O e-mail do RH precisa estar carregado antes de a tela ser importada
-        const { initialize } = await import("./v15/plataforma");
+        const { initialize } = await import("./tela/plataforma");
         await initialize();
-        const tela = await import("./v15/home");
+        const tela = await import("./tela/home");
         if (ativo) setTela(() => tela.default);
       } catch (e: any) {
         if (!ativo) return;
