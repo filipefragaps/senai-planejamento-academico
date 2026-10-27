@@ -26,6 +26,46 @@ def _norm_nome(s: str) -> str:
     return re.sub(r"\s+", " ", s.upper().strip())
 
 
+def _minutos(t: time | None) -> int | None:
+    return t.hour * 60 + t.minute if t else None
+
+
+def horas_executadas(registros) -> float:
+    """Horas do diário de um professor: aulas simultâneas (duas turmas no mesmo horário) contam uma vez.
+
+    Por dia, os registros cujos horários se sobrepõem formam um bloco; o bloco vale a união dos
+    horários. Registro isolado usa a QTDE. HORAS do diário (ou término − início). Registros sem
+    horário contam uma vez por dia.
+    """
+    por_dia: dict[date, list] = {}
+    for r in registros:
+        por_dia.setdefault(r.data, []).append(r)
+    total = 0.0
+    for regs in por_dia.values():
+        com_horario, sem_horario = [], []
+        for r in regs:
+            ini, fim = _minutos(r.hora_inicio), _minutos(r.hora_termino)
+            (com_horario if ini is not None and fim is not None and fim > ini else sem_horario).append((ini, fim, r))
+        com_horario.sort(key=lambda x: x[0])
+        blocos: list[list] = []
+        for ini, fim, r in com_horario:
+            if blocos and ini < blocos[-1][1]:
+                blocos[-1][1] = max(blocos[-1][1], fim)
+                blocos[-1][2].append(r)
+            else:
+                blocos.append([ini, fim, [r]])
+        for ini, fim, regs_bloco in blocos:
+            if len(regs_bloco) == 1 and regs_bloco[0].qtde_horas is not None:
+                total += float(regs_bloco[0].qtde_horas)
+            else:
+                total += (fim - ini) / 60.0
+        # Sem horário: um único registro por dia (mesmo critério de antes)
+        sem = [r for _, _, r in sem_horario]
+        if sem:
+            total += max((float(r.qtde_horas or 0) for r in sem), default=0.0)
+    return total
+
+
 @router.post("/importar", status_code=201)
 async def importar_diario(
     arquivo: UploadFile = File(...),
@@ -65,7 +105,7 @@ async def stats_diario(
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    """Horas executadas por professor no período (deduplica mesmo dia+horário, igual ao PontoTab)."""
+    """Horas executadas por professor no período (aulas simultâneas contam uma vez, igual ao modal)."""
     from collections import defaultdict
     res = await db.execute(
         select(
@@ -82,24 +122,10 @@ async def stats_diario(
         )
         .order_by(DiarioAula.professor_id, DiarioAula.data, DiarioAula.hora_inicio)
     )
-    horas_por_prof: dict[int, float] = defaultdict(float)
-    slots_vistos: dict[int, set] = defaultdict(set)
+    por_prof: dict[int, list] = defaultdict(list)
     for row in res.all():
-        slot = (row.data, row.hora_inicio)
-        if slot in slots_vistos[row.professor_id]:
-            continue
-        slots_vistos[row.professor_id].add(slot)
-        h = 0.0
-        if row.qtde_horas is not None:
-            h = float(row.qtde_horas)
-        elif row.hora_inicio and row.hora_termino:
-            ini = row.hora_inicio.hour * 60 + row.hora_inicio.minute
-            fim = row.hora_termino.hour * 60 + row.hora_termino.minute
-            diff = fim - ini
-            if diff > 0:
-                h = diff / 60.0
-        horas_por_prof[row.professor_id] += h
-    return {str(pid): round(h, 2) for pid, h in horas_por_prof.items()}
+        por_prof[row.professor_id].append(row)
+    return {str(pid): round(horas_executadas(regs), 2) for pid, regs in por_prof.items()}
 
 
 @router.get("/info")
@@ -230,33 +256,28 @@ async def comparacao(
     def _min(t: time | None) -> int:
         return t.hour * 60 + t.minute if t else -999
 
-    def _match_diario(aula_data: date, aula_inicio: time | None) -> DiarioAula | None:
-        candidatos = diario_por_data.get(aula_data, [])
+    matched_diario_ids: set[int] = set()
+
+    def _match_diario(aula_data: date, aula_inicio: time | None, codigo: str | None) -> DiarioAula | None:
+        """Registro do diário da aula: horário até 60 min de diferença; com duas turmas no mesmo
+        horário, prefere o do mesmo evento e não reaproveita registro já vinculado a outra aula."""
+        aula_m = _min(aula_inicio)
+        candidatos = [d for d in diario_por_data.get(aula_data, [])
+                      if abs(_min(d.hora_inicio) - aula_m) <= 60]
         if not candidatos:
             return None
-        aula_m = _min(aula_inicio)
-        # 1) exato
-        for d in candidatos:
-            if d.hora_inicio and _min(d.hora_inicio) == aula_m:
-                return d
-        # 2) dentro de 60 minutos
-        melhor: DiarioAula | None = None
-        melhor_diff = 999
-        for d in candidatos:
-            diff = abs(_min(d.hora_inicio) - aula_m)
-            if diff <= 60 and diff < melhor_diff:
-                melhor = d
-                melhor_diff = diff
-        return melhor
+        return min(candidatos, key=lambda d: (
+            (d.evento_codigo or "") != (codigo or ""),  # mesmo evento primeiro
+            d.id in matched_diario_ids,                  # registro ainda livre
+            abs(_min(d.hora_inicio) - aula_m),           # horário mais próximo
+        ))
 
-    matched_diario_ids: set[int] = set()
     planejadas_out = []
     for a in aulas_planejadas:
-        diario_match = _match_diario(a.data, a.horario_inicio)
+        ev = evento_info.get(a.evento_id, {}) if a.evento_id else {}
+        diario_match = _match_diario(a.data, a.horario_inicio, ev.get("codigo"))
         if diario_match:
             matched_diario_ids.add(diario_match.id)
-
-        ev = evento_info.get(a.evento_id, {}) if a.evento_id else {}
 
         planejadas_out.append({
             "aula_id": a.id,
@@ -281,6 +302,7 @@ async def comparacao(
         "professor_nome": prof_nome,
         "planejadas": planejadas_out,
         "somente_diario": somente_diario,
+        "horas_executadas": round(horas_executadas(diario_entries), 2),
     }
 
 

@@ -785,6 +785,8 @@ function PontoTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, p
   const planejadas: any[] = comparacao?.planejadas ?? [];
   const soDiario: any[]   = comparacao?.somente_diario ?? [];
   const horasExec = useMemo(() => {
+    // Calculado no backend (mesma conta do cartão): turmas no mesmo horário contam uma vez
+    if (comparacao?.horas_executadas != null) return comparacao.horas_executadas as number;
     const slotsVistos = new Set<string>();
     let total = 0;
     for (const a of planejadas) {
@@ -805,7 +807,7 @@ function PontoTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, p
       else if (d.hora_inicio && d.hora_termino) total += horasAula(d.hora_inicio, d.hora_termino);
     }
     return total;
-  }, [planejadas, soDiario]);
+  }, [comparacao, planejadas, soDiario]);
 
   const percDiario = chTrab > 0 ? (horasExec / chTrab) * 100 : null;
   const percReal   = totais.horas_total > 0 ? (horasExec / totais.horas_total) * 100 : null;
@@ -1010,6 +1012,8 @@ function DiarioTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, 
   // Regência executada: soma de horas do diário, deduplica por (data, horario_inicio)
   // para não contar aulas simultâneas de eventos diferentes mais de uma vez.
   const horasExec = useMemo(() => {
+    // Calculado no backend (mesma conta do cartão): turmas no mesmo horário contam uma vez
+    if (comparacao?.horas_executadas != null) return comparacao.horas_executadas as number;
     const slotsVistos = new Set<string>();
     let total = 0;
     for (const a of planejadas) {
@@ -1030,7 +1034,7 @@ function DiarioTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, 
       else if (d.hora_inicio && d.hora_termino) total += horasAula(d.hora_inicio, d.hora_termino);
     }
     return total;
-  }, [planejadas, soDiario]);
+  }, [comparacao, planejadas, soDiario]);
 
   const horasPeriodo = (regencia as any)?.horas_periodo ?? 0;
   const percentualExec = horasPeriodo > 0 ? (horasExec / horasPeriodo) * 100 : null;
