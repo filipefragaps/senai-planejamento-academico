@@ -24,22 +24,27 @@ function hash(texto: string) {
   return (h >>> 0).toString(36);
 }
 
-/** Identifica se a base/análise mudou (importação) ou se mudou só o status das ocorrências. */
-function impressaoDigital(data: any) {
-  const r = data?.result;
-  return JSON.stringify([
-    data?.baseFileName, data?.unitName, data?.fileName, data?.contacts?.length, data?.inactiveMatriculas?.length,
-    r?.period, r?.days?.length, r?.occurrences?.length, r?.balances?.length, r?.monthlyBalances?.length,
-    r?.sourceFiles?.length, hash((data?.items || []).map((i: any) => i.id).join("|")),
-  ]);
+const CAMPOS_DE_STATUS = new Set(["status", "notifiedAt", "notificationMethod"]);
+const CAMPOS_DERIVADOS = new Set(["sourcePeriod", "monthlyBalances", "monthlyDays"]); // recalculados em salvar()
+
+/** Identifica se a base/análise mudou (importação) ou se mudou só o status das ocorrências.
+ *  Considera a versão de análise e todo o conteúdo (menos os campos de status): reimportar os
+ *  mesmos TXT numa versão nova, com as mesmas quantidades, precisa gravar o snapshot inteiro. */
+function impressaoDigital(data: any, versao: number | undefined) {
+  const conteudo = JSON.stringify(data, function (this: any, chave, valor) {
+    if (CAMPOS_DE_STATUS.has(chave)) return undefined;
+    if (this === data && CAMPOS_DERIVADOS.has(chave)) return undefined;
+    return valor;
+  });
+  return `${versao ?? ""}|${conteudo.length}|${hash(conteudo)}`;
 }
 
 function mapaStatus(items: any[]): Map<string, ItemStatus> {
   return new Map((items || []).map((i) => [i.id, { status: i.status, notifiedAt: i.notifiedAt, notificationMethod: i.notificationMethod }]));
 }
 
-function lembrar(data: any, meta: Meta | null) {
-  ultimo = data ? { fp: impressaoDigital(data), itens: mapaStatus(data.items), meta } : null;
+function lembrar(data: any, meta: Meta | null, versao = meta?.analysisVersion) {
+  ultimo = data ? { fp: impressaoDigital(data, versao), itens: mapaStatus(data.items), meta } : null;
 }
 
 async function carregar() {
@@ -78,7 +83,7 @@ async function salvar(payload: any) {
   data.monthlyBalances = data.result?.monthlyBalances || [];
   data.monthlyDays = []; // só a tela de consulta (perfil sem gestão) usa; na plataforma o acesso é do RH
 
-  const fp = impressaoDigital(data);
+  const fp = impressaoDigital(data, payload.analysisVersion);
   if (ultimo && ultimo.fp === fp) {
     // Só mudaram status: envia apenas as ocorrências alteradas
     const changes = (data.items || []).flatMap((i: any) => {
@@ -88,7 +93,7 @@ async function salvar(payload: any) {
     });
     if (!changes.length && ultimo.meta) return { snapshot: ultimo.meta };
     const { data: r } = await api.patch("/gestao-ponto/painel/itens", { changes });
-    lembrar(data, r.snapshot);
+    lembrar(data, r.snapshot, payload.analysisVersion);
     return { snapshot: r.snapshot };
   }
 
@@ -97,7 +102,7 @@ async function salvar(payload: any) {
   const { data: r } = gz
     ? await api.post("/gestao-ponto/painel", gz, { headers: { "Content-Type": "application/json", "Content-Encoding": "gzip" } })
     : await api.post("/gestao-ponto/painel", texto, { headers: { "Content-Type": "application/json" } });
-  lembrar(data, r.snapshot);
+  lembrar(data, r.snapshot, payload.analysisVersion);
   if (r.statusAproveitados) {
     // Status vindos da versão anterior foram aplicados no servidor: recarrega para a tela mostrá-los
     setTimeout(() => window.location.reload(), 300);
