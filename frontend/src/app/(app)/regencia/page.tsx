@@ -739,6 +739,25 @@ function LimparPontoBtn() {
 
 // ── PontoTab ──────────────────────────────────────────────────────────────────
 
+/**
+ * Regência exibida no card (e usada na ordenação), na mesma regra do detalhe do professor:
+ * real = horas do diário ÷ horas batidas no ponto do período; sem ponto, diário ÷ CH de trabalho;
+ * sem diário, a regência planejada.
+ */
+function regenciaDoCard(p: any, diarioStats?: Record<string, number>, pontoStats?: Record<string, number>) {
+  const id = String(p.professor_id);
+  const dioH = diarioStats?.[id];
+  const pontoH = pontoStats?.[id];
+  const hp = p.horas_periodo ?? 0;
+  if (dioH != null && pontoH != null && pontoH > 0) {
+    return { perc: (dioH / pontoH) * 100, tipo: "real" as const, detalhe: `${dioH.toFixed(1)}h diário ÷ ${fmtHoras(pontoH)} ponto` };
+  }
+  if (dioH != null && hp > 0) {
+    return { perc: (dioH / hp) * 100, tipo: "diário" as const, detalhe: `${dioH.toFixed(1)}h diário ÷ ${hp.toFixed(1)}h CH trabalho` };
+  }
+  return { perc: p.percentual_regencia ?? 0, tipo: null, detalhe: `${(p.horas_ministradas ?? 0).toFixed(1)}h ministradas` };
+}
+
 function fmtHoras(h: number): string {
   const neg = h < 0;
   const abs = Math.abs(h);
@@ -1571,11 +1590,7 @@ export default function RegenciaPage() {
     if (filtroArea === "__sem_area__") r = r.filter(p => !p.area);
     else if (filtroArea) r = r.filter(p => p.area === filtroArea);
     if (busca) r = r.filter(p => p.nome.toLowerCase().includes(busca.toLowerCase()));
-    const perc = (p: any) => {
-      const dioH = diarioStats ? (diarioStats as any)[String(p.professor_id)] : null;
-      const hp = p.horas_periodo ?? 0;
-      return dioH != null && hp > 0 ? (dioH / hp) * 100 : p.percentual_regencia;
-    };
+    const perc = (p: any) => regenciaDoCard(p, diarioStats, pontoStats).perc;
     r.sort((a, b) => ordem === "asc" ? perc(a) - perc(b) : perc(b) - perc(a));
     return r;
   }, [regencias, filtroStatus, filtroQuadro, filtroModalidades, filtroArea, busca, ordem, pontoStats, diarioStats]);
@@ -2257,10 +2272,8 @@ export default function RegenciaPage() {
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {lista.map((p: any) => {
             const isExcluido = excluidos.has(p.professor_id);
-            const dioH = diarioStats ? (diarioStats as any)[String(p.professor_id)] : null;
-            const hp = p.horas_periodo ?? 0;
-            const realPerc = dioH != null && hp > 0 ? (dioH / hp) * 100 : null;
-            const displayPerc = realPerc ?? p.percentual_regencia ?? 0;
+            const reg = regenciaDoCard(p, diarioStats, pontoStats);
+            const displayPerc = reg.perc;
             const meta = p.meta_regencia ?? 70;
             const displayStatus = calcDisplayStatus(displayPerc, meta);
             const statusStyle = STATUS_CARD_STYLE[displayStatus] ?? STATUS_CARD_STYLE.Alerta;
@@ -2320,14 +2333,12 @@ export default function RegenciaPage() {
                   <div className="flex items-center justify-between text-xs">
                     <span className={cn("font-bold text-base", statusStyle.text)}>
                       {displayPerc.toFixed(1)}%
-                      {realPerc != null && (
-                        <span className="ml-1 text-[10px] font-normal text-slate-400">real</span>
+                      {reg.tipo && (
+                        <span className="ml-1 text-[10px] font-normal text-slate-400">{reg.tipo}</span>
                       )}
                     </span>
-                    <span className="text-gray-400">
-                      {realPerc != null
-                        ? `${(dioH ?? 0).toFixed(1)}h diário ÷ ${hp.toFixed(1)}h CH trabalho`
-                        : `${(p.horas_ministradas ?? 0).toFixed(1)}h ministradas`}
+                    <span className="text-gray-400" title={reg.tipo === "diário" ? "Sem ponto importado no período: diário ÷ CH de trabalho" : undefined}>
+                      {reg.detalhe}
                     </span>
                   </div>
 
