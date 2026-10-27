@@ -317,7 +317,8 @@ async def regencia_mensal_real(
     from datetime import date as _date
     from collections import defaultdict
     from app.models.diario import DiarioAula
-    from app.models.ponto import PontoMensal
+    from app.api.v1.diario import horas_executadas
+    from app.services import ponto_gestao
 
     hoje = _date.today()
 
@@ -365,7 +366,7 @@ async def regencia_mensal_real(
     if not profs_ids:
         return []
 
-    # Diário: horas executadas por (professor_id, mes_key) — deduplica slot data+hora_inicio
+    # Diário: horas executadas por (professor_id, mes_key) — turmas simultâneas contam uma vez
     diario_result = await db.execute(
         select(
             DiarioAula.professor_id,
@@ -379,40 +380,16 @@ async def regencia_mensal_real(
             DiarioAula.data <= min(data_fim, hoje),
         )
     )
-    slots_vistos: dict[tuple, set] = defaultdict(set)
-    diario_horas: dict[tuple, float] = defaultdict(float)
+    regs_diario: dict[tuple, list] = defaultdict(list)
     for row in diario_result.all():
-        mes_key = f"{row.data.year}-{str(row.data.month).zfill(2)}"
-        slot = (row.data, row.hora_inicio)
-        pk = (row.professor_id, mes_key)
-        if slot in slots_vistos[pk]:
-            continue
-        slots_vistos[pk].add(slot)
-        h = float(row.qtde_horas) if row.qtde_horas is not None else 0.0
-        if h == 0.0 and row.hora_inicio and row.hora_termino:
-            ini = row.hora_inicio.hour * 60 + row.hora_inicio.minute
-            fim_m = row.hora_termino.hour * 60 + row.hora_termino.minute
-            diff = fim_m - ini
-            if diff > 0:
-                h = diff / 60.0
-        diario_horas[pk] += h
+        regs_diario[(row.professor_id, f"{row.data.year}-{str(row.data.month).zfill(2)}")].append(row)
+    diario_horas = {pk: horas_executadas(regs) for pk, regs in regs_diario.items()}
 
-    # Ponto: horas_total por (professor_id, mes_key) — usa data_inicio do registro como chave do mês
-    ponto_result = await db.execute(
-        select(
-            PontoMensal.professor_id,
-            PontoMensal.data_inicio,
-            PontoMensal.horas_total,
-        ).where(
-            PontoMensal.professor_id.in_(profs_ids),
-            PontoMensal.data_inicio <= min(data_fim, hoje),
-            PontoMensal.data_fim >= data_inicio,
-        )
-    )
+    # Ponto: horas batidas por (professor_id, mes_key), direto da Gestão de Ponto
     ponto_horas: dict[tuple, float] = defaultdict(float)
-    for row in ponto_result.all():
-        mes_key = f"{row.data_inicio.year}-{str(row.data_inicio.month).zfill(2)}"
-        ponto_horas[(row.professor_id, mes_key)] += float(row.horas_total or 0)
+    for r in await ponto_gestao.registros(db, data_inicio, min(data_fim, hoje), profs_ids):
+        mes_key = f"{r.data_inicio.year}-{str(r.data_inicio.month).zfill(2)}"
+        ponto_horas[(r.professor_id, mes_key)] += r.horas_total
 
     # Monta resultado por mês
     resultado = []

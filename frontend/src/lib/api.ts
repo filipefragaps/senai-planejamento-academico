@@ -370,15 +370,8 @@ export const notificacoesApi = {
     api.post("/notificacoes/diarios-abertos", body).then((r) => r.data),
 };
 
+// Horas de ponto lidas da Gestão de Ponto (não há mais planilha de ponto para importar)
 export const pontoApi = {
-  importar: (file: File) => {
-    const form = new FormData();
-    form.append("arquivo", file);
-    return api.post("/ponto/importar", form, {
-      transformRequest: (data, headers) => { if (headers) delete headers["Content-Type"]; return data; },
-    }).then((r) => r.data);
-  },
-  limpar: () => api.delete("/ponto/limpar").then((r) => r.data),
   info: () => api.get("/ponto/info").then((r) => r.data),
   stats: (dataInicio: string, dataFim: string) =>
     api.get("/ponto/stats", { params: { data_inicio: dataInicio, data_fim: dataFim } }).then((r) => r.data),

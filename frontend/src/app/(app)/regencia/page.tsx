@@ -333,17 +333,6 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose, importarDiar
     staleTime: 60_000,
   });
   const qc = useQueryClient();
-  const [importandoPonto, setImportandoPonto] = useState(false);
-  function handleFilePonto(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = "";
-    setImportandoPonto(true);
-    pontoApi.importar(file)
-      .then((r: any) => { toast.success(r.mensagem); qc.invalidateQueries({ queryKey: ["ponto-info"] }); qc.invalidateQueries({ queryKey: ["ponto-prof"] }); })
-      .catch(() => toast.error("Erro ao importar ponto."))
-      .finally(() => setImportandoPonto(false));
-  }
 
   function handleFileDiario(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -474,11 +463,8 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose, importarDiar
             pontoInfo={pontoInfo}
             pontoProfessor={pontoProfessor}
             loadingPonto={loadingPonto}
-            importando={importandoPonto}
-            handleFilePonto={handleFilePonto}
             regencia={regencia}
             comparacao={comparacao}
-            podeComandar={podeComandar}
           />
         ) : aba === "diario" ? (
           <DiarioTab
@@ -699,44 +685,6 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose, importarDiar
   );
 }
 
-// ── LimparPontoBtn ────────────────────────────────────────────────────────────
-
-function LimparPontoBtn() {
-  const qc = useQueryClient();
-  const [confirmando, setConfirmando] = useState(false);
-  const limpar = useMutation({
-    mutationFn: () => pontoApi.limpar(),
-    onSuccess: (data: any) => {
-      toast.success(`${data.removidos} registros removidos.`);
-      qc.invalidateQueries({ queryKey: ["ponto-info"] });
-      qc.invalidateQueries({ queryKey: ["ponto-prof"] });
-      setConfirmando(false);
-    },
-    onError: () => { toast.error("Erro ao limpar dados de ponto"); setConfirmando(false); },
-  });
-
-  if (confirmando) {
-    return (
-      <div className="flex items-center gap-1">
-        <span className="text-xs text-red-600 font-medium">Confirma?</span>
-        <button onClick={() => limpar.mutate()} disabled={limpar.isPending}
-          className="px-2 py-1 rounded text-xs bg-red-600 text-white font-semibold hover:bg-red-700 disabled:opacity-60">
-          {limpar.isPending ? "..." : "Sim"}
-        </button>
-        <button onClick={() => setConfirmando(false)} className="px-2 py-1 rounded text-xs border text-gray-600 hover:bg-gray-50">
-          Não
-        </button>
-      </div>
-    );
-  }
-  return (
-    <button onClick={() => setConfirmando(true)}
-      className="flex items-center gap-1 px-3 py-2 rounded-lg border border-red-200 text-red-600 text-sm hover:bg-red-50 transition-colors">
-      <X className="h-3.5 w-3.5" /> Limpar dados
-    </button>
-  );
-}
-
 // ── PontoTab ──────────────────────────────────────────────────────────────────
 
 /**
@@ -766,12 +714,11 @@ function fmtHoras(h: number): string {
   return `${neg ? "-" : ""}${hh}:${String(mm).padStart(2, "0")}`;
 }
 
-function PontoTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, pontoInfo, pontoProfessor, loadingPonto, importando, handleFilePonto, regencia, comparacao, podeComandar }: {
+function PontoTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, pontoInfo, pontoProfessor, loadingPonto, regencia, comparacao }: {
   prof: any; dataInicio: string; dataFim: string; inicio: string; fim: string;
   setInicio: (v: string) => void; setFim: (v: string) => void;
   pontoInfo: any; pontoProfessor: any; loadingPonto: boolean;
-  importando: boolean; handleFilePonto: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  regencia: any; comparacao: any; podeComandar: boolean;
+  regencia: any; comparacao: any;
 }) {
   const registros: any[] = pontoProfessor?.registros ?? [];
   const totais = pontoProfessor?.totais ?? { horas_efetivas: 0, horas_extras: 0, horas_total: 0 };
@@ -828,26 +775,11 @@ function PontoTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, p
           <input type="month" value={fim} onChange={e => setFim(e.target.value)} className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
         </div>
         <div className="ml-auto flex items-center gap-2">
-          {pontoInfo?.importado_em && (
-            <span className="text-xs text-gray-400">
-              Importado em {new Date(pontoInfo.importado_em).toLocaleDateString("pt-BR")} · {pontoInfo.total} registros
-            </span>
-          )}
-          {podeComandar && registros.length > 0 && (
-            <LimparPontoBtn />
-          )}
-          {podeComandar && (
-            <label className={cn(
-              "flex items-center gap-1.5 cursor-pointer px-3 py-2 rounded-lg border text-sm font-medium transition-colors",
-              importando
-                ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-                : "bg-white border-blue-200 text-blue-700 hover:bg-blue-50"
-            )}>
-              <Upload className="h-4 w-4" />
-              {importando ? "Importando..." : "Importar Ponto"}
-              <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFilePonto} disabled={importando} />
-            </label>
-          )}
+          <span className="text-xs text-gray-400">
+            {pontoInfo?.importado_em
+              ? <>Horas da Gestão de Ponto · atualizada em {new Date(pontoInfo.importado_em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</>
+              : "Horas da Gestão de Ponto · ainda sem TXT mensais importados"}
+          </span>
         </div>
       </div>
 
@@ -938,9 +870,10 @@ function PontoTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, p
         <div className="flex flex-col items-center gap-3 py-10 text-center text-gray-400 border rounded-lg">
           <Clock className="h-10 w-10 text-gray-300" />
           <p className="text-sm font-medium">Nenhum registro de ponto encontrado para este período.</p>
-          {!pontoInfo?.total && podeComandar && (
-            <p className="text-xs">Use o botão "Importar CSV do Ponto" acima para carregar a planilha.</p>
-          )}
+          <p className="text-xs max-w-md">
+            As horas vêm da Gestão de Ponto. Confira se os TXT mensais estão importados lá e se o professor
+            tem o mesmo nome (ou e-mail) do cadastro do FPW.
+          </p>
         </div>
       ) : (
         <div>
@@ -1716,28 +1649,15 @@ export default function RegenciaPage() {
     },
   });
 
-  const importarPontoGlobal = useMutation({
-    mutationFn: (file: File) => pontoApi.importar(file),
-    onSuccess: (data: any) => {
-      toast.success(data.mensagem);
-      qc.invalidateQueries({ queryKey: ["ponto-info"] });
-      qc.invalidateQueries({ queryKey: ["ponto-prof"] });
-    },
-    onError: (err: any) => {
-      const raw = err?.response?.data?.detail;
-      toast.error(typeof raw === "string" ? raw : "Erro ao importar ponto");
-    },
+  const { data: pontoInfoGlobal } = useQuery<any>({
+    queryKey: ["ponto-info"],
+    queryFn: () => pontoApi.info(),
+    staleTime: 300_000,
   });
 
   function handleFileDiarioGlobal(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (file) importarDiario.mutate(file);
-    e.target.value = "";
-  }
-
-  function handleFilePontoGlobal(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) importarPontoGlobal.mutate(file);
     e.target.value = "";
   }
 
@@ -1770,18 +1690,12 @@ export default function RegenciaPage() {
             <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileDiarioGlobal} disabled={importarDiario.isPending} />
           </label>
         )}
-        {podeComandar && (
-          <label className={cn(
-            "flex items-center gap-1.5 cursor-pointer rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
-            importarPontoGlobal.isPending
-              ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-              : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-          )}>
-            <Clock className="h-4 w-4" />
-            {importarPontoGlobal.isPending ? "Importando..." : "Importar Ponto"}
-            <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFilePontoGlobal} disabled={importarPontoGlobal.isPending} />
-          </label>
-        )}
+        <span className="text-xs text-gray-400 flex items-center gap-1" title="As horas de ponto vêm direto da Gestão de Ponto">
+          <Clock className="h-3.5 w-3.5" />
+          Ponto: {pontoInfoGlobal?.importado_em
+            ? `Gestão de Ponto · ${new Date(pontoInfoGlobal.importado_em).toLocaleDateString("pt-BR")}`
+            : "Gestão de Ponto sem dados"}
+        </span>
         {!podeComandar && (diarioInfo as any)?.importado_em && (
           <span className="text-xs text-gray-400 flex items-center gap-1">
             <BookOpen className="h-3.5 w-3.5" />
