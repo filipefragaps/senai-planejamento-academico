@@ -422,10 +422,10 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose, importarDiar
         <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
           <div className="flex items-center gap-4 min-w-0">
             {prof.foto ? (
-              <img src={prof.foto} alt={prof.nome} className="w-16 h-16 rounded-full object-cover shrink-0 border-2 border-gray-200 shadow-sm" />
+              <img src={prof.foto} alt={prof.nome} className="w-24 h-24 rounded-full object-cover shrink-0 border-2 border-gray-200 shadow-sm" />
             ) : (
-              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center shrink-0 border-2 border-primary/10">
-                <span className="text-xl font-bold text-primary select-none">{getInitials(prof.nome)}</span>
+              <div className="w-24 h-24 rounded-full bg-primary/10 flex items-center justify-center shrink-0 border-2 border-primary/10">
+                <span className="text-3xl font-bold text-primary select-none">{getInitials(prof.nome)}</span>
               </div>
             )}
             <div className="min-w-0">
