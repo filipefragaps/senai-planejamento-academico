@@ -35,7 +35,10 @@ async def test_diario_ead_importa_sem_apagar_presencial_e_vincula_por_turno(auth
                  horario_fim=time(12), uc_nome_original="Gestão de Estoques")
     tarde = Aula(evento_id=ev.id, professor_id=professor_horista.id, data=SABADO, horario_inicio=time(13),
                  horario_fim=time(17), uc_nome_original="Gestão de Estoques")
-    db_session.add_all([manha, tarde])
+    # Aula remarcada de outro evento no mesmo sábado/turno: não aparece nem recebe o diário
+    remarcada = Aula(evento_id=outro.id, professor_id=professor_horista.id, data=SABADO, horario_inicio=time(9),
+                     horario_fim=time(12), uc_nome_original="Outra UC", status="Remarcada")
+    db_session.add_all([remarcada, manha, tarde])
     # Diário presencial já importado (não pode ser apagado pelo EaD)
     db_session.add(DiarioAula(instrutor=nome, professor_id=professor_horista.id, data=date(2026, 8, 5),
                               hora_inicio=time(19), hora_termino=time(22), qtde_horas=3, evento_codigo="555"))

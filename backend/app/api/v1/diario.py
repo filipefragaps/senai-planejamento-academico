@@ -175,12 +175,13 @@ async def comparacao(
     if not prof_nome:
         raise HTTPException(status_code=404, detail="Professor não encontrado")
 
-    # Aulas planejadas no período
+    # Aulas planejadas no período — remarcadas/canceladas não contam (a remarcada já tem a nova data)
     res_aulas = await db.execute(
         select(Aula).where(
             Aula.professor_id == professor_id,
             Aula.data >= data_inicio,
             Aula.data <= data_fim,
+            Aula.status.notin_(["Cancelada", "Remarcada"]),
         ).order_by(Aula.data, Aula.horario_inicio)
     )
     aulas_planejadas = res_aulas.scalars().all()

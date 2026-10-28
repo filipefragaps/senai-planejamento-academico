@@ -172,7 +172,7 @@ async def importar_diario(conteudo: bytes, db: AsyncSession, origem: str = "pres
         res_aulas = await db.execute(
             select(Aula.id, Aula.professor_id, Aula.data, Aula.horario_inicio, Evento.nome_turma)
             .join(Evento, Aula.evento_id == Evento.id)
-            .where(Aula.professor_id.isnot(None))
+            .where(Aula.professor_id.isnot(None), Aula.status.notin_(["Cancelada", "Remarcada"]))
         )
         for a in res_aulas.all():
             codigo = (a.nome_turma or "").strip().split()[0] if (a.nome_turma or "").strip() else ""
@@ -227,6 +227,7 @@ async def importar_diario(conteudo: bytes, db: AsyncSession, origem: str = "pres
                     Aula.professor_id == professor_id,
                     Aula.data == data,
                     Aula.horario_inicio == hora_inicio,
+                    Aula.status.notin_(["Cancelada", "Remarcada"]),
                 ).limit(1)
             )
             aula_id = res_aula.scalar_one_or_none()
