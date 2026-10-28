@@ -22,6 +22,8 @@ class DiarioAula(Base):
     qtde_horas: Mapped[float | None] = mapped_column(Float)
     ambiente: Mapped[str | None] = mapped_column(String(200))
     conteudo: Mapped[str | None] = mapped_column(Text)
+    # "presencial" (sistema de gestão acadêmica) ou "ead" (diário EaD preenchido à mão)
+    origem: Mapped[str] = mapped_column(String(20), default="presencial", server_default="presencial", index=True)
 
     # Vínculos resolvidos no import
     professor_id: Mapped[int | None] = mapped_column(ForeignKey("professores.id", ondelete="SET NULL"), index=True)

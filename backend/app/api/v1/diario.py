@@ -2,6 +2,7 @@ import re
 import unicodedata
 from datetime import date, time
 from typing import Optional
+from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, not_, exists
@@ -16,6 +17,7 @@ from app.models.oferta import OfertaCurso
 from app.models.unidade_curricular import UnidadeCurricular
 from app.core.deps import get_current_user, require_admin_ou_coordenador
 from app.config import settings
+from app.services.excel_import_diario import turno_do_horario
 
 router = APIRouter(prefix="/diario", tags=["Diário de Execução"])
 
@@ -69,10 +71,12 @@ def horas_executadas(registros) -> float:
 @router.post("/importar", status_code=201)
 async def importar_diario(
     arquivo: UploadFile = File(...),
+    origem: Literal["presencial", "ead"] = Query("presencial"),
     db: AsyncSession = Depends(get_db),
     _=Depends(require_admin_ou_coordenador),
 ):
-    """Importa planilha do diário de execução. Substitui todos os registros anteriores."""
+    """Importa planilha do diário de execução. Substitui os registros anteriores da mesma origem
+    (presencial = sistema de gestão acadêmica; ead = diário EaD dos sábados)."""
     if not arquivo.filename.endswith((".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="Arquivo deve ser .xlsx ou .xls")
 
@@ -83,18 +87,20 @@ async def importar_diario(
 
     try:
         from app.services.excel_import_diario import importar_diario as _importar
-        resultado = await _importar(conteudo, db)
+        resultado = await _importar(conteudo, db, origem)
         await db.commit()
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Erro ao processar planilha: {e}")
 
+    rotulo = "Diário EaD" if origem == "ead" else "Diário"
     return {
         "sucesso": True,
+        "origem": origem,
         "inseridos": resultado["inseridos"],
         "erros": resultado["erros"],
-        "mensagem": f"{resultado['inseridos']} registro(s) importados ({resultado['erros']} ignorados por data inválida).",
+        "mensagem": f"{rotulo}: {resultado['inseridos']} registro(s) importados ({resultado['erros']} ignorados por data inválida).",
     }
 
 
@@ -133,16 +139,21 @@ async def info_diario(
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    """Retorna informações sobre os dados importados (data da última importação e total de registros)."""
+    """Retorna informações sobre os dados importados (data da última importação e total de registros),
+    no geral e só do diário EaD."""
     total = (await db.execute(select(func.count()).select_from(DiarioAula))).scalar() or 0
     ultimo = (await db.execute(select(func.max(DiarioAula.importado_em)))).scalar()
     data_min = (await db.execute(select(func.min(DiarioAula.data)))).scalar()
     data_max = (await db.execute(select(func.max(DiarioAula.data)))).scalar()
+    ead_total, ead_ultimo = (await db.execute(
+        select(func.count(), func.max(DiarioAula.importado_em)).where(DiarioAula.origem == "ead")
+    )).one()
     return {
         "total": total,
         "importado_em": ultimo.isoformat() if ultimo else None,
         "data_inicio": data_min.isoformat() if data_min else None,
         "data_fim": data_max.isoformat() if data_max else None,
+        "ead": {"total": ead_total or 0, "importado_em": ead_ultimo.isoformat() if ead_ultimo else None},
     }
 
 
@@ -259,11 +270,13 @@ async def comparacao(
     matched_diario_ids: set[int] = set()
 
     def _match_diario(aula_data: date, aula_inicio: time | None, codigo: str | None) -> DiarioAula | None:
-        """Registro do diário da aula: horário até 60 min de diferença; com duas turmas no mesmo
-        horário, prefere o do mesmo evento e não reaproveita registro já vinculado a outra aula."""
+        """Registro do diário da aula: horário até 60 min de diferença (EaD: mesmo turno); com duas
+        turmas no mesmo horário, prefere o do mesmo evento e não reaproveita registro já vinculado."""
         aula_m = _min(aula_inicio)
+        turno = turno_do_horario(aula_inicio)
         candidatos = [d for d in diario_por_data.get(aula_data, [])
-                      if abs(_min(d.hora_inicio) - aula_m) <= 60]
+                      if abs(_min(d.hora_inicio) - aula_m) <= 60
+                      or (d.origem == "ead" and turno and turno_do_horario(d.hora_inicio) == turno)]
         if not candidatos:
             return None
         return min(candidatos, key=lambda d: (
@@ -320,6 +333,7 @@ def _serializar_diario(d: DiarioAula) -> dict:
         "qtde_horas": d.qtde_horas,
         "ambiente": d.ambiente,
         "conteudo": d.conteudo,
+        "origem": d.origem or "presencial",
         "importado_em": d.importado_em.isoformat() if d.importado_em else None,
     }
 

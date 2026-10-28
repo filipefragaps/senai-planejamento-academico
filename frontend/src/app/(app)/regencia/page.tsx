@@ -1193,6 +1193,9 @@ function DiarioTab({ prof, dataInicio, dataFim, inicio, fim, setInicio, setFim, 
                               {d.evento_codigo}
                             </span>
                           ) : <span className="text-gray-300">—</span>}
+                          {d?.origem === "ead" && (
+                            <span className="ml-1.5 rounded bg-teal-50 px-1.5 py-0.5 text-[9px] font-bold text-teal-700" title={`Diário EaD · ${d.hora_inicio ?? ""}–${d.hora_termino ?? ""}`}>EaD</span>
+                          )}
                         </td>
                         <td className="px-3 py-2 min-w-[160px] text-gray-500">
                           {d?.componente_nome || <span className="text-gray-300">—</span>}
@@ -1641,6 +1644,7 @@ export default function RegenciaPage() {
     onSuccess: (data: any) => {
       toast.success(data.mensagem);
       qc.invalidateQueries({ queryKey: ["diario-info"] });
+      qc.invalidateQueries({ queryKey: ["diario-stats"] });
       qc.invalidateQueries({ queryKey: ["diario-comp"] });
     },
     onError: (err: any) => {
@@ -1658,6 +1662,27 @@ export default function RegenciaPage() {
   function handleFileDiarioGlobal(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (file) importarDiario.mutate(file);
+    e.target.value = "";
+  }
+
+  // Diário EaD (sábados, preenchido à mão): importação própria, vinculada pelo evento + turno
+  const importarDiarioEad = useMutation({
+    mutationFn: (file: File) => diarioApi.importar(file, "ead"),
+    onSuccess: (data: any) => {
+      toast.success(data.mensagem);
+      qc.invalidateQueries({ queryKey: ["diario-info"] });
+      qc.invalidateQueries({ queryKey: ["diario-comp"] });
+      qc.invalidateQueries({ queryKey: ["diario-stats"] });
+    },
+    onError: (err: any) => {
+      const raw = err?.response?.data?.detail;
+      toast.error(typeof raw === "string" ? raw : "Erro ao importar diário EaD");
+    },
+  });
+
+  function handleFileDiarioEad(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) importarDiarioEad.mutate(file);
     e.target.value = "";
   }
 
@@ -1688,6 +1713,23 @@ export default function RegenciaPage() {
               </span>
             )}
             <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileDiarioGlobal} disabled={importarDiario.isPending} />
+          </label>
+        )}
+        {podeComandar && (
+          <label title="Diário dos eventos EaD (sábados, manhã e tarde). Substitui só o diário EaD anterior." className={cn(
+            "flex items-center gap-1.5 cursor-pointer rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+            importarDiarioEad.isPending
+              ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+              : "bg-white border-teal-200 text-teal-700 hover:bg-teal-50"
+          )}>
+            <Upload className="h-4 w-4" />
+            {importarDiarioEad.isPending ? "Importando..." : "Importar Diário EaD"}
+            {(diarioInfo as any)?.ead?.importado_em && !importarDiarioEad.isPending && (
+              <span className="text-[10px] text-gray-400 ml-1 hidden lg:inline">
+                · {new Date((diarioInfo as any).ead.importado_em).toLocaleDateString("pt-BR")} · {(diarioInfo as any).ead.total}reg
+              </span>
+            )}
+            <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileDiarioEad} disabled={importarDiarioEad.isPending} />
           </label>
         )}
         <span className="text-xs text-gray-400 flex items-center gap-1" title="As horas de ponto vêm direto da Gestão de Ponto">

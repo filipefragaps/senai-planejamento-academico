@@ -3,13 +3,14 @@ Importador da planilha de diário de aulas ministradas.
 Colunas esperadas:
   INSTRUTOR | EVENTO - CURSO | COMPONENTE | DIA | HORA INICIO | HORA TÉRMINO | QTDE. HORAS | AMBIENTE | CONTEÚDO MINISTRADO
 """
+import io
 import re
 import unicodedata
 from datetime import date, time, datetime
 
 import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, or_
 
 
 def _norm_nome(s: str) -> str:
@@ -89,6 +90,14 @@ def _parse_float(val) -> float | None:
         return None
 
 
+def turno_do_horario(t: time | None) -> str | None:
+    """Manhã (até 11:59), tarde (12:00–17:59) ou noite — o diário EaD é cruzado pelo turno,
+    porque o horário digitado varia (08–12 ou 09–13; 13–17 ou 14–18)."""
+    if t is None:
+        return None
+    return "manha" if t.hour < 12 else "tarde" if t.hour < 18 else "noite"
+
+
 def _extrair_codigo(texto: str) -> tuple[str, str]:
     """
     De "1069274 - COSTUREIRO INDUSTRIAL - MALHA" extrai ("1069274", "COSTUREIRO INDUSTRIAL - MALHA").
@@ -100,13 +109,17 @@ def _extrair_codigo(texto: str) -> tuple[str, str]:
     return "", texto.strip()
 
 
-async def importar_diario(conteudo: bytes, db: AsyncSession) -> dict:
+async def importar_diario(conteudo: bytes, db: AsyncSession, origem: str = "presencial") -> dict:
     """
-    Lê o Excel, resolve vínculos com professores e aulas, substitui os registros anteriores.
+    Lê o Excel, resolve vínculos com professores e aulas, substitui os registros anteriores
+    da mesma origem (o diário presencial não apaga o EaD e vice-versa).
+
+    EaD: a coluna COMPONENTE traz só o nome da UC (sem código) e o vínculo com a aula planejada
+    é pelo professor + dia + turno, preferindo a aula do mesmo evento.
     Retorna dict com contadores.
     """
     try:
-        df = pd.read_excel(conteudo, dtype=str)
+        df = pd.read_excel(io.BytesIO(conteudo), dtype=str)
     except Exception as e:
         raise ValueError(f"Erro ao ler arquivo: {e}")
 
@@ -147,8 +160,24 @@ async def importar_diario(conteudo: bytes, db: AsyncSession) -> dict:
             codigo = nome_turma.strip().split()[0]  # primeiro token é o código
             evento_map[codigo] = ev_id
 
-    # Apagar registros anteriores
-    await db.execute(delete(DiarioAula))
+    # Apagar registros anteriores da mesma origem
+    if origem == "presencial":
+        await db.execute(delete(DiarioAula).where(or_(DiarioAula.origem == "presencial", DiarioAula.origem.is_(None))))
+    else:
+        await db.execute(delete(DiarioAula).where(DiarioAula.origem == origem))
+
+    # EaD: aulas planejadas por (professor, dia), com o código do evento, para cruzar por turno
+    aulas_do_dia: dict[tuple[int, date], list] = {}
+    if origem == "ead":
+        res_aulas = await db.execute(
+            select(Aula.id, Aula.professor_id, Aula.data, Aula.horario_inicio, Evento.nome_turma)
+            .join(Evento, Aula.evento_id == Evento.id)
+            .where(Aula.professor_id.isnot(None))
+        )
+        for a in res_aulas.all():
+            codigo = (a.nome_turma or "").strip().split()[0] if (a.nome_turma or "").strip() else ""
+            aulas_do_dia.setdefault((a.professor_id, a.data), []).append((a.id, a.horario_inicio, codigo))
+    vinculadas: set[int] = set()
 
     inseridos = 0
     erros = 0
@@ -182,9 +211,17 @@ async def importar_diario(conteudo: bytes, db: AsyncSession) -> dict:
         # Resolver professor_id: exato → sem acento
         professor_id = prof_map.get(instrutor.upper()) or prof_map_norm.get(_norm_nome(instrutor))
 
-        # Resolver aula_id: por professor_id + data + hora_inicio
+        # Resolver aula_id: por professor_id + data + hora_inicio (EaD: + turno, mesmo evento primeiro)
         aula_id: int | None = None
-        if professor_id and hora_inicio:
+        if origem == "ead":
+            turno = turno_do_horario(hora_inicio)
+            candidatas = [a for a in aulas_do_dia.get((professor_id, data), [])
+                          if turno and turno_do_horario(a[1]) == turno] if professor_id else []
+            if candidatas:
+                melhor = min(candidatas, key=lambda a: (a[2] != ev_codigo, a[0] in vinculadas, a[1]))
+                aula_id = melhor[0]
+                vinculadas.add(aula_id)
+        elif professor_id and hora_inicio:
             res_aula = await db.execute(
                 select(Aula.id).where(
                     Aula.professor_id == professor_id,
@@ -208,6 +245,7 @@ async def importar_diario(conteudo: bytes, db: AsyncSession) -> dict:
             conteudo=conteudo_raw or None,
             professor_id=professor_id,
             aula_id=aula_id,
+            origem=origem,
         ))
         inseridos += 1
 

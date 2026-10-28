@@ -346,10 +346,12 @@ export const relatoriosApi = {
 
 // Diário de Execução
 export const diarioApi = {
-  importar: (file: File) => {
+  /** origem "ead": diário EaD (sábados) — substitui só os registros EaD, sem apagar o presencial */
+  importar: (file: File, origem: "presencial" | "ead" = "presencial") => {
     const form = new FormData();
     form.append("arquivo", file);
     return api.post("/diario/importar", form, {
+      params: { origem },
       transformRequest: (data, headers) => { if (headers) delete headers["Content-Type"]; return data; },
     }).then((r) => r.data);
   },
