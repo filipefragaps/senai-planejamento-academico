@@ -972,7 +972,7 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
                     <th className="px-4 py-3 text-left font-semibold">Professor</th>
                     <th className="px-4 py-3 text-left font-semibold">Ambiente</th>
                     <th className="px-4 py-3 text-left font-semibold">Status</th>
-                    {eventoFiltro && <th className="px-3 py-3 w-20" />}
+                    <th className="px-3 py-3 w-20" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -1051,7 +1051,7 @@ td{border-bottom:1px solid #f3f4f6;vertical-align:middle}
                           {a.status}
                         </span>
                       </td>
-                      {eventoFiltro && (
+                      {(
                         <td className="px-3 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                           {confirmandoDeleteId === a.id ? (
                             <div className="flex items-center gap-1 justify-end">
