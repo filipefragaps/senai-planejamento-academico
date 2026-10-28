@@ -420,9 +420,18 @@ function ProfessorModal({ prof, defaultInicio, defaultFim, onClose, importarDiar
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl mx-4 max-h-[95vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">{prof.nome}</h2>
-            <p className="text-sm text-gray-500">{prof.tipo} · {prof.horas_contratadas}h/semana contratadas</p>
+          <div className="flex items-center gap-4 min-w-0">
+            {prof.foto ? (
+              <img src={prof.foto} alt={prof.nome} className="w-16 h-16 rounded-full object-cover shrink-0 border-2 border-gray-200 shadow-sm" />
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center shrink-0 border-2 border-primary/10">
+                <span className="text-xl font-bold text-primary select-none">{getInitials(prof.nome)}</span>
+              </div>
+            )}
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold text-gray-900 truncate">{prof.nome}</h2>
+              <p className="text-sm text-gray-500">{prof.tipo} · {prof.horas_contratadas}h/semana contratadas</p>
+            </div>
           </div>
           <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 text-gray-500"><X className="h-5 w-5" /></button>
         </div>
