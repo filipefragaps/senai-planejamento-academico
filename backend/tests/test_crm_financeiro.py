@@ -97,6 +97,17 @@ async def test_indicadores_de_investimento_e_retorno(client, db_session, insight
     # Valor manual editável na campanha; vendedor não vê o financeiro
     r = await client.put(f"/api/v1/crm/campanhas/{manual.id}", headers=_hdr(admin), json={"investimento_manual": 400})
     assert r.status_code == 200 and r.json()["investimento_manual"] == 400
+
+    # Valor do curso informado no lead tem prioridade; o vendedor informa mesmo com o lead matriculado
+    sem_oferta = await _lead(db_session, "G", manual, pago=True)
+    sem_oferta.vendedor_id = vendedor.id
+    await db_session.flush()
+    fin = (await client.get("/api/v1/crm/dashboard", headers=_hdr(admin))).json()["financeiro"]
+    assert (fin["receita"], fin["matriculas_pagas_sem_valor"]) == (2500, 1)
+    r = await client.patch(f"/api/v1/crm/leads/{sem_oferta.id}", headers=_hdr(vendedor), json={"valor_matricula": 1200.5})
+    assert r.status_code == 200 and r.json()["valor_matricula"] == 1200.5, r.text
+    fin = (await client.get("/api/v1/crm/dashboard", headers=_hdr(admin))).json()["financeiro"]
+    assert (fin["receita"], fin["matriculas_pagas_sem_valor"]) == (3700.5, 0)
     assert (await client.get("/api/v1/crm/dashboard", headers=_hdr(vendedor))).json()["financeiro"] is None
 
 

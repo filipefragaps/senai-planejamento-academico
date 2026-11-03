@@ -57,6 +57,8 @@ class CrmLead(Base):
     # A matrícula só é efetivada com o pagamento da 1ª parcela
     vencimento_primeira_parcela: Mapped[date | None] = mapped_column(Date, index=True)
     parcela_paga_em: Mapped[date | None] = mapped_column(Date)
+    # Valor do curso informado na matrícula (receita do CRM); sem ele, usa o valor da oferta
+    valor_matricula: Mapped[float | None] = mapped_column(Float)
     primeiro_atendimento_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     atualizado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

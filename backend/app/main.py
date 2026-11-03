@@ -55,6 +55,7 @@ async def _aplicar_migracoes(engine) -> None:
         "ALTER TABLE crm_leads ADD COLUMN parcela_paga_em DATE",
         "ALTER TABLE crm_campanhas ADD COLUMN nomes_anteriores JSON",
         "ALTER TABLE crm_campanhas ADD COLUMN investimento_manual FLOAT",
+        "ALTER TABLE crm_leads ADD COLUMN valor_matricula FLOAT",
         "ALTER TABLE professores ADD COLUMN coordenador BOOLEAN DEFAULT false",
         "ALTER TABLE diario_aulas ADD COLUMN origem VARCHAR(20) DEFAULT 'presencial'",
         "ALTER TABLE contratos_virtuais ALTER COLUMN cpf DROP NOT NULL",

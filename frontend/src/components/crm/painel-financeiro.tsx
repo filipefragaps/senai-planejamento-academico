@@ -75,7 +75,7 @@ export function PainelFinanceiro({ f }: { f: any }) {
 
       {f.matriculas_pagas_sem_valor > 0 && (
         <p className="text-xs text-amber-700">
-          {f.matriculas_pagas_sem_valor} matrícula(s) paga(s) sem valor do curso: vincule um curso com valor individual ao lead ou à campanha.
+          {f.matriculas_pagas_sem_valor} matrícula(s) paga(s) sem valor do curso: informe o "Valor do curso" na matrícula do lead (ou vincule um curso com valor individual).
         </p>
       )}
 

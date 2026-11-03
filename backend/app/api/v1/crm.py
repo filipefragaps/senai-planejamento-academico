@@ -61,6 +61,7 @@ class LeadUpdate(BaseModel):
     data_matricula: Optional[date] = None
     vencimento_primeira_parcela: Optional[date] = None
     parcela_paga_em: Optional[date] = None
+    valor_matricula: Optional[float] = None
     oferta_id: Optional[int] = None
     nota: Optional[str] = None
     # somente admin
@@ -99,10 +100,10 @@ class ConfigUpdate(BaseModel):
 CAMPOS_VENDEDOR = {
     "temperatura", "status", "observacoes", "ultimo_contato", "proximo_retorno",
     "motivo_perda", "motivo_perda_comentario", "data_matricula", "oferta_id", "nota",
-    "vencimento_primeira_parcela", "parcela_paga_em",
+    "vencimento_primeira_parcela", "parcela_paga_em", "valor_matricula",
 }
-# O que o vendedor ainda pode alterar num lead Matriculado (controle da 1ª parcela)
-CAMPOS_PARCELA = {"vencimento_primeira_parcela", "parcela_paga_em"}
+# O que o vendedor ainda pode alterar num lead Matriculado (controle da 1ª parcela e valor do curso)
+CAMPOS_PARCELA = {"vencimento_primeira_parcela", "parcela_paga_em", "valor_matricula"}
 CAMPOS_ADMIN = CAMPOS_VENDEDOR | {"vendedor_id", "nome", "telefone", "email", "campanha_id"}
 
 
@@ -173,6 +174,8 @@ def _serializar(lead: CrmLead, params: svc.ParamsAlerta, etapa_desde: Optional[d
         "data_matricula": lead.data_matricula.isoformat() if lead.data_matricula else None,
         "vencimento_primeira_parcela": lead.vencimento_primeira_parcela.isoformat() if lead.vencimento_primeira_parcela else None,
         "parcela_paga_em": lead.parcela_paga_em.isoformat() if lead.parcela_paga_em else None,
+        "valor_matricula": lead.valor_matricula,
+        "valor_oferta": lead.oferta.valor_individual if lead.oferta else None,
         "parcela_pendente": svc.parcela_pendente(lead),
         "alertas": svc.calcular_alertas(lead, params),
     }
@@ -447,6 +450,8 @@ async def _descrever(db: AsyncSession, campo: str, valor) -> Optional[str]:
         return c.nome if c else str(valor)
     if isinstance(valor, date):
         return valor.strftime("%d/%m/%Y")
+    if campo == "valor_matricula":
+        return "R$ " + f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     return str(valor)
 
 
@@ -486,6 +491,8 @@ async def atualizar_lead(
             raise HTTPException(400, "Vendedor inválido ou inativo")
     if alteracoes.get("oferta_id") and not await db.get(OfertaCurso, alteracoes["oferta_id"]):
         raise HTTPException(400, "Oferta não encontrada")
+    if (alteracoes.get("valor_matricula") or 0) < 0:
+        raise HTTPException(400, "O valor do curso não pode ser negativo")
 
     def valor_final(campo):
         return alteracoes[campo] if campo in alteracoes else getattr(lead, campo)
@@ -637,7 +644,7 @@ def _indicadores(investimento: float, receita: float, leads: int, pagas: int) ->
 async def _financeiro(db: AsyncSession, leads: list[CrmLead], campanha_id: Optional[int],
                       data_inicio: Optional[date], data_fim: Optional[date]) -> dict:
     """Investimento (Meta por dia, no período; ou valor manual da campanha) x receita das matrículas pagas
-    (valor individual do curso da oferta do lead, ou da campanha)."""
+    (valor do curso informado no lead; senão o valor individual da oferta do lead, ou da campanha)."""
     q = select(CrmCampanha).options(selectinload(CrmCampanha.oferta))
     if campanha_id:
         q = q.where(CrmCampanha.id == campanha_id)
@@ -665,7 +672,9 @@ async def _financeiro(db: AsyncSession, leads: list[CrmLead], campanha_id: Optio
         if l.status == "matriculado" and l.parcela_paga_em:
             g["pagas"] += 1
             oferta = l.oferta or (campanhas[l.campanha_id].oferta if l.campanha_id in campanhas else None)
-            if oferta and oferta.valor_individual:
+            if l.valor_matricula:
+                g["receita"] += l.valor_matricula
+            elif oferta and oferta.valor_individual:
                 g["receita"] += oferta.valor_individual
             else:
                 sem_valor += 1

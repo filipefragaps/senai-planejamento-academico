@@ -32,6 +32,7 @@ type Form = {
   data_matricula: string;
   vencimento_primeira_parcela: string;
   parcela_paga_em: string;
+  valor_matricula: string;
   oferta_id: number | null;
   observacoes: string;
   vendedor_id: number | null;
@@ -48,10 +49,18 @@ function formDoLead(l: any): Form {
     data_matricula: l.data_matricula ?? "",
     vencimento_primeira_parcela: l.vencimento_primeira_parcela ?? "",
     parcela_paga_em: l.parcela_paga_em ?? "",
+    valor_matricula: l.valor_matricula != null ? String(l.valor_matricula).replace(".", ",") : "",
     oferta_id: l.oferta_id,
     observacoes: l.observacoes ?? "",
     vendedor_id: l.vendedor_id,
   };
+}
+
+/** "1.500,50" (formato BR) ou "1500.50" → número; vazio → null. */
+function lerValor(texto: string) {
+  const t = texto.trim();
+  if (!t) return null;
+  return Number(t.includes(",") ? t.replace(/\./g, "").replace(",", ".") : t);
 }
 
 function Campo({ label, children, obrigatorio }: { label: string; children: React.ReactNode; obrigatorio?: boolean }) {
@@ -101,6 +110,7 @@ export function LeadDrawer({ leadId, opcoes, isAdmin, onClose }: Props) {
       if (k === "vendedor_id" && !isAdmin) return;
       if (form[k] !== original[k]) diff[k] = form[k] === "" ? null : form[k];
     });
+    if ("valor_matricula" in diff) diff.valor_matricula = lerValor(form.valor_matricula);
     return diff;
   }, [lead, form, isAdmin]);
   const temAlteracoes = Object.keys(alteracoes).length > 0;
@@ -145,6 +155,8 @@ export function LeadDrawer({ leadId, opcoes, isAdmin, onClose }: Props) {
     if (form.status === "matriculado" && !form.data_matricula) return toast.error("Informe a data da matrícula");
     if (form.status === "matriculado" && !form.vencimento_primeira_parcela) return toast.error("Informe o vencimento da 1ª parcela");
     if (form.status === "aguardando_retorno" && !form.proximo_retorno) return toast.error("Informe a data do próximo retorno");
+    const valor = lerValor(form.valor_matricula);
+    if (valor !== null && (Number.isNaN(valor) || valor < 0)) return toast.error("Valor do curso inválido");
     salvar.mutate(alteracoes);
   }
 
@@ -311,6 +323,14 @@ export function LeadDrawer({ leadId, opcoes, isAdmin, onClose }: Props) {
                              onChange={(e) => set("parcela_paga_em", e.target.value)} />
                     </Campo>
                   </div>
+                  <Campo label="Valor do curso">
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">R$</span>
+                      <input className="input bg-white pl-8 tabular-nums" inputMode="decimal" disabled={!parcelaEditavel}
+                             placeholder={lead.valor_oferta ? `${String(lead.valor_oferta).replace(".", ",")} (valor da oferta)` : "Ex.: 1.500,00"}
+                             value={form.valor_matricula} onChange={(e) => set("valor_matricula", e.target.value)} />
+                    </div>
+                  </Campo>
                   {form.parcela_paga_em ? (
                     <p className="text-xs font-medium text-green-700">✓ Matrícula efetivada (1ª parcela paga)</p>
                   ) : (
@@ -417,7 +437,7 @@ export function LeadDrawer({ leadId, opcoes, isAdmin, onClose }: Props) {
               </button>
             )}
             <button className="btn-secondary ml-auto" onClick={onClose}>Fechar</button>
-            <button className="btn-primary gap-1.5" disabled={!temAlteracoes || (bloqueado && !Object.keys(alteracoes).every((k) => k === "vencimento_primeira_parcela" || k === "parcela_paga_em")) || salvar.isPending} onClick={salvarAlteracoes}>
+            <button className="btn-primary gap-1.5" disabled={!temAlteracoes || (bloqueado && !Object.keys(alteracoes).every((k) => ["vencimento_primeira_parcela", "parcela_paga_em", "valor_matricula"].includes(k))) || salvar.isPending} onClick={salvarAlteracoes}>
               {salvar.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Salvar alterações
             </button>
