@@ -43,6 +43,9 @@ def _dica(codigo, mensagem: str) -> str:
     m = (mensagem or "").lower()
     if codigo == 190:
         return "Token inválido ou expirado: gere um novo token do usuário do sistema e atualize META_ACCESS_TOKEN."
+    if "api access blocked" in m:
+        return ("Sem acesso aos anúncios: adicione o produto Marketing API ao app, atribua a conta de anúncios ao "
+                "usuário do sistema e gere um novo token com ads_read.")
     if codigo in (10, 200) or "permission" in m:
         return ("Permissão faltando: o token precisa de leads_retrieval, pages_show_list, pages_read_engagement, "
                 "pages_manage_metadata, pages_manage_ads e ads_read, e o usuário do sistema precisa ter a página atribuída.")
