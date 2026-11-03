@@ -54,6 +54,7 @@ async def _aplicar_migracoes(engine) -> None:
         "ALTER TABLE crm_leads ADD COLUMN vencimento_primeira_parcela DATE",
         "ALTER TABLE crm_leads ADD COLUMN parcela_paga_em DATE",
         "ALTER TABLE crm_campanhas ADD COLUMN nomes_anteriores JSON",
+        "ALTER TABLE crm_campanhas ADD COLUMN investimento_manual FLOAT",
         "ALTER TABLE professores ADD COLUMN coordenador BOOLEAN DEFAULT false",
         "ALTER TABLE diario_aulas ADD COLUMN origem VARCHAR(20) DEFAULT 'presencial'",
         "ALTER TABLE contratos_virtuais ALTER COLUMN cpf DROP NOT NULL",
@@ -266,6 +267,20 @@ async def _loop_sincronizacao_meta() -> None:
                     log.warning("Sincronização Meta falhou: %s", msg)
                     try:
                         await meta_leads.registrar_erro(db, f"Sincronização automática: {msg}")
+                        await db.commit()
+                    except Exception:  # noqa: BLE001
+                        await db.rollback()
+            # Investimento das campanhas (Insights): falha aqui não afeta os leads
+            async with AsyncSessionLocal() as db:
+                try:
+                    await meta_leads.sincronizar_gastos(db, forcar=False)
+                    await db.commit()
+                except Exception as e:  # noqa: BLE001
+                    await db.rollback()
+                    msg = str(e) if isinstance(e, meta_leads.MetaErro) else f"{type(e).__name__}"
+                    log.warning("Leitura do investimento na Meta falhou: %s", msg)
+                    try:
+                        await meta_leads._registrar(db, "meta_gastos_erro", {"em": meta_leads.svc.agora().isoformat(), "mensagem": msg})
                         await db.commit()
                     except Exception:  # noqa: BLE001
                         await db.rollback()

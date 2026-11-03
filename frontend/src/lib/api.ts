@@ -563,4 +563,6 @@ export const crmApi = {
   metaAssinar: () => api.post("/crm/meta/assinar").then((r) => r.data),
   metaWebhookApp: () => api.post("/crm/meta/webhook-app").then((r) => r.data),
   metaSincronizar: (dias?: number) => api.post("/crm/meta/sincronizar", null, { params: dias ? { dias } : {} }).then((r) => r.data),
+  /** Lê o investimento diário das campanhas nos Insights da Meta (exige ads_read no token) */
+  metaSincronizarGastos: () => api.post("/crm/meta/gastos/sincronizar").then((r) => r.data),
 };

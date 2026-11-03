@@ -10,8 +10,9 @@ import { crmApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   ALERTA_INFO, CAMPO_LABEL, STATUS_STYLE, TEMPERATURA_STYLE, CrmOpcoes,
-  data, dataHora, formatarTelefone, hojeISO, linkWhatsApp,
+  data, dataHora, diasNaEtapa, formatarTelefone, hojeISO, linkWhatsApp,
 } from "@/lib/crm";
+import { CopiarTelefone } from "./copiar-telefone";
 import { OfertaPicker } from "./oferta-picker";
 
 interface Props {
@@ -161,6 +162,12 @@ export function LeadDrawer({ leadId, opcoes, isAdmin, onClose }: Props) {
             {lead && (
               <div className="mt-1 flex flex-wrap gap-1.5">
                 <span className={cn("badge border", STATUS_STYLE[lead.status])}>{lead.status_label}</span>
+                {!lead.finalizado && diasNaEtapa(lead.dias_na_etapa) && (
+                  <span className={cn("badge", diasNaEtapa(lead.dias_na_etapa)!.cls)}
+                        title={`Nesta etapa desde ${dataHora(lead.etapa_desde)}`}>
+                    {diasNaEtapa(lead.dias_na_etapa)!.texto}
+                  </span>
+                )}
                 {lead.alertas.map((a: string) => (
                   <span key={a} className={cn("badge", ALERTA_INFO[a]?.cls)}>{ALERTA_INFO[a]?.label ?? a}</span>
                 ))}
@@ -188,9 +195,14 @@ export function LeadDrawer({ leadId, opcoes, isAdmin, onClose }: Props) {
                   </a>
                 )}
                 {lead.telefone && (
-                  <a href={`tel:+${lead.telefone}`} className="btn-secondary gap-1.5">
-                    <Phone className="h-4 w-4" /> {formatarTelefone(lead.telefone)}
-                  </a>
+                  <span className="inline-flex items-stretch">
+                    <a href={`tel:+${lead.telefone}`} className="btn-secondary gap-1.5 rounded-r-none">
+                      <Phone className="h-4 w-4" /> {formatarTelefone(lead.telefone)}
+                    </a>
+                    <span className="btn-secondary rounded-l-none border-l-0 px-2.5">
+                      <CopiarTelefone telefone={lead.telefone} tamanho="h-4 w-4" />
+                    </span>
+                  </span>
                 )}
                 {lead.email && (
                   <a href={`mailto:${lead.email}`} className="btn-secondary gap-1.5 max-w-full">

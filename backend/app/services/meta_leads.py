@@ -12,9 +12,10 @@ import hmac
 import json
 import logging
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import httpx
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -25,6 +26,9 @@ log = logging.getLogger("crm.meta")
 CAMPOS_LEAD = "id,created_time,field_data,ad_id,ad_name,adset_name,campaign_id,campaign_name,form_id,platform,is_organic"
 DIAS_PRIMEIRA_SYNC = 90      # a Meta mantém os leads por 90 dias
 HORAS_SOBREPOSICAO = 48      # cada sincronização relê as últimas 48h para cobrir falhas do webhook
+DIAS_PRIMEIRA_SYNC_GASTOS = 365  # o investimento é guardado por dia; na 1ª vez lê o último ano
+DIAS_RELEITURA_GASTOS = 3        # a Meta ainda ajusta o gasto dos últimos dias
+HORAS_ENTRE_SYNC_GASTOS = 6      # a rotina automática relê o investimento no máximo a cada 6h
 
 # Permite injetar um transporte falso nos testes (httpx.MockTransport)
 _transporte: httpx.AsyncBaseTransport | None = None
@@ -207,6 +211,15 @@ class MetaCliente:
     async def lead(self, leadgen_id: str) -> dict:
         return await self._req("GET", f"/{leadgen_id}", {"fields": CAMPOS_LEAD})
 
+    async def gastos_campanha(self, campaign_id: str, desde: date, ate: date) -> dict[date, float]:
+        """Gasto (spend) por dia da campanha, via Insights. Exige a permissão ads_read no token."""
+        linhas = await self._paginar(f"/{campaign_id}/insights", {
+            "fields": "spend",
+            "time_increment": 1,
+            "time_range": json.dumps({"since": desde.isoformat(), "until": ate.isoformat()}),
+        }, pagina=False)
+        return {date.fromisoformat(l["date_start"]): float(l.get("spend") or 0) for l in linhas if l.get("date_start")}
+
     # ── Webhook do app (equivale a Webhooks → Página → leadgen no painel da Meta) ──
 
     async def app(self) -> dict:
@@ -312,6 +325,9 @@ async def estado(db: AsyncSession) -> dict:
         "ultimo_resultado": await ler("meta_ultimo_resultado"),
         "ultimo_erro": await ler("meta_ultimo_erro"),
         "ultimo_webhook": await ler("meta_ultimo_webhook"),
+        "gastos_ultima_sincronizacao": await ler("meta_gastos_ultima_sync"),
+        "gastos_resultado": await ler("meta_gastos_resultado"),
+        "gastos_erro": await ler("meta_gastos_erro"),
     }
 
 
@@ -346,6 +362,54 @@ async def sincronizar(db: AsyncSession, dias: int | None = None) -> dict:
     }
     await _registrar(db, "meta_ultima_sync", inicio.isoformat())
     await _registrar(db, "meta_ultimo_resultado", resultado)
+    return resultado
+
+
+async def sincronizar_gastos(db: AsyncSession, forcar: bool = True) -> dict | None:
+    """Lê o investimento diário de cada campanha com ID da Meta e grava em crm_gastos.
+
+    Sem `forcar`, só roda se a última leitura tiver mais de HORAS_ENTRE_SYNC_GASTOS (rotina automática).
+    """
+    from app.models.crm import CrmCampanha, CrmGasto
+
+    if not configurado():
+        raise MetaErro("Integração não configurada: defina META_ACCESS_TOKEN e META_PAGE_ID")
+    ultima = await svc.get_config(db, "meta_gastos_ultima_sync")
+    agora = svc.agora()
+    if not forcar and ultima and agora - datetime.fromisoformat(ultima) < timedelta(hours=HORAS_ENTRE_SYNC_GASTOS):
+        return None
+    ate = svc.hoje_br()
+    desde = (
+        datetime.fromisoformat(ultima).date() - timedelta(days=DIAS_RELEITURA_GASTOS)
+        if ultima else ate - timedelta(days=DIAS_PRIMEIRA_SYNC_GASTOS)
+    )
+    campanhas = (await db.execute(
+        select(CrmCampanha).where(CrmCampanha.meta_campaign_id.isnot(None))
+    )).scalars().all()
+
+    total = 0.0
+    dias = 0
+    async with MetaCliente() as cli:
+        for c in campanhas:
+            por_dia = await cli.gastos_campanha(c.meta_campaign_id, desde, ate)
+            if not por_dia:
+                continue
+            existentes = {g.data: g for g in (await db.execute(
+                select(CrmGasto).where(CrmGasto.campanha_id == c.id, CrmGasto.data.in_(list(por_dia)))
+            )).scalars().all()}
+            for dia, valor in por_dia.items():
+                if dia in existentes:
+                    existentes[dia].valor = valor
+                else:
+                    db.add(CrmGasto(campanha_id=c.id, data=dia, valor=valor))
+                total += valor
+                dias += 1
+    await db.flush()
+    resultado = {"em": agora.isoformat(), "desde": desde.isoformat(), "ate": ate.isoformat(),
+                 "campanhas": len(campanhas), "dias_com_gasto": dias, "valor_lido": round(total, 2)}
+    await _registrar(db, "meta_gastos_ultima_sync", agora.isoformat())
+    await _registrar(db, "meta_gastos_resultado", resultado)
+    await _registrar(db, "meta_gastos_erro", None)
     return resultado
 
 

@@ -16,8 +16,9 @@ import { OfertaPicker } from "@/components/crm/oferta-picker";
 import { KanbanLeads } from "@/components/crm/kanban";
 import { ModalConfirmacao } from "@/components/crm/modal-confirmacao";
 import {
-  ALERTA_INFO, STATUS_STYLE, TEMPERATURA_STYLE, CrmOpcoes, data, dataHora, formatarTelefone, linkWhatsApp,
+  ALERTA_INFO, STATUS_STYLE, TEMPERATURA_STYLE, CrmOpcoes, data, dataHora, diasNaEtapa, formatarTelefone, linkWhatsApp,
 } from "@/lib/crm";
+import { CopiarTelefone } from "@/components/crm/copiar-telefone";
 
 const PAGE_SIZE = 50;
 const EM_ABERTO = "novo,tentativa_contato,em_atendimento,aguardando_retorno,aguardando_decisao";
@@ -415,6 +416,7 @@ function LeadsPageInner() {
               <th className="hidden px-3 py-2 md:table-cell">Entrada</th>
               <th className="px-3 py-2">Temperatura</th>
               <th className="px-3 py-2">Status</th>
+              <th className="px-3 py-2 whitespace-nowrap" title="Dias do lead parado na etapa atual">Na etapa</th>
               <th className="hidden px-3 py-2 md:table-cell">Últ. contato</th>
               <th className="px-3 py-2">Próx. retorno</th>
               {isAdmin && <th className="hidden px-3 py-2 xl:table-cell">Vendedor</th>}
@@ -422,10 +424,10 @@ function LeadsPageInner() {
           </thead>
           <tbody>
             {isLoading && (
-              <tr><td colSpan={10} className="px-3 py-10 text-center text-gray-400"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></td></tr>
+              <tr><td colSpan={11} className="px-3 py-10 text-center text-gray-400"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></td></tr>
             )}
             {!isLoading && itens.length === 0 && (
-              <tr><td colSpan={10} className="px-3 py-10 text-center text-gray-400">
+              <tr><td colSpan={11} className="px-3 py-10 text-center text-gray-400">
                 {filtrosAtivos ? "Nenhum lead para os filtros selecionados." : isAdmin ? "Nenhum lead ainda. Importe um CSV da Meta ou cadastre manualmente." : "Nenhum lead atribuído a você no momento."}
               </td></tr>
             )}
@@ -462,6 +464,7 @@ function LeadsPageInner() {
                   <td className="whitespace-nowrap px-3 py-2">
                     <span className="inline-flex items-center gap-1.5">
                       {formatarTelefone(l.telefone)}
+                      <CopiarTelefone telefone={l.telefone} tamanho="h-4 w-4" />
                       {wa && (
                         <a href={wa} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
                            className="text-green-600 hover:text-green-700" title="Abrir no WhatsApp">
@@ -478,6 +481,14 @@ function LeadsPageInner() {
                     ) : <span className="text-xs text-gray-400">—</span>}
                   </td>
                   <td className="px-3 py-2"><span className={cn("badge border whitespace-nowrap", STATUS_STYLE[l.status])}>{l.status_label}</span></td>
+                  <td className="whitespace-nowrap px-3 py-2">
+                    {(() => {
+                      const etapa = l.finalizado ? null : diasNaEtapa(l.dias_na_etapa);
+                      return etapa
+                        ? <span className={cn("rounded px-1.5 py-0.5 text-xs font-semibold tabular-nums", etapa.cls)} title={etapa.texto}>{etapa.curto}</span>
+                        : <span className="text-xs text-gray-400">—</span>;
+                    })()}
+                  </td>
                   <td className="hidden whitespace-nowrap px-3 py-2 text-gray-600 md:table-cell">{data(l.ultimo_contato)}</td>
                   <td className={cn("whitespace-nowrap px-3 py-2",
                     l.alertas.includes("retorno_atrasado") ? "font-semibold text-red-600" : hoje ? "font-semibold text-amber-700" : "text-gray-600")}>

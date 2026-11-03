@@ -20,7 +20,7 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.core.deps import get_current_user, require_admin
 from app.database import get_db
-from app.models.crm import CrmCampanha, CrmHistorico, CrmLead
+from app.models.crm import CrmCampanha, CrmGasto, CrmHistorico, CrmLead
 from app.models.oferta import OfertaCurso
 from app.models.usuario import Usuario
 from app.services import crm as svc
@@ -87,6 +87,7 @@ class CampanhaUpdate(BaseModel):
     oferta_id: Optional[int] = None
     vendedor_padrao_id: Optional[int] = None
     ativa: Optional[bool] = None
+    investimento_manual: Optional[float] = None
     aplicar_oferta_leads: bool = False
 
 
@@ -119,7 +120,25 @@ def _rotulo_oferta(o: OfertaCurso | None) -> str | None:
     return f"{o.codigo_evento} – {o.nome_curso}" if o else None
 
 
-def _serializar(lead: CrmLead, params: svc.ParamsAlerta) -> dict:
+async def _etapa_desde(db: AsyncSession, leads: list[CrmLead]) -> dict[int, datetime]:
+    """Quando cada lead entrou na etapa (status) atual: última mudança de status no histórico."""
+    ids = [l.id for l in leads]
+    if not ids:
+        return {}
+    rows = (await db.execute(
+        select(CrmHistorico.lead_id, func.max(CrmHistorico.criado_em))
+        .where(CrmHistorico.lead_id.in_(ids), CrmHistorico.campo == "status")
+        .group_by(CrmHistorico.lead_id)
+    )).all()
+    return {lid: dt for lid, dt in rows}
+
+
+def _dias_na_etapa(lead: CrmLead, desde: Optional[datetime]) -> int:
+    inicio = svc.como_utc(desde or lead.recebido_em).astimezone(svc.FUSO_BR).date()
+    return max(0, (svc.hoje_br() - inicio).days)
+
+
+def _serializar(lead: CrmLead, params: svc.ParamsAlerta, etapa_desde: Optional[datetime] = None) -> dict:
     return {
         "id": lead.id,
         "meta_lead_id": lead.meta_lead_id,
@@ -139,6 +158,8 @@ def _serializar(lead: CrmLead, params: svc.ParamsAlerta) -> dict:
         "status": lead.status,
         "status_label": svc.STATUS_LABEL.get(lead.status, lead.status),
         "finalizado": lead.status in svc.STATUS_FINAIS,
+        "etapa_desde": svc.como_utc(etapa_desde or lead.recebido_em).isoformat(),
+        "dias_na_etapa": _dias_na_etapa(lead, etapa_desde),
         "vendedor_id": lead.vendedor_id,
         "vendedor_nome": lead.vendedor.nome if lead.vendedor else None,
         "oferta_id": lead.oferta_id,
@@ -301,8 +322,9 @@ async def listar_leads(
     leads = (await db.execute(q)).scalars().all()
 
     params = await svc.parametros_alerta(db)
+    desde = await _etapa_desde(db, leads)
     return {"total": total, "page": page, "page_size": page_size,
-            "items": [_serializar(l, params) for l in leads]}
+            "items": [_serializar(l, params, desde.get(l.id)) for l in leads]}
 
 
 @router.get("/leads/exportar")
@@ -380,7 +402,8 @@ async def obter_lead(lead_id: int, db: AsyncSession = Depends(get_db), user: Usu
     hist = (await db.execute(
         select(CrmHistorico).where(CrmHistorico.lead_id == lead_id).order_by(CrmHistorico.id.desc())
     )).scalars().all()
-    out = _serializar(lead, await svc.parametros_alerta(db))
+    ultima_etapa = next((h.criado_em for h in hist if h.campo == "status"), None)
+    out = _serializar(lead, await svc.parametros_alerta(db), ultima_etapa)
     out["historico"] = [
         {
             "id": h.id, "campo": h.campo, "valor_anterior": h.valor_anterior, "valor_novo": h.valor_novo,
@@ -597,6 +620,78 @@ def _taxa(parte: int, total: int) -> float:
     return round(parte / total * 100, 1) if total else 0.0
 
 
+def _indicadores(investimento: float, receita: float, leads: int, pagas: int) -> dict:
+    """CPL, CPA, ROAS e ROI (None quando não há base para a divisão)."""
+    return {
+        "investimento": round(investimento, 2),
+        "receita": round(receita, 2),
+        "leads": leads,
+        "matriculas_pagas": pagas,
+        "cpl": round(investimento / leads, 2) if investimento and leads else None,
+        "cpa": round(investimento / pagas, 2) if investimento and pagas else None,
+        "roas": round(receita / investimento, 2) if investimento else None,
+        "roi": round((receita - investimento) / investimento * 100, 1) if investimento else None,
+    }
+
+
+async def _financeiro(db: AsyncSession, leads: list[CrmLead], campanha_id: Optional[int],
+                      data_inicio: Optional[date], data_fim: Optional[date]) -> dict:
+    """Investimento (Meta por dia, no período; ou valor manual da campanha) x receita das matrículas pagas
+    (valor individual do curso da oferta do lead, ou da campanha)."""
+    q = select(CrmCampanha).options(selectinload(CrmCampanha.oferta))
+    if campanha_id:
+        q = q.where(CrmCampanha.id == campanha_id)
+    campanhas = {c.id: c for c in (await db.execute(q)).scalars().all()}
+
+    com_meta = set((await db.execute(select(CrmGasto.campanha_id).distinct())).scalars().all())
+    qg = select(CrmGasto.campanha_id, func.sum(CrmGasto.valor)).group_by(CrmGasto.campanha_id)
+    if data_inicio:
+        qg = qg.where(CrmGasto.data >= data_inicio)
+    if data_fim:
+        qg = qg.where(CrmGasto.data <= data_fim)
+    gasto_meta = dict((await db.execute(qg)).all())
+
+    def investimento(cid: int) -> tuple[float, Optional[str]]:
+        if cid in com_meta:
+            return float(gasto_meta.get(cid) or 0), "meta"
+        manual = campanhas[cid].investimento_manual if cid in campanhas else None
+        return (float(manual), "manual") if manual else (0.0, None)
+
+    por_camp: dict = defaultdict(lambda: {"leads": 0, "pagas": 0, "receita": 0.0})
+    sem_valor = 0
+    for l in leads:
+        g = por_camp[l.campanha_id or 0]
+        g["leads"] += 1
+        if l.status == "matriculado" and l.parcela_paga_em:
+            g["pagas"] += 1
+            oferta = l.oferta or (campanhas[l.campanha_id].oferta if l.campanha_id in campanhas else None)
+            if oferta and oferta.valor_individual:
+                g["receita"] += oferta.valor_individual
+            else:
+                sem_valor += 1
+
+    linhas = []
+    for cid in set(por_camp) | {c for c in campanhas if investimento(c)[0]}:
+        inv, fonte = investimento(cid) if cid else (0.0, None)
+        g = por_camp.get(cid, {"leads": 0, "pagas": 0, "receita": 0.0})
+        linhas.append({
+            "campanha_id": cid,
+            "nome": campanhas[cid].nome if cid in campanhas else "Sem campanha",
+            "fonte_investimento": fonte,
+            **_indicadores(inv, g["receita"], g["leads"], g["pagas"]),
+        })
+    linhas.sort(key=lambda x: (-x["investimento"], -x["leads"]))
+
+    total_inv = sum(x["investimento"] for x in linhas)
+    total_rec = sum(x["receita"] for x in linhas)
+    return {
+        **_indicadores(total_inv, total_rec, len(leads), sum(x["matriculas_pagas"] for x in linhas)),
+        "matriculas_pagas_sem_valor": sem_valor,
+        "por_campanha": linhas,
+        "gastos_ultima_sincronizacao": await svc.get_config(db, "meta_gastos_ultima_sync"),
+    }
+
+
 @router.get("/dashboard")
 async def dashboard(
     campanha_id: Optional[int] = None,
@@ -651,8 +746,12 @@ async def dashboard(
             por_dia[dia]["matriculados"] += 1
 
     motivos = Counter(l.motivo_perda for l in leads if l.status == "perdido" and l.motivo_perda)
+    # Investimento e retorno: só para o administrador
+    financeiro = (await _financeiro(db, leads, campanha_id, data_inicio, data_fim)
+                  if user.perfil == "admin" else None)
 
     return {
+        "financeiro": financeiro,
         "total": total,
         "novos": por_status.get("novo", 0),
         "novos_sem_atendimento": alertas.get("novo_sem_atendimento", 0),
@@ -698,6 +797,7 @@ def _serializar_campanha(c: CrmCampanha, total: int = 0, matriculados: int = 0) 
         "vendedor_padrao_id": c.vendedor_padrao_id,
         "vendedor_padrao_nome": c.vendedor_padrao.nome if c.vendedor_padrao else None,
         "total_leads": total, "matriculados": matriculados,
+        "investimento_manual": c.investimento_manual,
     }
 
 
@@ -767,7 +867,9 @@ async def atualizar_campanha(
                 anteriores.append(c.nome)
             c.nomes_anteriores = anteriores
             c.nome = novo
-    for campo in ("oferta_id", "vendedor_padrao_id", "ativa"):
+    if "investimento_manual" in enviados and data.investimento_manual is not None and data.investimento_manual < 0:
+        raise HTTPException(400, "O valor investido não pode ser negativo")
+    for campo in ("oferta_id", "vendedor_padrao_id", "ativa", "investimento_manual"):
         if campo in enviados:
             setattr(c, campo, getattr(data, campo))
 
@@ -928,6 +1030,19 @@ async def meta_sincronizar(
     except meta.MetaErro as e:
         await db.rollback()
         await meta.registrar_erro(db, f"Sincronização: {e}")
+        return _erro_meta(e)
+
+
+@router.post("/meta/gastos/sincronizar")
+async def meta_sincronizar_gastos(db: AsyncSession = Depends(get_db), _=Depends(require_admin)):
+    """Lê agora o investimento diário das campanhas nos Insights da Meta."""
+    if not meta.configurado():
+        raise HTTPException(400, "Defina META_ACCESS_TOKEN e META_PAGE_ID nas variáveis do servidor")
+    try:
+        return await meta.sincronizar_gastos(db, forcar=True)
+    except meta.MetaErro as e:
+        await db.rollback()
+        await meta._registrar(db, "meta_gastos_erro", {"em": svc.agora().isoformat(), "mensagem": str(e)})
         return _erro_meta(e)
 
 

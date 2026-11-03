@@ -1,6 +1,6 @@
 """CRM de Gestão de Leads — leads vindos das campanhas Meta (Facebook/Instagram)."""
 from datetime import date, datetime
-from sqlalchemy import String, ForeignKey, DateTime, Date, Text, JSON, Boolean, func
+from sqlalchemy import String, ForeignKey, DateTime, Date, Text, JSON, Boolean, Float, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
@@ -17,6 +17,8 @@ class CrmCampanha(Base):
     ativa: Mapped[bool] = mapped_column(Boolean, default=True)
     # Nomes antigos (após renomear): importações que ainda trazem o nome antigo caem nesta campanha
     nomes_anteriores: Mapped[list | None] = mapped_column(JSON)
+    # Valor investido digitado à mão (total da campanha); usado quando não há gasto vindo da Meta
+    investimento_manual: Mapped[float | None] = mapped_column(Float)
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     oferta: Mapped["OfertaCurso | None"] = relationship("OfertaCurso")
@@ -81,6 +83,18 @@ class CrmHistorico(Base):
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     lead: Mapped["CrmLead"] = relationship("CrmLead", back_populates="historico")
+
+
+class CrmGasto(Base):
+    """Gasto diário da campanha com anúncios, lido dos Insights da Meta (campo spend)."""
+    __tablename__ = "crm_gastos"
+    __table_args__ = (UniqueConstraint("campanha_id", "data", name="uq_crm_gasto_dia"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    campanha_id: Mapped[int] = mapped_column(ForeignKey("crm_campanhas.id", ondelete="CASCADE"), nullable=False, index=True)
+    data: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    valor: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    atualizado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class CrmConfig(Base):

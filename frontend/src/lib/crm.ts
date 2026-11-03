@@ -56,6 +56,14 @@ export function formatarTelefone(tel?: string | null) {
   return tel;
 }
 
+/** Dias do lead parado na etapa atual: texto e cor (até 2 dias neutro, 3–6 atenção, 7+ parado). */
+export function diasNaEtapa(dias?: number | null) {
+  if (dias == null) return null;
+  const texto = dias === 0 ? "Hoje nesta etapa" : `${dias} dia${dias !== 1 ? "s" : ""} nesta etapa`;
+  const cls = dias >= 7 ? "bg-red-50 text-red-700" : dias >= 3 ? "bg-amber-50 text-amber-800" : "bg-gray-100 text-gray-600";
+  return { texto, curto: dias === 0 ? "hoje" : `${dias}d`, cls };
+}
+
 /** Link do WhatsApp com DDI 55 quando o número vier sem ele. */
 export function linkWhatsApp(tel?: string | null) {
   if (!tel) return null;

@@ -14,6 +14,7 @@ import { useCurrentUser } from "@/lib/use-current-user";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
 import { OfertaPicker } from "@/components/crm/oferta-picker";
+import { PainelFinanceiro } from "@/components/crm/painel-financeiro";
 import { CrmOpcoes, TEMPERATURA_STYLE } from "@/lib/crm";
 
 const PRIMARIA = "hsl(218 100% 28%)";
@@ -247,6 +248,9 @@ export default function CrmPainelPage() {
                     detalhe="sem pagamento registrado" href="/crm/leads?alerta=parcela_vencida" />
             </div>
           )}
+
+          {/* Investimento e retorno (CPL, CPA, ROAS, ROI) — só administrador */}
+          {isAdmin && d.financeiro && <PainelFinanceiro f={d.financeiro} />}
 
           {/* Temperatura */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

@@ -15,6 +15,29 @@ import { CrmOpcoes } from "@/lib/crm";
 import { useCurrentUser } from "@/lib/use-current-user";
 
 /** Nome da campanha com edição no lugar (lápis → campo → Enter salva, Esc cancela). */
+/** Valor investido digitado à mão (R$); salva ao sair do campo. Vazio = sem valor manual. */
+function InvestimentoManual({ valor, onSalvar }: { valor: number | null; onSalvar: (v: number | null) => void }) {
+  const [texto, setTexto] = useState(valor != null ? String(valor).replace(".", ",") : "");
+  function salvar() {
+    // "1.500,50" (formato BR) ou "1500.50"
+    const limpo = texto.includes(",") ? texto.trim().replace(/\./g, "").replace(",", ".") : texto.trim();
+    const novo = limpo ? Number(limpo) : null;
+    if (novo !== null && (Number.isNaN(novo) || novo < 0)) {
+      setTexto(valor != null ? String(valor).replace(".", ",") : "");
+      return;
+    }
+    if (novo !== valor) onSalvar(novo);
+  }
+  return (
+    <div className="relative">
+      <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">R$</span>
+      <input className="input pl-8 text-right tabular-nums" inputMode="decimal" placeholder="—" value={texto}
+             onChange={(e) => setTexto(e.target.value)} onBlur={salvar}
+             onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
+    </div>
+  );
+}
+
 function NomeCampanha({ campanha, salvando, onSalvar }: {
   campanha: any; salvando: boolean; onSalvar: (nome: string) => Promise<unknown>;
 }) {
@@ -170,13 +193,14 @@ function CrmConfig() {
                 <th className="px-3 py-2 text-right">Matrículas</th>
                 <th className="px-3 py-2 min-w-[260px]">Curso (oferta)</th>
                 <th className="px-3 py-2 min-w-[180px]">Vendedor padrão</th>
+                <th className="px-3 py-2 min-w-[140px]" title="Usado quando a campanha não tem investimento lido da Meta">Investimento manual</th>
                 <th className="px-3 py-2 text-center">Ativa</th>
                 <th className="px-1 py-2" />
               </tr>
             </thead>
             <tbody>
               {(campanhas as any[]).length === 0 && (
-                <tr><td colSpan={7} className="py-6 text-center text-gray-400">Nenhuma campanha ainda.</td></tr>
+                <tr><td colSpan={8} className="py-6 text-center text-gray-400">Nenhuma campanha ainda.</td></tr>
               )}
               {(campanhas as any[]).map((c) => (
                 <tr key={c.id} className="border-b last:border-0 align-middle">
@@ -201,6 +225,10 @@ function CrmConfig() {
                       <option value="">Rodízio automático</option>
                       {opcoes?.vendedores.map((v) => <option key={v.id} value={v.id}>{v.nome}</option>)}
                     </select>
+                  </td>
+                  <td className="px-3 py-2">
+                    <InvestimentoManual valor={c.investimento_manual}
+                                        onSalvar={(v) => atualizarCampanha.mutate({ id: c.id, data: { investimento_manual: v } })} />
                   </td>
                   <td className="px-3 py-2 text-center">
                     <input type="checkbox" className="h-4 w-4 rounded" checked={c.ativa}

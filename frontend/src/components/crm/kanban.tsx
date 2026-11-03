@@ -7,8 +7,9 @@ import { CalendarClock, Loader2, Lock, MessageCircle, X } from "lucide-react";
 import { crmApi, CrmFiltros } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
-  ALERTA_INFO, CrmOpcoes, STATUS_STYLE, TEMPERATURA_STYLE, data, formatarTelefone, hojeISO, linkWhatsApp,
+  ALERTA_INFO, CrmOpcoes, STATUS_STYLE, TEMPERATURA_STYLE, data, diasNaEtapa, formatarTelefone, hojeISO, linkWhatsApp,
 } from "@/lib/crm";
+import { CopiarTelefone } from "./copiar-telefone";
 
 const LOTE = 30;
 const MAX_POR_COLUNA = 200;
@@ -223,6 +224,7 @@ function CardLead({ lead, opcoes, isAdmin, salvando, arrastavel, onAbrir, onDrag
 }) {
   const temp = lead.temperatura ? TEMPERATURA_STYLE[lead.temperatura] : null;
   const wa = linkWhatsApp(lead.telefone);
+  const etapa = lead.finalizado ? null : diasNaEtapa(lead.dias_na_etapa);
   const urgente = ["novo_sem_atendimento", "retorno_atrasado", "parcela_vencida"].some((a) => lead.alertas.includes(a));
   const hoje = lead.alertas.includes("retorno_hoje") || lead.alertas.includes("parcela_a_vencer");
   const iniciais = lead.nome.split(/\s+/).filter(Boolean).slice(0, 2).map((p: string) => p[0]).join("").toUpperCase();
@@ -248,6 +250,7 @@ function CardLead({ lead, opcoes, isAdmin, salvando, arrastavel, onAbrir, onDrag
           <p className="truncate text-sm font-medium text-gray-900" title={lead.nome}>{lead.nome}</p>
           <div className="mt-0.5 flex items-center gap-1.5 text-xs text-gray-500">
             <span className="truncate">{formatarTelefone(lead.telefone)}</span>
+            <CopiarTelefone telefone={lead.telefone} />
             {wa && (
               <a href={wa} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
                  className="text-green-600 hover:text-green-700" title="Abrir no WhatsApp">
@@ -263,6 +266,11 @@ function CardLead({ lead, opcoes, isAdmin, salvando, arrastavel, onAbrir, onDrag
         {temp && (
           <span className={cn("inline-flex items-center gap-1 rounded border px-1.5 py-px text-[10px] font-semibold", temp.cls)}>
             <span className={cn("h-1.5 w-1.5 rounded-full", temp.dot)} />{temp.label}
+          </span>
+        )}
+        {etapa && (
+          <span className={cn("rounded px-1.5 py-px text-[10px] font-semibold", etapa.cls)} title={etapa.texto}>
+            {etapa.texto}
           </span>
         )}
         {lead.alertas.filter((a: string) => a !== "sem_vendedor" || isAdmin).map((a: string) => (

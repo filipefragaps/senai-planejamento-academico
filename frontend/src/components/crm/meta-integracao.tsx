@@ -171,12 +171,24 @@ export function IntegracaoMeta() {
             )}
             <dt className="text-gray-500">Último aviso (webhook)</dt>
             <dd>{st.ultimo_webhook ? dataHora(st.ultimo_webhook) : "—"}</dd>
+            <dt className="text-gray-500">Investimento (Insights)</dt>
+            <dd>
+              {st.gastos_ultima_sincronizacao ? dataHora(st.gastos_ultima_sincronizacao) : "—"}
+              {st.gastos_resultado && ` · ${st.gastos_resultado.campanhas} campanha(s)`}
+            </dd>
           </dl>
 
           {erroRecente && (
             <div className="rounded-md border border-red-200 bg-red-50 p-2.5 text-xs text-red-800">
               <p className="font-semibold">{dataHora(st.ultimo_erro.em)}</p>
               <p className="break-words">{st.ultimo_erro.mensagem}</p>
+            </div>
+          )}
+          {st.gastos_erro?.mensagem && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">
+              <p className="font-semibold">Leitura do investimento · {dataHora(st.gastos_erro.em)}</p>
+              <p className="break-words">{st.gastos_erro.mensagem}</p>
+              <p className="mt-1">Sem a permissão ads_read, informe o investimento manual de cada campanha na tabela abaixo.</p>
             </div>
           )}
 
