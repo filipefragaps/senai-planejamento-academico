@@ -253,6 +253,9 @@ export const planejamentoApi = {
     api.get("/planejamento/otimizar-global", { params: { incluir_rpa_pj: incluirRpaPj } }).then((r) => r.data),
   confirmarOtimizacaoGlobal: (remanejamentos: unknown[], ajustes_datas: unknown[] = []) =>
     api.post("/planejamento/otimizar-global/confirmar", { remanejamentos, ajustes_datas }).then((r) => r.data),
+  ucsSemProfessor: () => api.get("/planejamento/ucs-sem-professor").then((r) => r.data),
+  atribuirUcSemProfessor: (evento_id: number, uc_id: number, professor_id: number) =>
+    api.post("/planejamento/ucs-sem-professor/atribuir", { evento_id, uc_id, professor_id }).then((r) => r.data),
   importarHistorico: (file: File) => {
     const form = new FormData();
     form.append("arquivo", file);

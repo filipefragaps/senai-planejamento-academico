@@ -13,6 +13,7 @@ Detecção e resolução de conflitos:
 - Para cada conflito propõe: ajuste de data de início da UC OU troca de professor
 """
 
+import re
 import unicodedata
 from datetime import date, datetime, timedelta
 from typing import Optional
@@ -35,6 +36,18 @@ _CUSTO_RPA_PJ = 500
 
 def _norm(s: str) -> str:
     return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode().lower().strip()
+
+
+def _norm_uc(nome: str | None) -> str:
+    """Nome da UC para comparar com as UCs cadastradas no professor (aba Professor → atuações):
+    sem acento, caixa, pontuação e o sufixo "optativa"."""
+    s = re.sub(r"[^a-z0-9]+", " ", _norm(nome or ""))
+    s = re.sub(r"\boptativa\b", " ", s)
+    return " ".join(s.split())
+
+
+def _ucs_do_professor(atuacoes: list[Atuacao]) -> set[str]:
+    return {n for n in (_norm_uc(at.disciplina) for at in atuacoes) if n}
 
 
 def _horas_por_aula(evento: Evento) -> float:
@@ -118,7 +131,7 @@ async def analisar_otimizacao_global(
             and_(
                 Aula.evento_id.in_(todos_eventos.keys()),
                 Aula.unidade_curricular_id.isnot(None),
-                Aula.status.notin_(["Cancelada"]),
+                Aula.status.notin_(["Cancelada", "Remarcada"]),
             )
         )
     )
@@ -183,6 +196,7 @@ async def analisar_otimizacao_global(
     atuacoes_por_prof: dict[int, list[Atuacao]] = {}
     for at in res_at.scalars().all():
         atuacoes_por_prof.setdefault(at.professor_id, []).append(at)
+    ucs_por_prof = {pid: _ucs_do_professor(ats) for pid, ats in atuacoes_por_prof.items()}
 
     # ── 5. Disponibilidades ────────────────────────────────────────────────────
     res_disp = await db.execute(
@@ -206,14 +220,8 @@ async def analisar_otimizacao_global(
 
     # ── 6. Funções de compatibilidade ─────────────────────────────────────────
     def professor_pode(prof_id: int, uc: UnidadeCurricular) -> bool:
-        for at in atuacoes_por_prof.get(prof_id, []):
-            if at.curso_id and uc.curso_id and at.curso_id == uc.curso_id:
-                return True
-            nome_uc = _norm(uc.nome)
-            nome_disc = _norm(at.disciplina)
-            if nome_disc in nome_uc or nome_uc in nome_disc:
-                return True
-        return False
+        # Só a UC cadastrada no professor (mesmo nome); ser do mesmo curso não basta
+        return _norm_uc(uc.nome) in ucs_por_prof.get(prof_id, set())
 
     def professor_disponivel(prof_id: int, ev: Evento) -> bool:
         disps = disps_por_prof.get(prof_id)
@@ -278,7 +286,7 @@ async def analisar_otimizacao_global(
                 "evento_nome": ev.nome_turma,
                 "uc_id": uc_id,
                 "uc_nome": uc.nome if uc else f"UC {uc_id}",
-                "motivo": "Nenhum professor com atuação e disponibilidade compatíveis",
+                "motivo": "Nenhum professor com esta UC cadastrada e disponibilidade compatível",
             })
 
     # Constraint 2: sem double-booking entre eventos conflitantes
@@ -727,3 +735,161 @@ async def confirmar_otimizacao_global(
         "aulas_reagendadas": aulas_reagendadas,
         "ajustes_datas_aplicados": len(ajustes_datas or []),
     }
+
+
+# ── UCs sem professor: candidatos por UC ──────────────────────────────────────
+
+_STATUS_FORA = ["Cancelada", "Remarcada"]
+
+
+def _minutos(t) -> int:
+    return t.hour * 60 + t.minute
+
+
+async def ucs_sem_professor(db: AsyncSession, hoje: Optional[date] = None) -> dict:
+    """
+    UCs de eventos ativos com aulas futuras sem professor e, para cada uma, os professores
+    que têm a UC cadastrada (aba Professor), com choques de horário e carga no período da UC.
+    Não salva nada.
+    """
+    if hoje is None:
+        hoje = date.today()
+
+    res_ev = await db.execute(select(Evento).where(Evento.status.in_(["Planejado", "Ativo", "Em Andamento"])))
+    eventos = {ev.id: ev for ev in res_ev.scalars().all()}
+    if not eventos:
+        return {"ucs": []}
+
+    res = await db.execute(
+        select(Aula).where(and_(
+            Aula.evento_id.in_(eventos.keys()),
+            Aula.unidade_curricular_id.isnot(None),
+            Aula.professor_id.is_(None),
+            Aula.data >= hoje,
+            Aula.status.notin_(_STATUS_FORA + ["Realizada"]),
+        ))
+    )
+    abertas: dict[tuple[int, int], list[Aula]] = {}
+    for a in res.scalars().all():
+        abertas.setdefault((a.evento_id, a.unidade_curricular_id), []).append(a)
+    if not abertas:
+        return {"ucs": []}
+
+    res_ucs = await db.execute(
+        select(UnidadeCurricular).where(UnidadeCurricular.id.in_({uc for _, uc in abertas}))
+    )
+    ucs_map = {u.id: u for u in res_ucs.scalars().all()}
+
+    profs = (await db.execute(select(Professor).where(Professor.ativo == True))).scalars().all()  # noqa: E712
+    prof_ids = [p.id for p in profs]
+    atuacoes: dict[int, list[Atuacao]] = {}
+    for at in (await db.execute(select(Atuacao).where(Atuacao.professor_id.in_(prof_ids)))).scalars().all():
+        atuacoes.setdefault(at.professor_id, []).append(at)
+    ucs_por_prof = {pid: _ucs_do_professor(ats) for pid, ats in atuacoes.items()}
+
+    disps: dict[int, list[DisponibilidadeDetalhada]] = {}
+    for d in (await db.execute(select(DisponibilidadeDetalhada).where(and_(
+        DisponibilidadeDetalhada.professor_id.in_(prof_ids),
+        DisponibilidadeDetalhada.tipo_disponibilidade.in_(["Disponível", "Preferencial"]),
+    )))).scalars().all():
+        disps.setdefault(d.professor_id, []).append(d)
+
+    # Agenda futura de cada professor: data → [(início, fim)] em minutos
+    agenda: dict[int, dict[date, list[tuple[int, int]]]] = {}
+    res_ag = await db.execute(
+        select(Aula.professor_id, Aula.data, Aula.horario_inicio, Aula.horario_fim).where(and_(
+            Aula.professor_id.in_(prof_ids),
+            Aula.data >= hoje,
+            Aula.status.notin_(_STATUS_FORA),
+        ))
+    )
+    for pid, d, ini, fim in res_ag.all():
+        agenda.setdefault(pid, {}).setdefault(d, []).append((_minutos(ini), _minutos(fim)))
+
+    def disponivel(pid: int, aulas: list[Aula]) -> bool:
+        lista = disps.get(pid)
+        if not lista:
+            return True  # sem cadastro de disponibilidade = disponível
+        return all(
+            any(d.dia_semana == a.data.weekday() and d.horario_inicio <= a.horario_inicio
+                and d.horario_fim >= a.horario_fim for d in lista)
+            for a in aulas
+        )
+
+    resultado = []
+    for (ev_id, uc_id), aulas in abertas.items():
+        ev = eventos[ev_id]
+        uc = ucs_map.get(uc_id)
+        nome_uc = uc.nome if uc else f"UC {uc_id}"
+        chave = _norm_uc(nome_uc)
+        inicio = min(a.data for a in aulas)
+        fim = max(a.data for a in aulas)
+        semanas = max(1.0, ((fim - inicio).days + 1) / 7)
+        horas_uc = sum((_minutos(a.horario_fim) - _minutos(a.horario_inicio)) / 60 for a in aulas)
+
+        candidatos = []
+        for p in profs:
+            if chave not in ucs_por_prof.get(p.id, set()):
+                continue
+            dias = agenda.get(p.id, {})
+            choques = sum(
+                1 for a in aulas
+                if any(i < _minutos(a.horario_fim) and _minutos(a.horario_inicio) < f
+                       for i, f in dias.get(a.data, []))
+            )
+            horas_periodo = sum((f - i) / 60 for d, slots in dias.items() if inicio <= d <= fim for i, f in slots)
+            contratadas = (p.horas_contratadas or 0) * semanas
+            candidatos.append({
+                "professor_id": p.id,
+                "nome": p.nome,
+                "tipo": p.tipo,
+                "foto": p.foto,
+                "disponivel": disponivel(p.id, aulas),
+                "choques": choques,
+                "horas_periodo": round(horas_periodo, 1),
+                "carga_pct": round(horas_periodo / contratadas * 100, 1) if contratadas else None,
+                "carga_pct_depois": round((horas_periodo + horas_uc) / contratadas * 100, 1) if contratadas else None,
+            })
+        # Melhores primeiro: sem choque, disponível, Mensalista > Horista > RPA/PJ, menos carga
+        candidatos.sort(key=lambda c: (
+            c["choques"] > 0, not c["disponivel"], _tipo_custo(c["tipo"]),
+            c["carga_pct"] if c["carga_pct"] is not None else 999,
+        ))
+
+        resultado.append({
+            "evento_id": ev_id,
+            "evento_nome": ev.nome_turma,
+            "uc_id": uc_id,
+            "uc_nome": nome_uc,
+            "num_aulas": len(aulas),
+            "horas": round(horas_uc, 1),
+            "data_inicio": inicio.isoformat(),
+            "data_fim": fim.isoformat(),
+            "candidatos": candidatos,
+        })
+
+    resultado.sort(key=lambda u: (u["data_inicio"], u["evento_nome"] or "", u["uc_nome"]))
+    return {"ucs": resultado}
+
+
+async def atribuir_professor_uc(db: AsyncSession, evento_id: int, uc_id: int, professor_id: int,
+                                hoje: Optional[date] = None) -> int:
+    """Põe o professor nas aulas futuras sem professor da UC. Retorna quantas aulas mudaram."""
+    if hoje is None:
+        hoje = date.today()
+    prof = (await db.execute(select(Professor).where(Professor.id == professor_id))).scalar_one_or_none()
+    if not prof:
+        raise ValueError("Professor não encontrado")
+    res = await db.execute(select(Aula).where(and_(
+        Aula.evento_id == evento_id,
+        Aula.unidade_curricular_id == uc_id,
+        Aula.professor_id.is_(None),
+        Aula.data >= hoje,
+        Aula.status.notin_(_STATUS_FORA + ["Realizada"]),
+    )))
+    total = 0
+    for aula in res.scalars().all():
+        aula.professor_id = prof.id
+        aula.tipo_contrato = prof.tipo
+        total += 1
+    return total

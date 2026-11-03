@@ -11,11 +11,12 @@ import { AulaEditDrawer } from "@/components/aula-edit-drawer";
 import { AulaManualModal } from "@/components/aula-manual-modal";
 import { PlanejamentoModal, UCParaPlanejar } from "@/components/planejamento-modal";
 import { OtimizacaoGlobalModal } from "@/components/otimizacao-global-modal";
+import { UcsSemProfessorModal } from "@/components/ucs-sem-professor-modal";
 import { ConfirmSenhaModal } from "@/components/confirm-senha-modal";
 import { toast } from "sonner";
 import {
   Search, Plus, Upload, Loader2, RefreshCw, ArrowUp, ArrowDown, X, Download,
-  ChevronLeft, ChevronRight, Trash2, BarChart3, ArrowRightLeft,
+  ChevronLeft, ChevronRight, Trash2, BarChart3, ArrowRightLeft, UserSearch,
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 import { downloadModeloBancoDados } from "@/lib/templates";
@@ -1088,6 +1089,7 @@ export default function EventosPage() {
   const [reverterConfirm, setReverterConfirm] = useState(false);
   const [ofertaPickerAberto, setOfertaPickerAberto] = useState(false);
   const [otimizacaoAberta, setOtimizacaoAberta] = useState(false);
+  const [ucsSemProfAberta, setUcsSemProfAberta] = useState(false);
   const [ucsOrdenadas, setUcsOrdenadas] = useState<UCItem[]>([]);
   const [modoSuperior, setModoSuperior] = useState(false);
   const [cliparSemestre, setCliparSemestre] = useState(false);
@@ -1654,6 +1656,14 @@ export default function EventosPage() {
             >
               <BarChart3 className="h-4 w-4" />
               Otimizar Regência
+            </button>
+            <button
+              onClick={() => setUcsSemProfAberta(true)}
+              className="btn-secondary flex items-center gap-1.5"
+              title="Lista as UCs com aulas futuras sem professor e quem tem a UC cadastrada"
+            >
+              <UserSearch className="h-4 w-4" />
+              UCs sem Professor
             </button>
             <button onClick={() => setOfertaPickerAberto(true)} className="btn-primary flex items-center gap-1.5">
               <Plus className="h-4 w-4" />
@@ -3015,6 +3025,13 @@ export default function EventosPage() {
         <OtimizacaoGlobalModal
           onClose={() => setOtimizacaoAberta(false)}
           onConfirmado={() => qc.invalidateQueries({ queryKey: ["cronograma"] })}
+        />
+      )}
+
+      {ucsSemProfAberta && (
+        <UcsSemProfessorModal
+          onClose={() => setUcsSemProfAberta(false)}
+          onAtribuido={() => qc.invalidateQueries({ queryKey: ["cronograma"] })}
         />
       )}
 

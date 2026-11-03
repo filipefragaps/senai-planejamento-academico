@@ -2209,6 +2209,37 @@ async def confirmar_otimizacao_global_endpoint(
         raise HTTPException(status_code=500, detail=f"Erro ao confirmar: {str(e)}")
 
 
+class AtribuirUcRequest(BaseModel):
+    evento_id: int
+    uc_id: int
+    professor_id: int
+
+
+@router.get("/ucs-sem-professor")
+async def listar_ucs_sem_professor(
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """UCs com aulas futuras sem professor e os professores que têm a UC cadastrada (candidatos)."""
+    from app.services.otimizacao_global_service import ucs_sem_professor
+    return await ucs_sem_professor(db)
+
+
+@router.post("/ucs-sem-professor/atribuir")
+async def atribuir_uc_sem_professor(
+    body: AtribuirUcRequest,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """Põe o professor escolhido nas aulas futuras sem professor da UC."""
+    from app.services.otimizacao_global_service import atribuir_professor_uc
+    try:
+        total = await atribuir_professor_uc(db, body.evento_id, body.uc_id, body.professor_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"ok": True, "aulas_atualizadas": total}
+
+
 # ── Apagar Planejamento ────────────────────────────────────────────────────────
 
 @router.get("/totem")
