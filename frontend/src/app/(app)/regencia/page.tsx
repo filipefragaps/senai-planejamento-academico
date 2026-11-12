@@ -5,13 +5,14 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { professoresApi, planejamentoApi, relatoriosApi, diarioApi, pontoApi, downloadBlob } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { RegenciaBar } from "@/components/regencia-bar";
+import { RegenciaFinanceiroModal } from "@/components/regencia-financeiro";
 import { StatusBadge } from "@/components/status-badge";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { getCurrentUser } from "@/lib/auth";
 import {
   Search, X, TrendingUp, CheckCircle, AlertTriangle, Zap, Download, ArrowUpDown, Info, ChevronDown, EyeOff, Eye,
-  Upload, BookOpen, CalendarCheck, FileQuestion, Clock, Maximize2,
+  Upload, BookOpen, CalendarCheck, FileQuestion, Clock, Maximize2, Coins,
 } from "lucide-react";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -1490,6 +1491,7 @@ export default function RegenciaPage() {
 
   const [areaGrafico, setAreaGrafico] = useState<string>("");
   const [chartExpandido, setChartExpandido] = useState(false);
+  const [financeiroAberto, setFinanceiroAberto] = useState(false);
   const { data: geralMensalRealArea = [] } = useQuery<{ mes: string; media_percentual: number; n_professores: number }[]>({
     queryKey: ["regencia-mensal-real-pagina-area", regDataInicio, regDataFim, areaGrafico],
     queryFn: () => professoresApi.regenciaMensalReal({ data_inicio: regDataInicio, data_fim: regDataFim, area: areaGrafico }),
@@ -1811,6 +1813,13 @@ export default function RegenciaPage() {
                 >
                   <Maximize2 className="h-3.5 w-3.5" />
                 </button>
+                <button
+                  onClick={() => setFinanceiroAberto(true)}
+                  title="Ganho financeiro com a melhoria da regência e oportunidade até a meta"
+                  className="flex items-center gap-1 rounded border border-green-200 bg-green-50 px-2 py-0.5 text-xs font-medium text-green-800 hover:bg-green-100 transition-colors"
+                >
+                  <Coins className="h-3.5 w-3.5" /> Impacto financeiro
+                </button>
               </div>
               <div className="flex items-center gap-3 flex-wrap">
                 {/* Filtro de área do gráfico */}
@@ -1924,6 +1933,10 @@ export default function RegenciaPage() {
       </div>
 
       {/* Modal — gráfico ampliado */}
+      {financeiroAberto && (
+        <RegenciaFinanceiroModal dataInicio={regDataInicio} dataFim={regDataFim} area={areaGrafico}
+                                 modalidade={modalidadeGrafico.join(",")} onClose={() => setFinanceiroAberto(false)} />
+      )}
       {chartExpandido && geralMensalPagina.length >= 2 && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
