@@ -2,7 +2,9 @@
 Impacto financeiro da regência — professores do quadro (Mensalista e Horista), mês a mês.
 
 Capacidade × produção, por professor e mês:
-- Capacidade = carga semanal contratada (cadastro do professor) × semanas úteis do mês.
+- Capacidade = carga semanal contratada (cadastro do professor) ÷ 5 × dias úteis do mês. Dias úteis = segunda a
+  sexta, menos as datas não letivas do Calendário Acadêmico (feriados, recessos): sem isso, um mês com mais
+  feriados pareceria ter regência menor.
 - Produção = horas efetivamente realizadas: diário de classe (turmas simultâneas contam uma vez) ou, sem
   diário, as aulas com status Realizada. Aulas apenas agendadas não contam.
 - A produção de cada professor é limitada à capacidade dele (o excedente do horista é pago à parte e não
@@ -29,8 +31,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.atuacao import Atuacao
 from app.models.aula import Aula
+from app.models.calendario import CalendarioAcademico
 from app.models.professor import Professor
-from app.services.regencia import META_REGENCIA_MENSALISTA, _horas_aula, _semanas_uteis
+from app.services.regencia import META_REGENCIA_MENSALISTA, _horas_aula
 
 QUADRO = ["Mensalista", "Horista"]
 
@@ -65,11 +68,32 @@ async def _professores(db: AsyncSession, area: Optional[str], modalidade: Option
     return profs
 
 
-def _capacidade(profs, meses) -> dict[tuple[int, str], float]:
-    """Carga semanal contratada × semanas úteis, por (professor, mês)."""
+async def dias_uteis(db: AsyncSession, meses) -> dict[str, int]:
+    """Dias úteis de cada mês: segunda a sexta, menos as datas não letivas do Calendário Acadêmico."""
+    if not meses:
+        return {}
+    nao_letivos = set((await db.execute(select(CalendarioAcademico.data).where(
+        CalendarioAcademico.letivo == False,  # noqa: E712
+        CalendarioAcademico.data >= meses[0][1], CalendarioAcademico.data <= meses[-1][2],
+    ))).scalars().all())
     saida = {}
     for k, m_ini, m_fim in meses:
-        semanas = _semanas_uteis(m_ini, m_fim)
+        n, d = 0, m_ini
+        while d <= m_fim:
+            if d.weekday() < 5 and d not in nao_letivos:
+                n += 1
+            d += timedelta(days=1)
+        saida[k] = n
+    return saida
+
+
+def _capacidade(profs, meses, dias: dict[str, int]) -> dict[tuple[int, str], float]:
+    """Carga semanal contratada ÷ 5 × dias úteis, por (professor, mês)."""
+    saida = {}
+    for k, m_ini, m_fim in meses:
+        semanas = dias.get(k, 0) / 5
+        if semanas <= 0:
+            continue
         for pid, p in profs.items():
             if (p.horas_contratadas or 0) > 0:
                 saida[(pid, k)] = p.horas_contratadas * semanas
@@ -127,7 +151,8 @@ async def calcular(db: AsyncSession, ini: date, fim: date, valor_hora: float, ho
     if fonte == "auto":
         fonte = "diario" if len(meses_diario) >= 2 else "aulas"
     producao = diario if fonte == "diario" else await _producao_aulas(db, profs, meses, ini_ref, fim)
-    capacidade = _capacidade(profs, meses)
+    dias = await dias_uteis(db, meses)
+    capacidade = _capacidade(profs, meses, dias)
     base = {chave: (producao.get(chave, 0.0), cap) for chave, cap in capacidade.items()}
     todas = [k for k, _, _ in meses if fonte == "aulas" or k in meses_diario]
     ref = f"{ini_ref.year}-{ini_ref.month:02d}"
@@ -182,7 +207,7 @@ async def calcular(db: AsyncSession, ini: date, fim: date, valor_hora: float, ho
                 "ociosas_horas": round(cap - h, 1), "oportunidade_total_reais": round((cap - h) * valor(pid), 2),
             }
         linhas_mes.append({
-            "mes": k, "mes_anterior": anterior, "n_professores": n,
+            "mes": k, "mes_anterior": anterior, "n_professores": n, "dias_uteis": dias.get(k, 0),
             "horas_sala": round(h_tot, 1), "capacidade": round(cap_tot, 1),
             "regencia_pct": media(k) or 0.0,
             "regencia_anterior_pct": media(anterior),
@@ -212,6 +237,7 @@ async def calcular(db: AsyncSession, ini: date, fim: date, valor_hora: float, ho
             "oportunidade_horas": m["faltante_horas"] if m else 0.0,
             "oportunidade_reais": m["oportunidade_reais"] if m else 0.0,
             "capacidade": m["capacidade"] if m else 0.0,
+            "dias_uteis": m["dias_uteis"] if m else 0,
             "producao": m["horas_sala"] if m else 0.0,
             "ociosas_horas": m["ociosas_horas"] if m else 0.0,
             "oportunidade_total_reais": m["oportunidade_total_reais"] if m else 0.0,

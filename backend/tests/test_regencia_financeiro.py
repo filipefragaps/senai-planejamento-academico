@@ -4,6 +4,7 @@ from datetime import date, time, timedelta
 import pytest
 
 from app.models.aula import Aula
+from app.models.calendario import CalendarioAcademico
 from app.models.evento import Evento
 from app.models.professor import Professor
 from tests.test_crm import _hdr, _usuario
@@ -73,3 +74,28 @@ async def test_ganho_e_oportunidade_planejada(client, db_session):
     # Analisar março
     d = (await client.get("/api/v1/regencia-financeiro", headers=_hdr(admin), params={**params, "mes": "2026-03"})).json()
     assert d["resumo"]["ganho_reais"] == 2800 and d["resumo"]["regencia_anterior"] == 0
+
+
+async def test_capacidade_desconta_feriados_do_calendario(client, db_session):
+    """Mês com feriado não pode parecer ter regência menor: o feriado sai da capacidade."""
+    admin = await _usuario(db_session, "admin", "Admin")
+    area = "Área teste feriado"
+    ana = Professor(nome="Ana", tipo="Mensalista", horas_contratadas=20, ativo=True, area=area)
+    ev = Evento(nome_turma="T", disciplina="X", carga_horaria_total=10, horas_semanais=4, data_inicio=date(2026, 9, 1),
+                data_fim=date(2026, 10, 31), dias_semana=[0], status="Ativo", horario_inicio=time(8), horario_fim=time(12))
+    db_session.add_all([ana, ev, CalendarioAcademico(data=date(2026, 10, 12), tipo="Feriado", letivo=False),
+                        CalendarioAcademico(data=date(2026, 10, 28), tipo="Recesso", letivo=False)])
+    await db_session.flush()
+    # Mesma produção diária nos dois meses: 3,5h por dia útil
+    for mes in (9, 10):
+        for d in _dias_uteis(2026, mes):
+            if d not in (date(2026, 10, 12), date(2026, 10, 28)):
+                db_session.add(Aula(evento_id=ev.id, professor_id=ana.id, data=d, horario_inicio=time(8),
+                                    horario_fim=time(11, 30), status="Realizada"))
+    await db_session.flush()
+    d = (await client.get("/api/v1/regencia-financeiro", headers=_hdr(admin), params={
+        "data_inicio": "2026-09-01", "data_fim": "2026-10-31", "valor_hora": 50, "area": area})).json()
+    set_, out = d["meses"]
+    assert (set_["dias_uteis"], out["dias_uteis"]) == (22, 20)
+    assert out["capacidade"] == 80 and out["regencia_pct"] == set_["regencia_pct"] == 87.5
+    assert out["ganho_horas"] == 0

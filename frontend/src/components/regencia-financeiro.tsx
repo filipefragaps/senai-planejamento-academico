@@ -123,6 +123,7 @@ function Simulador({ meses, mes, valorHora }: { meses: any[]; mes: string; valor
             <thead>
               <tr className="text-left text-[10px] uppercase tracking-wide text-gray-500">
                 <th className="py-1 pr-2">Mês</th>
+                <th className="px-2 py-1 text-right">Dias úteis</th>
                 <th className="px-2 py-1 text-right">Regência realizada</th>
                 <th className="px-2 py-1 text-right">Horas realizadas</th>
                 <th className="px-2 py-1 text-right">Horas a {pct(alvo)}</th>
@@ -135,6 +136,7 @@ function Simulador({ meses, mes, valorHora }: { meses: any[]; mes: string; valor
                 return (
                   <tr key={x.mes} className="border-t">
                     <td className="py-1.5 pr-2">{rotuloMes(x.mes)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{x.dias_uteis}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{pct(x.regencia_pct)}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{hrs(x.horas_sala)}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{hrs(v.horasAlvo)}</td>
@@ -143,7 +145,7 @@ function Simulador({ meses, mes, valorHora }: { meses: any[]; mes: string; valor
                 );
               })}
               <tr className="border-t font-semibold">
-                <td className="py-1.5 pr-2" colSpan={4}>Total do período a {pct(alvo)}</td>
+                <td className="py-1.5 pr-2" colSpan={5}>Total do período a {pct(alvo)}</td>
                 <td className={cn("py-1.5 pl-2 text-right tabular-nums", totalExtra > 0 ? "text-green-700" : totalExtra < 0 ? "text-red-700" : "")}>{reais(totalExtra)}</td>
               </tr>
             </tbody>
@@ -210,8 +212,8 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
       [],
     ];
     const meses = XLSX.utils.aoa_to_sheet([...cab,
-      ["Mês", "Professores", "Horas em sala", "Capacidade (h)", "Regência mês anterior %", "Regência %", "Ganho vs mês anterior (h)", "Ganho vs mês anterior (R$)", "Horas sem aula (capacidade − produção)", "Oportunidade total (R$)", "Horas até a meta", "Oportunidade até a meta (R$)"],
-      ...data.meses.map((m: any) => [rotuloMes(m.mes), m.n_professores, m.horas_sala, m.capacidade, m.regencia_anterior_pct ?? "", m.regencia_pct,
+      ["Mês", "Dias úteis", "Professores", "Horas em sala", "Capacidade (h)", "Regência mês anterior %", "Regência %", "Ganho vs mês anterior (h)", "Ganho vs mês anterior (R$)", "Horas sem aula (capacidade − produção)", "Oportunidade total (R$)", "Horas até a meta", "Oportunidade até a meta (R$)"],
+      ...data.meses.map((m: any) => [rotuloMes(m.mes), m.dias_uteis, m.n_professores, m.horas_sala, m.capacidade, m.regencia_anterior_pct ?? "", m.regencia_pct,
         m.ganho_horas ?? "", m.ganho_reais ?? "", m.ociosas_horas, m.oportunidade_total_reais, m.faltante_horas, m.oportunidade_reais]),
     ]);
     const profs = XLSX.utils.aoa_to_sheet([...cab,
@@ -297,7 +299,7 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
                   {(r.ganho_reais ?? 0) >= 0
                     ? <> Essa melhoria gerou <b>{reais(r.ganho_reais)}</b> ({hrs(r.ganho_horas)} a mais em sala).</>
                     : <> A queda representou <b>{reais(Math.abs(r.ganho_reais))}</b> ({hrs(Math.abs(r.ganho_horas))} a menos em sala).</>}
-                  {" "}Dos <b>{hrs(r.capacidade)}</b> disponíveis, <b>{hrs(r.producao)}</b> viraram produção: ainda há <b>{reais(r.oportunidade_total_reais)}</b> de
+                  {" "}Dos <b>{hrs(r.capacidade)}</b> disponíveis ({r.dias_uteis} dias úteis, já sem feriados e recessos do calendário), <b>{hrs(r.producao)}</b> viraram produção: ainda há <b>{reais(r.oportunidade_total_reais)}</b> de
                   oportunidade ({hrs(r.ociosas_horas)} sem aula), dos quais {reais(r.oportunidade_reais)} só para atingir a meta.
                 </div>
               ) : (
@@ -384,7 +386,7 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
               <div className="flex gap-2 rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
                 <Info className="mt-0.5 h-4 w-4 shrink-0" />
                 <div className="space-y-1">
-                  <p><b>Como é calculado.</b> Capacidade = carga semanal contratada × semanas úteis do mês. Produção = horas efetivamente realizadas ({data.fonte === "diario" ? "diário de classe" : "aulas com status Realizada"}); aulas só agendadas não contam. Só professores do quadro (mensalistas e horistas); a produção de cada um é limitada à sua capacidade. Regência = média simples de produção ÷ capacidade.</p>
+                  <p><b>Como é calculado.</b> Capacidade = carga semanal contratada ÷ 5 × dias úteis do mês (segunda a sexta, menos feriados e recessos do Calendário Acadêmico). Produção = horas efetivamente realizadas ({data.fonte === "diario" ? "diário de classe" : "aulas com status Realizada"}); aulas só agendadas não contam. Só professores do quadro (mensalistas e horistas); a produção de cada um é limitada à sua capacidade. Regência = média simples de produção ÷ capacidade.</p>
                   <p><b>Impacto da melhoria</b> = produção do mês − (regência do professor no mês anterior × capacidade do mês), × valor da hora. Compara pela taxa, então meses com mais ou menos dias úteis não distorcem. Fica negativo se a regência cair.</p>
                   <p><b>Oportunidade total</b> = (capacidade − produção) × valor da hora: horas disponíveis que não viraram aula. <b>Até a meta</b> = só o que falta para 70% (mensalista) ou 100% (horista). Não é custo a cortar — o salário do mensalista é fixo.</p>
                 </div>
