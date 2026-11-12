@@ -3,7 +3,8 @@ Impacto financeiro da regência — professores do quadro (Mensalista e Horista)
 
 Mesma base do gráfico geral da aba Regência:
 - Real: horas do diário ÷ horas do ponto (a capacidade é o tempo efetivamente pago/batido).
-- Planejada: horas de aula (agendadas + realizadas, slot contado uma vez) ÷ carga contratada × semanas úteis.
+- Aulas realizadas: horas das aulas com status Realizada (slot contado uma vez) ÷ carga contratada × semanas
+  úteis. Só a produção efetiva conta: aulas agendadas ficam de fora.
 As horas em sala de cada professor são limitadas à capacidade do mês (o excedente do horista é pago à parte e
 não é economia). Não usa dados da Não Regência.
 
@@ -64,9 +65,9 @@ async def _professores(db: AsyncSession, area: Optional[str], modalidade: Option
 
 
 async def _base_planejada(db, profs, meses, ini, fim) -> dict[tuple[int, str], tuple[float, float]]:
-    """(horas em sala, capacidade) por (professor, mês) a partir das aulas e da carga contratada."""
+    """(horas em sala, capacidade) por (professor, mês): só aulas realizadas, sobre a carga contratada."""
     aulas = (await db.execute(select(Aula).where(
-        Aula.status.in_(["Realizada", "Agendada"]), Aula.data >= ini, Aula.data <= fim,
+        Aula.status == "Realizada", Aula.data >= ini, Aula.data <= fim,
         Aula.professor_id.in_(list(profs) or [0]),
     ))).scalars().all()
     vistos: dict[tuple, set] = defaultdict(set)

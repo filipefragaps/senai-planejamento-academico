@@ -85,7 +85,7 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
     const cab = [
       ["Impacto financeiro da regência — professores do quadro"],
       [`Período: ${dataInicio.split("-").reverse().join("/")} a ${dataFim.split("-").reverse().join("/")}`],
-      [`Valor médio da hora: ${reais(data.valor_hora)} · Fonte: ${data.fonte === "real" ? "Regência Real (diário ÷ ponto)" : "Regência planejada (aulas ÷ carga contratada)"} · Cada mês comparado com o mês anterior`],
+      [`Valor médio da hora: ${reais(data.valor_hora)} · Fonte: ${data.fonte === "real" ? "Regência Real (diário ÷ ponto)" : "Aulas realizadas ÷ carga contratada"} · Cada mês comparado com o mês anterior`],
       [`Filtros: ${[area && `área ${area}`, modalidade && `modalidade ${modalidade}`].filter(Boolean).join("; ") || "nenhum"}`],
       [],
     ];
@@ -141,7 +141,7 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
               <select className="rounded border px-2 py-1.5 text-sm" value={fonte} onChange={(e) => setFonte(e.target.value)}>
                 <option value="auto">Automática (como o gráfico)</option>
                 <option value="real">Real (diário ÷ ponto)</option>
-                <option value="planejada">Planejada (aulas ÷ carga contratada)</option>
+                <option value="planejada">Aulas realizadas ÷ carga contratada</option>
               </select>
             </label>
             <label className="space-y-1">
@@ -258,7 +258,7 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
               <div className="flex gap-2 rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
                 <Info className="mt-0.5 h-4 w-4 shrink-0" />
                 <div className="space-y-1">
-                  <p><b>Como é calculado.</b> Fonte: {data.fonte === "real" ? "Regência Real — horas do diário ÷ horas do ponto" : "Regência planejada — horas de aula ÷ carga contratada × semanas úteis"}. Só professores do quadro (mensalistas e horistas); horas acima da carga do mês não contam.</p>
+                  <p><b>Como é calculado.</b> Fonte: {data.fonte === "real" ? "Regência Real — horas do diário ÷ horas do ponto" : "aulas com status Realizada ÷ carga contratada × semanas úteis"}. Só a produção efetiva conta (aulas agendadas ficam de fora) e só professores do quadro (mensalistas e horistas); horas acima da carga do mês não contam.</p>
                   <p><b>Impacto da melhoria</b> = horas em sala no mês − (regência do professor no mês anterior × capacidade do mês), × valor da hora. Compara pela taxa, então meses com mais ou menos dias úteis não distorcem. Fica negativo se a regência cair.</p>
                   <p><b>Oportunidade</b> = horas que faltam para a meta (70% mensalista, 100% horista) × valor da hora: capacidade já paga que ainda pode ir para a sala. Não é custo a cortar — o salário do mensalista é fixo.</p>
                 </div>

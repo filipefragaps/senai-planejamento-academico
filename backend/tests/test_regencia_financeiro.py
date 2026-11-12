@@ -31,7 +31,8 @@ async def test_ganho_e_oportunidade_planejada(client, db_session):
 
     def aulas(prof, ano, mes, n):
         for d in list(_dias_uteis(ano, mes))[:n]:
-            db_session.add(Aula(evento_id=ev.id, professor_id=prof.id, data=d, horario_inicio=time(8), horario_fim=time(12)))
+            db_session.add(Aula(evento_id=ev.id, professor_id=prof.id, data=d, horario_inicio=time(8), horario_fim=time(12),
+                                status="Realizada"))
 
     # Março e abril/2026 têm 22 dias úteis → 4,4 semanas
     aulas(ana, 2026, 3, 3)    # 12h de 88h
@@ -39,6 +40,9 @@ async def test_ganho_e_oportunidade_planejada(client, db_session):
     aulas(bia, 2026, 3, 13)   # 52h, limitado a 44h (excedente do horista não é economia)
     aulas(bia, 2026, 4, 11)   # 44h
     aulas(externo, 2026, 4, 10)  # fora do quadro: ignorado
+    # Agendada (não realizada) não é produção: ignorada
+    db_session.add(Aula(evento_id=ev.id, professor_id=ana.id, data=date(2026, 4, 30), horario_inicio=time(14),
+                        horario_fim=time(18), status="Agendada"))
     await db_session.flush()
 
     params = {"data_inicio": "2026-03-01", "data_fim": "2026-04-30", "valor_hora": 50, "area": AREA}
