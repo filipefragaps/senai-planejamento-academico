@@ -54,7 +54,7 @@ async def _cenario(client, db):
     p1 = await projeto("Laboratório de IoT", "2026-03-16", "2026-06-30", responsavel_id=resp.id)  # começa no meio do mês
     p2 = await projeto("Plano de curso", "2026-03-02", "2026-06-30")
     p3 = await projeto("Extensão", "2026-03-01", "2026-03-31")
-    assert p1["codigo"] == f"NR-2026-{p1['id']:04d}"
+    assert p1["codigo"] == f"NR-2026-{p1['id']:04d}" and p1["nome"] == "LABORATÓRIO DE IOT"
 
     # Vários professores numa só chamada; carga muda de 10h para 20h/sem a partir de 30/03
     r = await client.post(f"{URL}/projetos/{p1['id']}/vinculos", headers=H, json={"vinculos": [

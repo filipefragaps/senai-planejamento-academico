@@ -4,7 +4,7 @@ from datetime import date, datetime
 from sqlalchemy import (
     JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, func,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 from app.database import Base
 
 
@@ -59,6 +59,10 @@ class NrProjeto(Base):
     vinculos: Mapped[list["NrVinculo"]] = relationship("NrVinculo", back_populates="projeto", cascade="all, delete-orphan")
     entregas: Mapped[list["NrEntrega"]] = relationship("NrEntrega", back_populates="projeto", cascade="all, delete-orphan",
                                                       order_by="NrEntrega.prazo")
+
+    @validates("nome")
+    def _nome_maiusculo(self, _, valor):
+        return valor.strip().upper() if valor else valor
 
 
 class NrVinculo(Base):

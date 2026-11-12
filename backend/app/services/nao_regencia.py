@@ -132,6 +132,10 @@ def dias_semana(cfg: dict) -> set[int]:
 
 
 async def garantir_categorias(db: AsyncSession) -> None:
+    # Nomes de projeto em maiúsculas (inclusive os cadastrados antes dessa regra)
+    for p in (await db.execute(select(NrProjeto))).scalars().all():
+        if p.nome and p.nome != p.nome.upper():
+            p.nome = p.nome
     if (await db.execute(select(func.count(NrCategoria.id)))).scalar():
         return
     db.add_all([NrCategoria(nome=n, ordem=i) for i, n in enumerate(CATEGORIAS_PADRAO)])

@@ -86,7 +86,7 @@ export function ProjetoForm({ projeto, opcoes, onClose, onSalvo }: {
     >
       <div className="grid gap-3 md:grid-cols-2">
         <Campo label="Nome" obrigatorio className="md:col-span-2">
-          <input className="input" value={f.nome} onChange={(e) => set("nome", e.target.value)} autoFocus placeholder="Ex.: Estruturação do laboratório de IoT" />
+          <input className="input" value={f.nome} onChange={(e) => set("nome", e.target.value.toUpperCase())} autoFocus placeholder="EX.: ESTRUTURAÇÃO DO LABORATÓRIO DE IOT" />
         </Campo>
         <Campo label="Categoria">
           <select className="input" value={f.categoria_id} onChange={(e) => set("categoria_id", e.target.value ? +e.target.value : "")}>
