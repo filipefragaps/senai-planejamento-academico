@@ -15,7 +15,7 @@ router = APIRouter(prefix="/regencia-financeiro", tags=["Regência — impacto f
 @router.get("")
 async def impacto_financeiro(
     data_inicio: date, data_fim: date, valor_hora: float,
-    fonte: str = "auto", mes_base: Optional[str] = None,
+    fonte: str = "auto", mes: Optional[str] = None,
     area: Optional[str] = None, modalidade: Optional[str] = None,
     db: AsyncSession = Depends(get_db), _=Depends(get_current_user),
 ):
@@ -25,4 +25,4 @@ async def impacto_financeiro(
         raise HTTPException(400, "O valor da hora não pode ser negativo")
     if fonte not in ("auto", "real", "planejada"):
         raise HTTPException(400, "Fonte inválida")
-    return await svc.calcular(db, data_inicio, data_fim, valor_hora, date.today(), fonte, mes_base, area, modalidade)
+    return await svc.calcular(db, data_inicio, data_fim, valor_hora, date.today(), fonte, mes, area, modalidade)

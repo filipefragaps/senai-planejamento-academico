@@ -1,4 +1,4 @@
-"""Impacto financeiro da regência: ganho pela taxa do mês-base e oportunidade até a meta."""
+"""Impacto financeiro da regência: ganho de cada mês sobre o anterior e oportunidade até a meta."""
 from datetime import date, time, timedelta
 
 import pytest
@@ -41,24 +41,26 @@ async def test_ganho_e_oportunidade_planejada(client, db_session):
     aulas(externo, 2026, 4, 10)  # fora do quadro: ignorado
     await db_session.flush()
 
-    r = await client.get("/api/v1/regencia-financeiro", headers=_hdr(admin), params={
-        "data_inicio": "2026-03-01", "data_fim": "2026-04-30", "valor_hora": 50, "area": AREA})
+    params = {"data_inicio": "2026-03-01", "data_fim": "2026-04-30", "valor_hora": 50, "area": AREA}
+    r = await client.get("/api/v1/regencia-financeiro", headers=_hdr(admin), params=params)
     assert r.status_code == 200, r.text
     d = r.json()
-    assert d["fonte"] == "planejada" and d["mes_base"] == "2026-03"
-    mar, abr = d["meses"]
-    assert mar["ganho_reais"] is None and mar["n_professores"] == 2
-    # Ganho: Ana 40 − 12/88×88 = 28h; Bia 44 − 1×44 = 0
+    assert d["fonte"] == "planejada" and d["mes"] == "2026-04"
+    mar, abr = d["meses"]  # fevereiro é só a referência do primeiro mês
+    assert (mar["mes_anterior"], abr["mes_anterior"]) == ("2026-02", "2026-03")
+    # Março × fevereiro (sem aulas): Ana 12h + Bia 44h (limitado à carga)
+    assert mar["ganho_horas"] == 56 and mar["ganho_reais"] == 2800
+    # Abril × março: Ana 40 − 12/88×88 = 28h; Bia segue em 100% → 0
     assert abr["ganho_horas"] == 28 and abr["ganho_reais"] == 1400
-    # Oportunidade: Ana 70%×88 − h; Bia já na meta de 100%
-    assert mar["faltante_horas"] == pytest.approx(49.6) and mar["oportunidade_reais"] == pytest.approx(2480)
-    assert abr["faltante_horas"] == pytest.approx(21.6) and abr["oportunidade_reais"] == pytest.approx(1080)
+    # Oportunidade até a meta: Ana 70%×88 − h; Bia já na meta de 100%
+    assert mar["oportunidade_reais"] == pytest.approx(2480) and abr["faltante_horas"] == pytest.approx(21.6)
     res = d["resumo"]
-    assert res["ganho_reais"] == 1400 and res["reducao_oportunidade_reais"] == pytest.approx(1400)
-    assert res["regencia_base"] == round(56 / 132 * 100, 1) and res["regencia_ultimo"] == round(84 / 132 * 100, 1)
-    assert [p["nome"] for p in d["professores"]] == ["Ana", "Bia"]
+    assert (res["mes"], res["mes_anterior"], res["ganho_reais"]) == ("2026-04", "2026-03", 1400)
+    assert res["regencia_anterior"] == round(56 / 132 * 100, 1) and res["regencia"] == round(84 / 132 * 100, 1)
+    assert res["oportunidade_reais"] == pytest.approx(1080) and res["ganho_periodo_reais"] == 4200
+    profs = {p["nome"]: p for p in d["professores"]}
+    assert set(profs) == {"Ana", "Bia"} and profs["Ana"]["ganho_reais"] == 1400
 
-    # Mês-base escolhido: abril → sem ganho depois dele
-    d = (await client.get("/api/v1/regencia-financeiro", headers=_hdr(admin), params={
-        "data_inicio": "2026-03-01", "data_fim": "2026-04-30", "valor_hora": 50, "mes_base": "2026-04", "area": AREA})).json()
-    assert d["mes_base"] == "2026-04" and d["resumo"]["ganho_reais"] == 0
+    # Analisar março
+    d = (await client.get("/api/v1/regencia-financeiro", headers=_hdr(admin), params={**params, "mes": "2026-03"})).json()
+    assert d["resumo"]["ganho_reais"] == 2800 and d["resumo"]["regencia_anterior"] == 0

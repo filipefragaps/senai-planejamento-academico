@@ -45,7 +45,7 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
   const [texto, setTexto] = useState("");
   const [valorHora, setValorHora] = useState<number | null>(null);
   const [fonte, setFonte] = useState("auto");
-  const [mesBase, setMesBase] = useState("");
+  const [mes, setMes] = useState("");
 
   useEffect(() => {
     try {
@@ -68,11 +68,11 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
   }
 
   const { data, isFetching, isError } = useQuery({
-    queryKey: ["regencia-financeiro", dataInicio, dataFim, valorHora, fonte, mesBase, area, modalidade],
+    queryKey: ["regencia-financeiro", dataInicio, dataFim, valorHora, fonte, mes, area, modalidade],
     queryFn: () => api.get("/regencia-financeiro", {
       params: {
         data_inicio: dataInicio, data_fim: dataFim, valor_hora: valorHora, fonte,
-        mes_base: mesBase || undefined, area: area || undefined, modalidade: modalidade || undefined,
+        mes: mes || undefined, area: area || undefined, modalidade: modalidade || undefined,
       },
     }).then((r) => r.data),
     enabled: valorHora != null,
@@ -85,19 +85,20 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
     const cab = [
       ["Impacto financeiro da regência — professores do quadro"],
       [`Período: ${dataInicio.split("-").reverse().join("/")} a ${dataFim.split("-").reverse().join("/")}`],
-      [`Valor médio da hora: ${reais(data.valor_hora)} · Fonte: ${data.fonte === "real" ? "Regência Real (diário ÷ ponto)" : "Regência planejada (aulas ÷ carga contratada)"} · Mês-base: ${data.mes_base ? rotuloMes(data.mes_base) : "—"}`],
+      [`Valor médio da hora: ${reais(data.valor_hora)} · Fonte: ${data.fonte === "real" ? "Regência Real (diário ÷ ponto)" : "Regência planejada (aulas ÷ carga contratada)"} · Cada mês comparado com o mês anterior`],
       [`Filtros: ${[area && `área ${area}`, modalidade && `modalidade ${modalidade}`].filter(Boolean).join("; ") || "nenhum"}`],
       [],
     ];
     const meses = XLSX.utils.aoa_to_sheet([...cab,
-      ["Mês", "Professores", "Horas em sala", "Capacidade (h)", "Regência %", "Horas até a meta", "Oportunidade (R$)", "Ganho vs mês-base (h)", "Ganho vs mês-base (R$)"],
-      ...data.meses.map((m: any) => [rotuloMes(m.mes) + (m.base ? " (base)" : ""), m.n_professores, m.horas_sala, m.capacidade, m.regencia_pct,
-        m.faltante_horas, m.oportunidade_reais, m.ganho_horas ?? "", m.ganho_reais ?? ""]),
+      ["Mês", "Professores", "Horas em sala", "Capacidade (h)", "Regência mês anterior %", "Regência %", "Ganho vs mês anterior (h)", "Ganho vs mês anterior (R$)", "Horas até a meta", "Oportunidade (R$)"],
+      ...data.meses.map((m: any) => [rotuloMes(m.mes), m.n_professores, m.horas_sala, m.capacidade, m.regencia_anterior_pct ?? "", m.regencia_pct,
+        m.ganho_horas ?? "", m.ganho_reais ?? "", m.faltante_horas, m.oportunidade_reais]),
     ]);
     const profs = XLSX.utils.aoa_to_sheet([...cab,
-      ["Professor", "Tipo", "Área", "Regência mês-base %", "Regência último mês %", "Meta %", "Ganho (h)", "Ganho (R$)", "Horas até a meta", "Oportunidade (R$)"],
-      ...data.professores.map((p: any) => [p.nome, p.tipo, p.area ?? "", p.regencia_base ?? "", p.regencia_ultimo ?? "", p.meta,
-        p.ganho_horas, p.ganho_reais, p.faltante_horas, p.oportunidade_reais]),
+      [`Mês analisado: ${data.mes ? rotuloMes(data.mes) : "—"}`],
+      ["Professor", "Tipo", "Área", "Regência mês anterior %", "Regência no mês %", "Meta %", "Ganho (h)", "Ganho (R$)", "Horas até a meta", "Oportunidade (R$)"],
+      ...data.professores.map((p: any) => [p.nome, p.tipo, p.area ?? "", p.regencia_anterior ?? "", p.regencia, p.meta,
+        p.ganho_horas ?? "", p.ganho_reais ?? "", p.faltante_horas, p.oportunidade_reais]),
     ]);
     XLSX.utils.book_append_sheet(wb, meses, "Por mês");
     XLSX.utils.book_append_sheet(wb, profs, "Por professor");
@@ -144,8 +145,8 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
               </select>
             </label>
             <label className="space-y-1">
-              <span className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Mês-base da comparação</span>
-              <select className="rounded border px-2 py-1.5 text-sm" value={mesBase || data?.mes_base || ""} onChange={(e) => setMesBase(e.target.value)}>
+              <span className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Mês analisado (× mês anterior)</span>
+              <select className="rounded border px-2 py-1.5 text-sm" value={mes || data?.mes || ""} onChange={(e) => setMes(e.target.value)}>
                 {(data?.meses_disponiveis ?? []).map((m: string) => <option key={m} value={m}>{rotuloMes(m)}</option>)}
               </select>
             </label>
@@ -168,36 +169,48 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
             <p className="rounded-lg border bg-white py-8 text-center text-sm text-gray-500">Sem dados de regência no período para os professores do quadro.</p>
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-                <Card icon={r.variacao_pp >= 0 ? TrendingUp : TrendingDown} titulo="Regência da equipe"
-                      valor={<>{pct(r.regencia_base)} → {pct(r.regencia_ultimo)}</>}
-                      detalhe={r.variacao_pp == null ? undefined : `${r.variacao_pp >= 0 ? "+" : ""}${r.variacao_pp.toLocaleString("pt-BR")} p.p. desde ${rotuloMes(data.mes_base)}`}
-                      tom={r.variacao_pp > 0 ? "verde" : r.variacao_pp < 0 ? "vermelho" : undefined} />
-                <Card icon={Coins} titulo="Ganho com a melhoria" valor={reais(r.ganho_reais)}
-                      detalhe={`${hrs(r.ganho_horas)} a mais em sala que no ritmo de ${rotuloMes(data.mes_base)}`}
-                      tom={r.ganho_reais > 0 ? "verde" : r.ganho_reais < 0 ? "vermelho" : undefined} />
-                <Card icon={Target} titulo="Oportunidade no último mês" valor={reais(r.oportunidade_ultimo_reais)}
-                      detalhe={`${hrs(r.oportunidade_ultimo_horas)} pagas que ainda podem ir para a sala até a meta`} tom="ambar" />
-                <Card icon={Target} titulo="Oportunidade no período" valor={reais(r.oportunidade_periodo_reais)}
-                      detalhe={`média de ${reais(r.oportunidade_media_reais)} por mês`} tom="ambar" />
-                <Card icon={TrendingDown} titulo="Redução da oportunidade" valor={reais(r.reducao_oportunidade_reais)}
-                      detalhe={`do mês-base para ${rotuloMes(data.meses[data.meses.length - 1].mes)}`}
-                      tom={r.reducao_oportunidade_reais > 0 ? "verde" : r.reducao_oportunidade_reais < 0 ? "vermelho" : undefined} />
+              {r.mes_anterior ? (
+                <div className={cn("rounded-lg border p-4 text-sm",
+                  (r.ganho_reais ?? 0) >= 0 ? "border-green-200 bg-green-50 text-green-900" : "border-red-200 bg-red-50 text-red-900")}>
+                  Em <b>{rotuloMes(r.mes)}</b>, a regência da equipe foi de <b>{pct(r.regencia_anterior)}</b> para <b>{pct(r.regencia)}</b> em relação
+                  a {rotuloMes(r.mes_anterior)} ({(r.variacao_pp ?? 0) >= 0 ? "+" : ""}{(r.variacao_pp ?? 0).toLocaleString("pt-BR")} p.p.).
+                  {(r.ganho_reais ?? 0) >= 0
+                    ? <> Essa melhoria gerou <b>{reais(r.ganho_reais)}</b> ({hrs(r.ganho_horas)} a mais em sala).</>
+                    : <> A queda representou <b>{reais(Math.abs(r.ganho_reais))}</b> ({hrs(Math.abs(r.ganho_horas))} a menos em sala).</>}
+                  {" "}Ainda há <b>{reais(r.oportunidade_reais)}</b> de oportunidade ({hrs(r.oportunidade_horas)} até a meta).
+                </div>
+              ) : (
+                <p className="rounded-lg border bg-white p-3 text-xs text-gray-500">Sem dados do mês anterior a {rotuloMes(r.mes)} para comparar.</p>
+              )}
+
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <Card icon={(r.variacao_pp ?? 0) >= 0 ? TrendingUp : TrendingDown} titulo={`Regência em ${rotuloMes(r.mes)}`}
+                      valor={pct(r.regencia)}
+                      detalhe={r.variacao_pp == null ? undefined : `${r.variacao_pp >= 0 ? "+" : ""}${r.variacao_pp.toLocaleString("pt-BR")} p.p. sobre ${rotuloMes(r.mes_anterior)} (${pct(r.regencia_anterior)})`}
+                      tom={(r.variacao_pp ?? 0) > 0 ? "verde" : (r.variacao_pp ?? 0) < 0 ? "vermelho" : undefined} />
+                <Card icon={Coins} titulo="Impacto da melhoria no mês" valor={reais(r.ganho_reais)}
+                      detalhe={r.ganho_horas == null ? undefined : `${hrs(r.ganho_horas)} em relação ao ritmo do mês anterior`}
+                      tom={(r.ganho_reais ?? 0) > 0 ? "verde" : (r.ganho_reais ?? 0) < 0 ? "vermelho" : undefined} />
+                <Card icon={Target} titulo="Oportunidade ainda disponível" valor={reais(r.oportunidade_reais)}
+                      detalhe={`${hrs(r.oportunidade_horas)} pagas que ainda podem ir para a sala até a meta`} tom="ambar" />
+                <Card icon={Coins} titulo="Impacto somado no período" valor={reais(r.ganho_periodo_reais)}
+                      detalhe={`soma das melhorias mês a mês (${hrs(r.ganho_periodo_horas)})`}
+                      tom={r.ganho_periodo_reais > 0 ? "verde" : r.ganho_periodo_reais < 0 ? "vermelho" : undefined} />
               </div>
 
               <div className="rounded-lg border bg-white p-4">
                 <h3 className="mb-1 text-sm font-semibold text-gray-800">Evolução mensal</h3>
-                <p className="mb-3 text-xs text-gray-500">Barras em reais (ganho em relação ao mês-base e oportunidade até a meta) e linha da regência da equipe.</p>
+                <p className="mb-3 text-xs text-gray-500">Barras em reais (impacto de cada mês sobre o anterior e oportunidade até a meta) e linha da regência da equipe.</p>
                 <div className="h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={data.meses.map((m: any) => ({ ...m, rotulo: rotuloMes(m.mes) + (m.base ? " (base)" : "") }))}>
+                    <ComposedChart data={data.meses.map((m: any) => ({ ...m, rotulo: rotuloMes(m.mes) }))}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="rotulo" tick={{ fontSize: 11 }} />
                       <YAxis yAxisId="r" tick={{ fontSize: 11 }} tickFormatter={(v) => `R$ ${(v / 1000).toLocaleString("pt-BR")}k`} width={70} />
                       <YAxis yAxisId="p" orientation="right" tick={{ fontSize: 11 }} unit="%" domain={[0, 100]} />
                       <Tooltip formatter={(v: any, n: any) => (n === "Regência" ? pct(v) : reais(v))} />
                       <Legend wrapperStyle={{ fontSize: 11 }} />
-                      <Bar yAxisId="r" dataKey="ganho_reais" name="Ganho vs mês-base" fill="#16a34a" />
+                      <Bar yAxisId="r" dataKey="ganho_reais" name="Impacto vs mês anterior" fill="#16a34a" />
                       <Bar yAxisId="r" dataKey="oportunidade_reais" name="Oportunidade até a meta" fill="#f59e0b" />
                       <Line yAxisId="p" type="monotone" dataKey="regencia_pct" name="Regência" stroke="hsl(218 100% 28%)" strokeWidth={2} dot />
                     </ComposedChart>
@@ -206,14 +219,14 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
               </div>
 
               <div className="overflow-hidden rounded-lg border bg-white">
-                <h3 className="border-b px-4 py-3 text-sm font-semibold text-gray-800">Por professor</h3>
+                <h3 className="border-b px-4 py-3 text-sm font-semibold text-gray-800">Por professor — {rotuloMes(data.mes)} × {r.mes_anterior ? rotuloMes(r.mes_anterior) : "mês anterior"}</h3>
                 <div className="max-h-[360px] overflow-auto">
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 bg-gray-50">
                       <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500">
                         <th className="px-4 py-2">Professor</th>
-                        <th className="px-3 py-2 text-right">Regência base</th>
-                        <th className="px-3 py-2 text-right">Último mês</th>
+                        <th className="px-3 py-2 text-right">Mês anterior</th>
+                        <th className="px-3 py-2 text-right">No mês</th>
                         <th className="px-3 py-2 text-right">Meta</th>
                         <th className="px-3 py-2 text-right">Ganho</th>
                         <th className="px-3 py-2 text-right">Horas até a meta</th>
@@ -227,11 +240,11 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
                             <p className="font-medium text-gray-900">{p.nome}</p>
                             <p className="text-[11px] text-gray-500">{p.tipo}{p.area && ` · ${p.area}`}</p>
                           </td>
-                          <td className="px-3 py-2 text-right tabular-nums">{pct(p.regencia_base)}</td>
-                          <td className="px-3 py-2 text-right tabular-nums">{pct(p.regencia_ultimo)}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{pct(p.regencia_anterior)}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{pct(p.regencia)}</td>
                           <td className="px-3 py-2 text-right tabular-nums text-gray-500">{p.meta}%</td>
                           <td className={cn("px-3 py-2 text-right tabular-nums", p.ganho_reais > 0 ? "text-green-700" : p.ganho_reais < 0 ? "text-red-700" : "text-gray-500")}>
-                            {p.regencia_base == null ? <span className="text-[11px] text-gray-400">sem mês-base</span> : <>{reais(p.ganho_reais)}<p className="text-[11px]">{hrs(p.ganho_horas)}</p></>}
+                            {p.ganho_reais == null ? <span className="text-[11px] text-gray-400">sem mês anterior</span> : <>{reais(p.ganho_reais)}<p className="text-[11px]">{hrs(p.ganho_horas)}</p></>}
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums">{hrs(p.faltante_horas)}</td>
                           <td className="px-4 py-2 text-right font-medium tabular-nums text-amber-700">{reais(p.oportunidade_reais)}</td>
@@ -246,7 +259,7 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
                 <Info className="mt-0.5 h-4 w-4 shrink-0" />
                 <div className="space-y-1">
                   <p><b>Como é calculado.</b> Fonte: {data.fonte === "real" ? "Regência Real — horas do diário ÷ horas do ponto" : "Regência planejada — horas de aula ÷ carga contratada × semanas úteis"}. Só professores do quadro (mensalistas e horistas); horas acima da carga do mês não contam.</p>
-                  <p><b>Ganho com a melhoria</b> = horas em sala − (regência do professor no mês-base × capacidade do mês), × valor da hora. Compara pela taxa, então meses com mais ou menos dias úteis não distorcem. Pode ficar negativo se a regência cair.</p>
+                  <p><b>Impacto da melhoria</b> = horas em sala no mês − (regência do professor no mês anterior × capacidade do mês), × valor da hora. Compara pela taxa, então meses com mais ou menos dias úteis não distorcem. Fica negativo se a regência cair.</p>
                   <p><b>Oportunidade</b> = horas que faltam para a meta (70% mensalista, 100% horista) × valor da hora: capacidade já paga que ainda pode ir para a sala. Não é custo a cortar — o salário do mensalista é fixo.</p>
                 </div>
               </div>
