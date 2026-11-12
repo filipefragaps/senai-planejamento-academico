@@ -353,7 +353,10 @@ async def calcular(db: AsyncSession, ini: date, fim: date, f: Filtros, esc: Esco
 
     vinculos = (await db.execute(
         select(NrVinculo).options(selectinload(NrVinculo.periodos),
+                                  # recarrega o projeto inteiro: populate_existing apagaria o que não viesse aqui
                                   selectinload(NrVinculo.projeto).selectinload(NrProjeto.entregas),
+                                  selectinload(NrVinculo.projeto).selectinload(NrProjeto.categoria),
+                                  selectinload(NrVinculo.projeto).selectinload(NrProjeto.responsavel),
                                   selectinload(NrVinculo.professor))
         .where(NrVinculo.projeto_id.in_(list(proj_ok) or [0])).execution_options(populate_existing=True)
     )).scalars().all()

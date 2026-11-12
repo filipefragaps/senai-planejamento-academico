@@ -227,3 +227,40 @@ async def test_permissoes_e_relatorios(client, db_session):
     assert r.status_code == 200
     dash = (await client.get(f"{URL}/dashboard", headers=HA, params=MARCO)).json()
     assert _linha(dash, c["ana"].id)["reserva_planejamento"] == 12.8
+
+
+async def test_dashboard_com_vinculo_em_projeto_com_categoria(client, db_session):
+    """Regressão: com sessão nova (como em produção), o painel quebrava ao montar projeto com categoria e vínculo."""
+    admin = await _usuario(db_session, "admin", "Admin")
+    prof = Professor(nome="Ana", tipo="Mensalista", horas_contratadas=40, ativo=True)
+    db_session.add(prof)
+    await db_session.flush()
+    H = _hdr(admin)
+    cat = (await client.get(f"{URL}/opcoes", headers=H)).json()["categorias"][0]["id"]
+    p = (await client.post(f"{URL}/projetos", headers=H, json={
+        "nome": "Teste", "situacao": "planejado", "data_inicio": "2026-08-10", "data_fim_prevista": "2026-12-15",
+        "responsavel_id": admin.id, "categoria_id": cat})).json()
+    r = await client.post(f"{URL}/projetos/{p['id']}/vinculos", headers=H,
+                          json={"vinculos": [{"professor_id": prof.id, "horas_semanais": 4}]})
+    assert r.status_code == 200
+    db_session.expunge_all()
+    for caminho in ("dashboard", "vinculos", "projetos"):
+        r = await client.get(f"{URL}/{caminho}", headers=H, params={"ini": "2026-08-01", "fim": "2026-10-31"})
+        assert r.status_code == 200, (caminho, r.text)
+    dash = (await client.get(f"{URL}/dashboard", headers=H, params={"ini": "2026-08-01", "fim": "2026-10-31"})).json()
+    assert dash["indicadores"]["horas_propostas"] == 48
+    v = (await client.get(f"{URL}/vinculos", headers=H)).json()[0]
+    db_session.expunge_all()
+    assert (await client.post(f"{URL}/vinculos/{v['id']}/aprovar", headers=H, json={})).status_code == 200
+    db_session.expunge_all()
+    e = await client.post(f"{URL}/projetos/{p['id']}/entregas", headers=H, json={"titulo": "Relatório", "responsaveis": [prof.id]})
+    assert e.status_code == 200
+    db_session.expunge_all()
+    periodo = {"ini": "2026-08-01", "fim": "2026-10-31"}
+    for caminho, params in ((f"projetos/{p['id']}", {}), ("entregas", {}), ("apontamentos", {}), ("historico", {}),
+                            (f"professores/{prof.id}/visao", periodo), ("dashboard", periodo),
+                            ("relatorios/exportar", {**periodo, "formato": "pdf"}),
+                            ("disponibilidade", {**periodo, "professor_ids": str(prof.id), "horas_semanais": 2})):
+        db_session.expunge_all()
+        r = await client.get(f"{URL}/{caminho}", headers=H, params=params)
+        assert r.status_code == 200, (caminho, r.text[:300])
