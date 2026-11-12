@@ -9,6 +9,8 @@ As horas em sala de cada professor são limitadas à capacidade do mês (o exced
 não é economia). Não usa dados da Não Regência.
 
 Por professor e mês (valor da hora = média informada; a estrutura aceita valor por professor no futuro):
+- Regência exibida = média simples dos percentuais dos professores (a mesma do gráfico geral). O valor em
+  reais é sempre calculado pelas horas de cada professor.
 - Oportunidade = max(0, meta × capacidade − horas em sala) × valor da hora — capacidade paga que ainda pode
   ir para a sala até a meta (70% mensalista, 100% horista, as mesmas metas da aba Regência).
 - Ganho do mês = (horas em sala − regência do mês anterior × capacidade do mês) × valor da hora — horas a
@@ -54,7 +56,7 @@ def meses_do_periodo(ini: date, fim: date, hoje: date) -> list[tuple[str, date, 
 async def _professores(db: AsyncSession, area: Optional[str], modalidade: Optional[str]) -> dict[int, Professor]:
     profs = {p.id: p for p in (await db.execute(
         select(Professor).where(Professor.ativo == True, Professor.tipo.in_(QUADRO))  # noqa: E712
-    )).scalars().all() if (p.horas_contratadas or 0) > 0}
+    )).scalars().all()}
     if area:
         profs = {i: p for i, p in profs.items() if p.area == area}
     if modalidade:
@@ -136,12 +138,18 @@ async def calcular(db: AsyncSession, ini: date, fim: date, valor_hora: float, ho
         h, cap = base.get((pid, k), (0.0, 0.0)) if k else (0.0, 0.0)
         return min(h, cap) / cap if cap > 0 else None
 
+    def media(k: Optional[str]) -> Optional[float]:
+        """Regência do mês como no gráfico geral: média simples dos percentuais (cada professor pesa igual)."""
+        ts = [t for t in (taxa(pid, k) for pid in profs) if t is not None]
+        return round(sum(ts) / len(ts) * 100, 1) if ts else None
+
     linhas_mes = []
     por_prof: dict[tuple[int, str], dict] = {}
-    for idx, k in enumerate(chaves):
+    for k in chaves:
         anterior = todas[todas.index(k) - 1] if todas.index(k) > 0 else None
-        h_tot = cap_tot = falt = opp = ganho_h = ganho_r = h_ant = cap_ant = 0.0
+        h_tot = cap_tot = falt = opp = ganho_h = ganho_r = 0.0
         n = 0
+        sim = []
         for pid, p in profs.items():
             h, cap = base.get((pid, k), (0.0, 0.0))
             if cap <= 0:
@@ -151,6 +159,7 @@ async def calcular(db: AsyncSession, ini: date, fim: date, valor_hora: float, ho
             f = max(0.0, _meta(p.tipo) * cap - h)
             t_ant = taxa(pid, anterior)
             g = (h - t_ant * cap) if t_ant is not None else None
+            sim.append([round(h, 2), round(cap, 2), _meta(p.tipo)])
             h_tot += h
             cap_tot += cap
             falt += f
@@ -158,9 +167,6 @@ async def calcular(db: AsyncSession, ini: date, fim: date, valor_hora: float, ho
             if g is not None:
                 ganho_h += g
                 ganho_r += g * valor(pid)
-                ha, ca = base.get((pid, anterior))
-                h_ant += min(ha, ca)
-                cap_ant += ca
             por_prof[(pid, k)] = {
                 "professor_id": pid, "nome": p.nome, "tipo": p.tipo, "area": p.area,
                 "regencia_anterior": round(t_ant * 100, 1) if t_ant is not None else None,
@@ -172,8 +178,10 @@ async def calcular(db: AsyncSession, ini: date, fim: date, valor_hora: float, ho
         linhas_mes.append({
             "mes": k, "mes_anterior": anterior, "n_professores": n,
             "horas_sala": round(h_tot, 1), "capacidade": round(cap_tot, 1),
-            "regencia_pct": round(h_tot / cap_tot * 100, 1) if cap_tot else 0.0,
-            "regencia_anterior_pct": round(h_ant / cap_ant * 100, 1) if cap_ant else None,
+            "regencia_pct": media(k) or 0.0,
+            "regencia_anterior_pct": media(anterior),
+            "regencia_ponderada_pct": round(h_tot / cap_tot * 100, 1) if cap_tot else 0.0,
+            "sim": sim,  # [horas em sala, capacidade, meta] por professor — base do simulador
             "faltante_horas": round(falt, 1), "oportunidade_reais": round(opp, 2),
             "ganho_horas": round(ganho_h, 1) if anterior else None,
             "ganho_reais": round(ganho_r, 2) if anterior else None,

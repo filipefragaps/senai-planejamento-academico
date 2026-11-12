@@ -45,13 +45,34 @@ function Simulador({ meses, mes, valorHora }: { meses: any[]; mes: string; valor
   const m = meses.find((x) => x.mes === mes) ?? meses[meses.length - 1];
   if (!m) return null;
   const sim = (x: any) => {
-    const horasAlvo = (alvo / 100) * x.capacidade;
+    // Regência por professor; a média simples (como no gráfico) é levada ao alvo.
+    // Acima da média atual: sobe primeiro quem está mais abaixo (piso comum). Abaixo: reduz todos na proporção.
+    const profs: [number, number, number][] = x.sim ?? [];
+    const taxas = profs.map(([h, cap]) => h / cap);
+    const n = taxas.length || 1;
+    const mediaAtual = taxas.reduce((a, t) => a + t, 0) / n;
+    const objetivo = alvo / 100;
+    let novas: number[];
+    if (objetivo >= mediaAtual) {
+      let lo = 0, hi = 1;
+      for (let i = 0; i < 40; i++) {
+        const meio = (lo + hi) / 2;
+        const med = taxas.reduce((a, t) => a + Math.max(t, meio), 0) / n;
+        if (med < objetivo) lo = meio; else hi = meio;
+      }
+      novas = taxas.map((t) => Math.max(t, hi));
+    } else {
+      const f = mediaAtual > 0 ? objetivo / mediaAtual : 0;
+      novas = taxas.map((t) => t * f);
+    }
+    const horasAlvo = profs.reduce((a, [, cap], i) => a + novas[i] * cap, 0);
     const extra = horasAlvo - x.horas_sala;
-    const vsAnterior = x.regencia_anterior_pct == null ? null : ((alvo - x.regencia_anterior_pct) / 100) * x.capacidade;
+    const restante = profs.reduce((a, [, cap, meta], i) => a + Math.max(0, meta * cap - novas[i] * cap), 0);
     return {
       horasAlvo, extra, reais: extra * valorHora,
-      vsAnteriorH: vsAnterior, vsAnteriorR: vsAnterior == null ? null : vsAnterior * valorHora,
-      oportunidadeRestante: Math.max(0, x.faltante_horas - Math.max(0, extra)),
+      vsAnteriorH: x.ganho_horas == null ? null : x.ganho_horas + extra,
+      vsAnteriorR: x.ganho_reais == null ? null : x.ganho_reais + extra * valorHora,
+      oportunidadeRestante: restante,
     };
   };
   const s0 = sim(m);
@@ -61,7 +82,7 @@ function Simulador({ meses, mes, valorHora }: { meses: any[]; mes: string; valor
       <div className="mb-3 flex flex-wrap items-end gap-3">
         <div className="mr-auto">
           <h3 className="flex items-center gap-1.5 text-sm font-semibold text-gray-800"><Calculator className="h-4 w-4 text-indigo-600" /> Simular regência</h3>
-          <p className="text-xs text-gray-500">E se a regência da equipe fosse outra? Mesma capacidade e valor da hora do mês, só muda o percentual.</p>
+          <p className="text-xs text-gray-500">E se a regência da equipe (média, como no gráfico) fosse outra? Sobe primeiro quem está mais abaixo; capacidade e valor da hora do mês.</p>
         </div>
         <div className="flex items-center gap-1">
           {[70, 75, 80, 85, 90].map((v) => (
@@ -92,7 +113,7 @@ function Simulador({ meses, mes, valorHora }: { meses: any[]; mes: string; valor
               detalhe={s0.vsAnteriorH == null ? "sem dados do mês anterior" : `se tivesse saído de ${pct(m.regencia_anterior_pct)} para ${pct(alvo)}`}
               tom={(s0.vsAnteriorR ?? 0) > 0 ? "verde" : (s0.vsAnteriorR ?? 0) < 0 ? "vermelho" : undefined} />
         <Card icon={Target} titulo="Oportunidade que restaria" valor={reais(s0.oportunidadeRestante * valorHora)}
-              detalhe={`≈ ${hrs(s0.oportunidadeRestante)} até a meta (estimativa)`} tom="ambar" />
+              detalhe={`${hrs(s0.oportunidadeRestante)} até a meta de cada professor`} tom="ambar" />
       </div>
 
       {meses.length > 1 && (
@@ -129,8 +150,8 @@ function Simulador({ meses, mes, valorHora }: { meses: any[]; mes: string; valor
         </div>
       )}
       <p className="mt-2 text-[11px] text-gray-400">
-        Regência da equipe = horas realizadas ÷ capacidade somada dos professores do quadro. A oportunidade restante é uma estimativa: a meta é
-        individual (70% mensalista, 100% horista) e a simulação distribui as horas pela equipe.
+        Regência da equipe = média simples dos percentuais dos professores do quadro (a mesma do gráfico geral). Para chegar ao percentual
+        simulado, os professores mais abaixo sobem primeiro até um piso comum; quem já está acima não muda. Os valores em reais seguem as horas de cada um.
       </p>
     </div>
   );
@@ -358,7 +379,7 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
               <div className="flex gap-2 rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
                 <Info className="mt-0.5 h-4 w-4 shrink-0" />
                 <div className="space-y-1">
-                  <p><b>Como é calculado.</b> Fonte: {data.fonte === "real" ? "Regência Real — horas do diário ÷ horas do ponto" : "aulas com status Realizada ÷ carga contratada × semanas úteis"}. Só a produção efetiva conta (aulas agendadas ficam de fora) e só professores do quadro (mensalistas e horistas); horas acima da carga do mês não contam.</p>
+                  <p><b>Como é calculado.</b> Fonte: {data.fonte === "real" ? "Regência Real — horas do diário ÷ horas do ponto" : "aulas com status Realizada ÷ carga contratada × semanas úteis"}. Só a produção efetiva conta (aulas agendadas ficam de fora) e só professores do quadro (mensalistas e horistas); horas acima da carga do mês não contam. A regência mostrada é a média simples dos professores, a mesma do gráfico geral; os reais seguem as horas de cada professor.</p>
                   <p><b>Impacto da melhoria</b> = horas em sala no mês − (regência do professor no mês anterior × capacidade do mês), × valor da hora. Compara pela taxa, então meses com mais ou menos dias úteis não distorcem. Fica negativo se a regência cair.</p>
                   <p><b>Oportunidade</b> = horas que faltam para a meta (70% mensalista, 100% horista) × valor da hora: capacidade já paga que ainda pode ir para a sala. Não é custo a cortar — o salário do mensalista é fixo.</p>
                 </div>

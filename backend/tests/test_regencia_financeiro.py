@@ -60,7 +60,9 @@ async def test_ganho_e_oportunidade_planejada(client, db_session):
     assert mar["oportunidade_reais"] == pytest.approx(2480) and abr["faltante_horas"] == pytest.approx(21.6)
     res = d["resumo"]
     assert (res["mes"], res["mes_anterior"], res["ganho_reais"]) == ("2026-04", "2026-03", 1400)
-    assert res["regencia_anterior"] == round(56 / 132 * 100, 1) and res["regencia"] == round(84 / 132 * 100, 1)
+    # Regência exibida = média simples, como o gráfico: março (12/88 + 44/44)/2; abril (40/88 + 44/44)/2
+    assert res["regencia_anterior"] == round((12 / 88 + 1) / 2 * 100, 1) and res["regencia"] == round((40 / 88 + 1) / 2 * 100, 1)
+    assert abr["regencia_ponderada_pct"] == round(84 / 132 * 100, 1) and len(abr["sim"]) == 2
     assert res["oportunidade_reais"] == pytest.approx(1080) and res["ganho_periodo_reais"] == 4200
     profs = {p["nome"]: p for p in d["professores"]}
     assert set(profs) == {"Ana", "Bia"} and profs["Ana"]["ganho_reais"] == 1400
