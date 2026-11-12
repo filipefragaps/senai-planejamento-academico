@@ -38,42 +38,23 @@ function Card({ icon: Icon, titulo, valor, detalhe, tom }: {
   );
 }
 
-/** Simulação: e se a regência da equipe fosse X%? Usa as horas realizadas e a capacidade de cada mês. */
+/** Simulação: e se a regência geral (a do gráfico) fosse X%? Mesma capacidade de cada mês. */
 function Simulador({ meses, mes, valorHora }: { meses: any[]; mes: string; valorHora: number }) {
   const [alvoTxt, setAlvoTxt] = useState("80");
   const alvo = Math.min(100, Math.max(0, Number(alvoTxt.replace(",", ".")) || 0));
   const m = meses.find((x) => x.mes === mes) ?? meses[meses.length - 1];
   if (!m) return null;
   const sim = (x: any) => {
-    // Regência por professor; a média simples (como no gráfico) é levada ao alvo.
-    // Acima da média atual: sobe primeiro quem está mais abaixo (piso comum). Abaixo: reduz todos na proporção.
-    const profs: [number, number, number][] = x.sim ?? [];
-    const taxas = profs.map(([h, cap]) => h / cap);
-    const n = taxas.length || 1;
-    const mediaAtual = taxas.reduce((a, t) => a + t, 0) / n;
-    const objetivo = alvo / 100;
-    let novas: number[];
-    if (objetivo >= mediaAtual) {
-      let lo = 0, hi = 1;
-      for (let i = 0; i < 40; i++) {
-        const meio = (lo + hi) / 2;
-        const med = taxas.reduce((a, t) => a + Math.max(t, meio), 0) / n;
-        if (med < objetivo) lo = meio; else hi = meio;
-      }
-      novas = taxas.map((t) => Math.max(t, hi));
-    } else {
-      const f = mediaAtual > 0 ? objetivo / mediaAtual : 0;
-      novas = taxas.map((t) => t * f);
-    }
-    const horasAlvo = profs.reduce((a, [, cap], i) => a + novas[i] * cap, 0);
-    const extra = horasAlvo - x.horas_sala;
-    const restante = profs.reduce((a, [, cap, meta], i) => a + Math.max(0, meta * cap - novas[i] * cap), 0);
-    const ociosas = profs.reduce((a, [, cap], i) => a + (cap - novas[i] * cap), 0);
+    // Mesma regra do painel: regência do gráfico × capacidade (carga contratada nos dias úteis)
+    const r = x.regencia_pct / 100, alvoR = alvo / 100;
+    const horasAlvo = alvoR * x.capacidade;
+    const extra = (alvoR - r) * x.capacidade;
+    const vsAnt = x.regencia_anterior_pct == null ? null : (alvoR - x.regencia_anterior_pct / 100) * x.capacidade;
     return {
       horasAlvo, extra, reais: extra * valorHora,
-      vsAnteriorH: x.ganho_horas == null ? null : x.ganho_horas + extra,
-      vsAnteriorR: x.ganho_reais == null ? null : x.ganho_reais + extra * valorHora,
-      oportunidadeRestante: restante, ociosasRestantes: ociosas,
+      vsAnteriorH: vsAnt, vsAnteriorR: vsAnt == null ? null : vsAnt * valorHora,
+      ociosasRestantes: (1 - alvoR) * x.capacidade,
+      oportunidadeRestante: Math.max(0, 0.7 - alvoR) * x.capacidade,
     };
   };
   const s0 = sim(m);
@@ -83,7 +64,7 @@ function Simulador({ meses, mes, valorHora }: { meses: any[]; mes: string; valor
       <div className="mb-3 flex flex-wrap items-end gap-3">
         <div className="mr-auto">
           <h3 className="flex items-center gap-1.5 text-sm font-semibold text-gray-800"><Calculator className="h-4 w-4 text-indigo-600" /> Simular regência</h3>
-          <p className="text-xs text-gray-500">E se a regência da equipe (média dos professores) fosse outra? Sobe primeiro quem está mais abaixo; capacidade e valor da hora do mês.</p>
+          <p className="text-xs text-gray-500">E se a regência geral (a do gráfico) fosse outra? Mesma capacidade e valor da hora do mês, só muda o percentual.</p>
         </div>
         <div className="flex items-center gap-1">
           {[70, 75, 80, 85, 90].map((v) => (
@@ -153,9 +134,7 @@ function Simulador({ meses, mes, valorHora }: { meses: any[]; mes: string; valor
         </div>
       )}
       <p className="mt-2 text-[11px] text-gray-400">
-        Regência da equipe = média simples de produção ÷ carga contratada dos professores do quadro. Para chegar ao percentual
-        simulado, os professores mais abaixo sobem primeiro até um piso comum; quem já está acima não muda. Os valores em reais seguem as horas de cada um.
-      </p>
+        Regência = a mesma do gráfico geral. Horas = regência × capacidade (carga contratada nos dias úteis do mês).</p>
     </div>
   );
 }
@@ -166,7 +145,7 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
 }) {
   const [texto, setTexto] = useState("");
   const [valorHora, setValorHora] = useState<number | null>(null);
-  const [fonte, setFonte] = useState("auto");
+  const fonte = "auto";
   const [mes, setMes] = useState("");
 
   useEffect(() => {
@@ -207,7 +186,7 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
     const cab = [
       ["Impacto financeiro da regência — professores do quadro"],
       [`Período: ${dataInicio.split("-").reverse().join("/")} a ${dataFim.split("-").reverse().join("/")}`],
-      [`Valor médio da hora: ${reais(data.valor_hora)} · Capacidade: carga semanal contratada · Produção: ${data.fonte === "diario" ? "diário de classe" : "aulas realizadas"} · Cada mês comparado com o mês anterior`],
+      [`Valor médio da hora: ${reais(data.valor_hora)} · Regência: ${data.fonte === "planejada" ? "planejada" : "Regência Real"} (a mesma do gráfico geral) · Capacidade: carga semanal contratada nos dias úteis · Cada mês comparado com o mês anterior`],
       [`Filtros: ${[area && `área ${area}`, modalidade && `modalidade ${modalidade}`].filter(Boolean).join("; ") || "nenhum"}`],
       [],
     ];
@@ -258,14 +237,10 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
                        onKeyDown={(e) => e.key === "Enter" && aplicarValor()} />
               </div>
             </label>
-            <label className="space-y-1">
-              <span className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Produção (horas realizadas)</span>
-              <select className="rounded border px-2 py-1.5 text-sm" value={fonte} onChange={(e) => setFonte(e.target.value)}>
-                <option value="auto">Automática (diário, se houver)</option>
-                <option value="diario">Diário de classe</option>
-                <option value="aulas">Aulas com status Realizada</option>
-              </select>
-            </label>
+            <div className="space-y-1">
+              <span className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Regência</span>
+              <p className="py-1.5 text-sm text-gray-700">{data?.fonte === "planejada" ? "Regência planejada (como o gráfico)" : "Regência Real — a mesma do gráfico"}</p>
+            </div>
             <label className="space-y-1">
               <span className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Mês analisado (× mês anterior)</span>
               <select className="rounded border px-2 py-1.5 text-sm" value={mes || data?.mes || ""} onChange={(e) => setMes(e.target.value)}>
@@ -299,7 +274,7 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
                   {(r.ganho_reais ?? 0) >= 0
                     ? <> Essa melhoria gerou <b>{reais(r.ganho_reais)}</b> ({hrs(r.ganho_horas)} a mais em sala).</>
                     : <> A queda representou <b>{reais(Math.abs(r.ganho_reais))}</b> ({hrs(Math.abs(r.ganho_horas))} a menos em sala).</>}
-                  {" "}Dos <b>{hrs(r.capacidade)}</b> disponíveis ({r.dias_uteis} dias úteis, já sem feriados e recessos do calendário), <b>{hrs(r.producao)}</b> viraram produção: ainda há <b>{reais(r.oportunidade_total_reais)}</b> de
+                  {" "}Dos <b>{hrs(r.capacidade)}</b> disponíveis ({r.dias_uteis} dias úteis, já sem feriados e recessos do calendário), <b>{hrs(r.producao)}</b> são produção pela regência do mês: ainda há <b>{reais(r.oportunidade_total_reais)}</b> de
                   oportunidade ({hrs(r.ociosas_horas)} sem aula), dos quais {reais(r.oportunidade_reais)} só para atingir a meta.
                 </div>
               ) : (
@@ -386,9 +361,9 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
               <div className="flex gap-2 rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
                 <Info className="mt-0.5 h-4 w-4 shrink-0" />
                 <div className="space-y-1">
-                  <p><b>Como é calculado.</b> Capacidade = carga semanal contratada ÷ 5 × dias úteis do mês (segunda a sexta, menos feriados e recessos do Calendário Acadêmico). Produção = horas efetivamente realizadas ({data.fonte === "diario" ? "diário de classe" : "aulas com status Realizada"}); aulas só agendadas não contam. Só professores do quadro (mensalistas e horistas); a produção de cada um é limitada à sua capacidade. Regência = média simples de produção ÷ capacidade.</p>
-                  <p><b>Impacto da melhoria</b> = produção do mês − (regência do professor no mês anterior × capacidade do mês), × valor da hora. Compara pela taxa, então meses com mais ou menos dias úteis não distorcem. Fica negativo se a regência cair.</p>
-                  <p><b>Oportunidade total</b> = (capacidade − produção) × valor da hora: horas disponíveis que não viraram aula. <b>Até a meta</b> = só o que falta para 70% (mensalista) ou 100% (horista). Não é custo a cortar — o salário do mensalista é fixo.</p>
+                  <p><b>Como é calculado.</b> A regência é a mesma do gráfico geral ({data.fonte === "planejada" ? "planejada: aulas ÷ carga contratada" : "Regência Real: diário ÷ ponto"}, média dos professores do quadro). Capacidade = carga semanal contratada ÷ 5 × dias úteis do mês (segunda a sexta, menos feriados e recessos do Calendário Acadêmico). Produção = regência × capacidade.</p>
+                  <p><b>Impacto da melhoria</b> = (regência do mês − regência do mês anterior) × capacidade do mês × valor da hora. Fica negativo se a regência cair.</p>
+                  <p><b>Oportunidade total</b> = (100% − regência) × capacidade × valor da hora: horas disponíveis que não viraram aula. <b>Até a meta</b> = (70% − regência) × capacidade × valor da hora. Na tabela por professor vale a regência e a meta de cada um, por isso a soma pode diferir do total da equipe. Não é custo a cortar — o salário do mensalista é fixo.</p>
                 </div>
               </div>
             </>
