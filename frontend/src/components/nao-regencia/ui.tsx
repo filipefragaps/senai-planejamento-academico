@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { NrFiltros, NrOpcoes } from "@/lib/nao-regencia";
+import { NrFiltros, NrOpcoes, PERFIS_RESPONSAVEL } from "@/lib/nao-regencia";
 
 export function Selo({ cls, children, title }: { cls?: string; children: React.ReactNode; title?: string }) {
   return <span title={title} className={cn("badge border whitespace-nowrap", cls)}>{children}</span>;
@@ -146,7 +146,9 @@ export function BarraFiltros({ filtros, setFiltros, opcoes, campos = ["periodo",
         <Campo label="Responsável">
           <select className={sel} value={filtros.responsavel_id ?? ""} onChange={(e) => set("responsavel_id", e.target.value ? +e.target.value : "")}>
             <option value="">Todos</option>
-            {opcoes?.usuarios.map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
+            {opcoes?.usuarios.filter((u) => PERFIS_RESPONSAVEL.includes(u.perfil)).map((u) => (
+              <option key={u.id} value={u.id}>{u.nome.toUpperCase()}</option>
+            ))}
           </select>
         </Campo>
       )}

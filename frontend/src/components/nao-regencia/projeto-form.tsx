@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Loader2, Plus, Trash2 } from "lucide-react";
-import { NrOpcoes, erroApi, lerNumero, nrApi } from "@/lib/nao-regencia";
+import { NrOpcoes, PERFIS_RESPONSAVEL, erroApi, lerNumero, nrApi } from "@/lib/nao-regencia";
 import { Campo, Modal } from "./ui";
 
 type Form = {
@@ -98,7 +98,9 @@ export function ProjetoForm({ projeto, opcoes, onClose, onSalvo }: {
           <select className="input" value={f.responsavel_id} disabled={!!projeto && !opcoes.eu.gestao}
                   onChange={(e) => set("responsavel_id", e.target.value ? +e.target.value : "")}>
             <option value="">Selecione…</option>
-            {opcoes.usuarios.map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
+            {opcoes.usuarios.filter((u) => PERFIS_RESPONSAVEL.includes(u.perfil) || u.id === f.responsavel_id).map((u) => (
+              <option key={u.id} value={u.id}>{u.nome.toUpperCase()}</option>
+            ))}
           </select>
         </Campo>
         <Campo label="Situação">

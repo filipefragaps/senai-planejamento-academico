@@ -307,6 +307,18 @@ async def _anexos(db: AsyncSession, **filtro) -> list[dict]:
             for a in (await db.execute(q.order_by(NrAnexo.id))).all()]
 
 
+# Responsável pelo projeto: somente administradores e coordenadores
+PERFIS_RESPONSAVEL = {"admin", "coordenador"}
+
+
+async def _validar_responsavel(db: AsyncSession, responsavel_id: Optional[int]) -> None:
+    if not responsavel_id:
+        return
+    u = await db.get(Usuario, responsavel_id)
+    if not u or not u.ativo or u.perfil not in PERFIS_RESPONSAVEL:
+        raise HTTPException(400, "O responsável pelo projeto deve ser um administrador ou coordenador ativo")
+
+
 def _validar_projeto(p: NrProjeto) -> None:
     if not (p.nome or "").strip():
         raise HTTPException(400, "Informe o nome do projeto ou atividade")
@@ -466,6 +478,7 @@ async def criar_projeto(data: ProjetoIn, db: AsyncSession = Depends(get_db), use
     p.continuo = bool(p.continuo)
     p.criado_por_id = user.id
     _validar_projeto(p)
+    await _validar_responsavel(db, p.responsavel_id)
     if p.categoria_id and not await db.get(NrCategoria, p.categoria_id):
         raise HTTPException(400, "Categoria não encontrada")
     db.add(p)
@@ -511,6 +524,8 @@ async def editar_projeto(projeto_id: int, data: ProjetoIn, db: AsyncSession = De
     enviados = data.model_dump(exclude={"justificativa_alteracao", "encerrar_vinculos"}, exclude_unset=True)
     if "responsavel_id" in enviados and not svc.eh_gestao(user) and enviados["responsavel_id"] != p.responsavel_id:
         raise HTTPException(403, "Somente a gestão pode trocar o responsável pelo projeto")
+    if enviados.get("responsavel_id") and enviados["responsavel_id"] != p.responsavel_id:
+        await _validar_responsavel(db, enviados["responsavel_id"])
     situacao_antes = p.situacao
     nova = enviados.get("situacao") or situacao_antes
     if nova != situacao_antes and nova in svc.PROJETO_ENCERRADO | {"suspenso"} \

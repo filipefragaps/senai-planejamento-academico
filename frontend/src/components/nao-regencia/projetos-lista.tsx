@@ -60,7 +60,7 @@ export function ProjetosLista({ filtros, opcoes }: { filtros: NrFiltros; opcoes:
                 </p>
               </td>
               <td className="px-3 py-2 text-gray-600">{p.categoria || "—"}</td>
-              <td className="px-3 py-2 text-gray-600">{p.responsavel_nome || "—"}</td>
+              <td className="px-3 py-2 text-gray-600">{p.responsavel_nome?.toUpperCase() || "—"}</td>
               <td className="whitespace-nowrap px-3 py-2 text-gray-600">
                 {dataBR(p.data_inicio)} – {p.continuo ? "contínua" : dataBR(p.data_fim_prevista)}
                 {(p.prazo_vencido || p.revisao_vencida) && (

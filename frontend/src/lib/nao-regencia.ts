@@ -116,6 +116,9 @@ export type NrOpcoes = {
   eu: { id: number; nome: string; perfil: string; gestao: boolean; admin: boolean; professor_id: number | null; coordena: number[] };
 };
 
+/** Responsável pelo projeto: só administradores e coordenadores. */
+export const PERFIS_RESPONSAVEL = ["admin", "coordenador"];
+
 export const SITUACAO_PROJETO_STYLE: Record<string, string> = {
   rascunho: "bg-gray-100 text-gray-600 border-gray-300",
   planejado: "bg-sky-50 text-sky-700 border-sky-200",

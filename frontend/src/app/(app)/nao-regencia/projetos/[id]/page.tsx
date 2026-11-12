@@ -107,7 +107,7 @@ export default function ProjetoPage() {
                 <Selo cls="bg-red-50 text-red-700 border-red-200">{p.prazo_vencido ? "Término previsto vencido" : "Revisão da alocação vencida"}</Selo>
               )}
             </div>
-            <p className="mt-1 text-xs text-gray-500">Responsável: {p.responsavel_nome || "não definido"}</p>
+            <p className="mt-1 text-xs text-gray-500">Responsável: {p.responsavel_nome?.toUpperCase() || "não definido"}</p>
           </div>
           {gerir && <button className="btn-secondary gap-1.5" onClick={() => setEditar(true)}><Pencil className="h-4 w-4" /> Editar</button>}
         </div>

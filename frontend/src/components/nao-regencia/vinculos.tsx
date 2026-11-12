@@ -146,7 +146,7 @@ export function NovosVinculosModal({ projeto, opcoes, onClose }: { projeto: any;
               <Campo label="Gestor da aprovação" className="md:col-span-3">
                 <select className="input" value={l.gestor_id} onChange={(e) => setL(i, "gestor_id", e.target.value ? +e.target.value : "")}>
                   <option value="">Gestão (padrão)</option>
-                  {opcoes.usuarios.map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
+                  {opcoes.usuarios.map((u) => <option key={u.id} value={u.id}>{u.nome.toUpperCase()}</option>)}
                 </select>
               </Campo>
               <Campo label="Início" className="md:col-span-2"><input type="date" className="input" value={l.data_inicio} onChange={(e) => setL(i, "data_inicio", e.target.value)} /></Campo>
@@ -221,7 +221,7 @@ export function EditarVinculoModal({ vinculo, projeto, opcoes, onClose }: { vinc
         <Campo label="Gestor da aprovação" className="md:col-span-2">
           <select className="input" value={f.gestor_id} onChange={(e) => set("gestor_id", e.target.value ? +e.target.value : "")}>
             <option value="">Gestão (padrão)</option>
-            {opcoes.usuarios.map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
+            {opcoes.usuarios.map((u) => <option key={u.id} value={u.id}>{u.nome.toUpperCase()}</option>)}
           </select>
         </Campo>
         <Campo label="Entregas / responsabilidades" className="md:col-span-3"><input className="input" value={f.responsabilidades} onChange={(e) => set("responsabilidades", e.target.value)} /></Campo>

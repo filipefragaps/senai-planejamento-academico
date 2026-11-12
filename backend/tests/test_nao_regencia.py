@@ -17,7 +17,7 @@ async def _cenario(client, db):
     """Professora Ana, 40h/sem (8h/dia), em março/2026:
     22 dias úteis − feriado 20/03 = 21 → 168h; afastada 23–27/03 (5 dias) → 128h disponíveis."""
     admin = await _usuario(db, "admin", "Admin")
-    resp = await _usuario(db, "apoio", "Responsável P1")
+    resp = await _usuario(db, "coordenador", "Responsável P1")
     prof_user = await _usuario(db, "professor", "Ana Professora")
     ana = Professor(nome="Ana", tipo="Mensalista", horas_contratadas=40, ativo=True, email=prof_user.email.upper())
     bia = Professor(nome="Bia", tipo="Mensalista", horas_contratadas=20, ativo=True)
@@ -204,6 +204,9 @@ async def test_permissoes_e_relatorios(client, db_session):
     await db_session.flush()
     r = await client.post(f"{URL}/vinculos/{c['v3']}/aprovar", headers=_hdr(coord), json={})
     assert r.status_code == 403 and "própria" in r.json()["detail"]
+    # Responsável precisa ser administrador ou coordenador
+    r = await client.post(f"{URL}/projetos", headers=HA, json={"nome": "x", "responsavel_id": c["prof_user"].id})
+    assert r.status_code == 400 and "coordenador" in r.json()["detail"]
     # Professor não cria projeto
     assert (await client.post(f"{URL}/projetos", headers=_hdr(c["prof_user"]), json={"nome": "x"})).status_code == 403
     # Atividade contínua exige data de revisão
