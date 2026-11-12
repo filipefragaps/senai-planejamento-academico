@@ -6,7 +6,7 @@ import * as XLSX from "xlsx";
 import {
   Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { Coins, Download, Info, Loader2, Target, TrendingDown, TrendingUp, X } from "lucide-react";
+import { Calculator, Coins, Download, Info, Loader2, Target, TrendingDown, TrendingUp, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -34,6 +34,104 @@ function Card({ icon: Icon, titulo, valor, detalhe, tom }: {
       <p className="flex items-center gap-1.5 text-xs font-medium text-gray-500"><Icon className="h-3.5 w-3.5" /> {titulo}</p>
       <p className={cn("mt-1 text-xl font-bold tabular-nums", cor)}>{valor}</p>
       {detalhe && <p className="mt-0.5 text-[11px] text-gray-500">{detalhe}</p>}
+    </div>
+  );
+}
+
+/** Simulação: e se a regência da equipe fosse X%? Usa as horas realizadas e a capacidade de cada mês. */
+function Simulador({ meses, mes, valorHora }: { meses: any[]; mes: string; valorHora: number }) {
+  const [alvoTxt, setAlvoTxt] = useState("80");
+  const alvo = Math.min(100, Math.max(0, Number(alvoTxt.replace(",", ".")) || 0));
+  const m = meses.find((x) => x.mes === mes) ?? meses[meses.length - 1];
+  if (!m) return null;
+  const sim = (x: any) => {
+    const horasAlvo = (alvo / 100) * x.capacidade;
+    const extra = horasAlvo - x.horas_sala;
+    const vsAnterior = x.regencia_anterior_pct == null ? null : ((alvo - x.regencia_anterior_pct) / 100) * x.capacidade;
+    return {
+      horasAlvo, extra, reais: extra * valorHora,
+      vsAnteriorH: vsAnterior, vsAnteriorR: vsAnterior == null ? null : vsAnterior * valorHora,
+      oportunidadeRestante: Math.max(0, x.faltante_horas - Math.max(0, extra)),
+    };
+  };
+  const s0 = sim(m);
+  const totalExtra = meses.reduce((acc, x) => acc + sim(x).reais, 0);
+  return (
+    <div className="rounded-lg border border-indigo-200 bg-white p-4">
+      <div className="mb-3 flex flex-wrap items-end gap-3">
+        <div className="mr-auto">
+          <h3 className="flex items-center gap-1.5 text-sm font-semibold text-gray-800"><Calculator className="h-4 w-4 text-indigo-600" /> Simular regência</h3>
+          <p className="text-xs text-gray-500">E se a regência da equipe fosse outra? Mesma capacidade e valor da hora do mês, só muda o percentual.</p>
+        </div>
+        <div className="flex items-center gap-1">
+          {[70, 75, 80, 85, 90].map((v) => (
+            <button key={v} onClick={() => setAlvoTxt(String(v))}
+                    className={cn("rounded border px-2 py-1 text-xs", alvo === v ? "border-indigo-600 bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50")}>
+              {v}%
+            </button>
+          ))}
+        </div>
+        <label className="space-y-1">
+          <span className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Regência simulada</span>
+          <div className="relative">
+            <input className="w-24 rounded border py-1.5 pl-2 pr-7 text-right text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                   inputMode="decimal" value={alvoTxt} onChange={(e) => setAlvoTxt(e.target.value)} />
+            <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+          </div>
+        </label>
+      </div>
+      <input type="range" min={0} max={100} step={1} value={alvo} onChange={(e) => setAlvoTxt(e.target.value)} className="mb-4 w-full accent-indigo-600" />
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Card icon={Calculator} titulo={`Em ${rotuloMes(m.mes)}, a ${pct(alvo)}`} valor={hrs(s0.horasAlvo)}
+              detalhe={`em sala, contra ${hrs(m.horas_sala)} realizadas (${pct(m.regencia_pct)})`} />
+        <Card icon={Coins} titulo="Diferença sobre o realizado" valor={reais(s0.reais)}
+              detalhe={`${s0.extra >= 0 ? "+" : ""}${hrs(s0.extra)} no mês`} tom={s0.reais > 0 ? "verde" : s0.reais < 0 ? "vermelho" : undefined} />
+        <Card icon={TrendingUp} titulo={`Impacto sobre ${m.mes_anterior ? rotuloMes(m.mes_anterior) : "o mês anterior"}`}
+              valor={reais(s0.vsAnteriorR)}
+              detalhe={s0.vsAnteriorH == null ? "sem dados do mês anterior" : `se tivesse saído de ${pct(m.regencia_anterior_pct)} para ${pct(alvo)}`}
+              tom={(s0.vsAnteriorR ?? 0) > 0 ? "verde" : (s0.vsAnteriorR ?? 0) < 0 ? "vermelho" : undefined} />
+        <Card icon={Target} titulo="Oportunidade que restaria" valor={reais(s0.oportunidadeRestante * valorHora)}
+              detalhe={`≈ ${hrs(s0.oportunidadeRestante)} até a meta (estimativa)`} tom="ambar" />
+      </div>
+
+      {meses.length > 1 && (
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-[10px] uppercase tracking-wide text-gray-500">
+                <th className="py-1 pr-2">Mês</th>
+                <th className="px-2 py-1 text-right">Regência realizada</th>
+                <th className="px-2 py-1 text-right">Horas realizadas</th>
+                <th className="px-2 py-1 text-right">Horas a {pct(alvo)}</th>
+                <th className="py-1 pl-2 text-right">Diferença (R$)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {meses.map((x) => {
+                const v = sim(x);
+                return (
+                  <tr key={x.mes} className="border-t">
+                    <td className="py-1.5 pr-2">{rotuloMes(x.mes)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{pct(x.regencia_pct)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{hrs(x.horas_sala)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{hrs(v.horasAlvo)}</td>
+                    <td className={cn("py-1.5 pl-2 text-right font-medium tabular-nums", v.reais > 0 ? "text-green-700" : v.reais < 0 ? "text-red-700" : "")}>{reais(v.reais)}</td>
+                  </tr>
+                );
+              })}
+              <tr className="border-t font-semibold">
+                <td className="py-1.5 pr-2" colSpan={4}>Total do período a {pct(alvo)}</td>
+                <td className={cn("py-1.5 pl-2 text-right tabular-nums", totalExtra > 0 ? "text-green-700" : totalExtra < 0 ? "text-red-700" : "")}>{reais(totalExtra)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="mt-2 text-[11px] text-gray-400">
+        Regência da equipe = horas realizadas ÷ capacidade somada dos professores do quadro. A oportunidade restante é uma estimativa: a meta é
+        individual (70% mensalista, 100% horista) e a simulação distribui as horas pela equipe.
+      </p>
     </div>
   );
 }
@@ -197,6 +295,8 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
                       detalhe={`soma das melhorias mês a mês (${hrs(r.ganho_periodo_horas)})`}
                       tom={r.ganho_periodo_reais > 0 ? "verde" : r.ganho_periodo_reais < 0 ? "vermelho" : undefined} />
               </div>
+
+              <Simulador meses={data.meses} mes={data.mes} valorHora={data.valor_hora} />
 
               <div className="rounded-lg border bg-white p-4">
                 <h3 className="mb-1 text-sm font-semibold text-gray-800">Evolução mensal</h3>
