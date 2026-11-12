@@ -26,6 +26,7 @@ import {
   Target,
   ListChecks,
   Settings2,
+  Briefcase,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clearAuth } from "@/lib/auth";
@@ -72,6 +73,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Gestão",
     items: [
       { href: "/regencia",     label: "Regência",        icon: TrendingUp, perfis: ["admin", "coordenador", "analista"] },
+      { href: "/nao-regencia", label: "Não Regência",    icon: Briefcase,  perfis: ["admin", "coordenador", "analista", "professor"] },
       { href: "/gestao-ponto",         label: "Gestão de Ponto",       icon: Clock3,          perfis: ["admin", "rh"] },
       { href: "/contratos-virtuais",   label: "Contratos Virtuais",    icon: FileSignature,   perfis: ["admin"] },
       { href: "/relatorios",           label: "Relatórios",            icon: BarChart3,       perfis: ["admin", "coordenador", "analista", "secretario"] },

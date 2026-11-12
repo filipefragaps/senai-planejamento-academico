@@ -19,6 +19,10 @@ from app.models.ponto import PontoMensal
 from app.models.gestao_ponto import GpColaborador, GpRegistroDiario, GpOcorrencia, GpBancoHoras, GpImportacao, GpPainel
 from app.models.contrato_virtual import ContratoVirtual
 from app.models.crm import CrmCampanha, CrmLead, CrmHistorico, CrmConfig, CrmGasto
+from app.models.nao_regencia import (
+    NrCategoria, NrConfig, NrProjeto, NrVinculo, NrVinculoPeriodo, NrEntrega, NrApontamento, NrAfastamento,
+    NrOutraAlocacao, NrAnexo, NrHistorico,
+)
 
 __all__ = [
     "Usuario",
