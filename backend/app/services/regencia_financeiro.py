@@ -1,22 +1,21 @@
 """
 Impacto financeiro da regência — professores do quadro (Mensalista e Horista), mês a mês.
 
-Mesma base do gráfico geral da aba Regência:
-- Real: horas do diário ÷ horas do ponto (a capacidade é o tempo efetivamente pago/batido).
-- Aulas realizadas: horas das aulas com status Realizada (slot contado uma vez) ÷ carga contratada × semanas
-  úteis. Só a produção efetiva conta: aulas agendadas ficam de fora.
-As horas em sala de cada professor são limitadas à capacidade do mês (o excedente do horista é pago à parte e
-não é economia). Não usa dados da Não Regência.
+Capacidade × produção, por professor e mês:
+- Capacidade = carga semanal contratada (cadastro do professor) × semanas úteis do mês.
+- Produção = horas efetivamente realizadas: diário de classe (turmas simultâneas contam uma vez) ou, sem
+  diário, as aulas com status Realizada. Aulas apenas agendadas não contam.
+- A produção de cada professor é limitada à capacidade dele (o excedente do horista é pago à parte e não
+  cobre a ociosidade de outro professor). Não usa dados da Não Regência.
 
-Por professor e mês (valor da hora = média informada; a estrutura aceita valor por professor no futuro):
-- Regência exibida = média simples dos percentuais dos professores (a mesma do gráfico geral). O valor em
-  reais é sempre calculado pelas horas de cada professor.
-- Oportunidade = max(0, meta × capacidade − horas em sala) × valor da hora — capacidade paga que ainda pode
-  ir para a sala até a meta (70% mensalista, 100% horista, as mesmas metas da aba Regência).
-- Ganho do mês = (horas em sala − regência do mês anterior × capacidade do mês) × valor da hora — horas a
-  mais (ou a menos) do que haveria se a regência do mês anterior tivesse se mantido. Comparar pela taxa, e não
-  pelas horas brutas, neutraliza meses com mais ou menos dias úteis. Professor sem dados no mês anterior não
-  entra no ganho daquele mês (entra na oportunidade).
+Valores (valor da hora = média informada; a estrutura aceita valor por professor no futuro):
+- Regência exibida = média simples de produção ÷ capacidade dos professores.
+- Oportunidade total = (capacidade − produção) × valor da hora: horas disponíveis que não viraram aula.
+- Oportunidade até a meta = max(0, meta × capacidade − produção) × valor da hora (70% mensalista, 100%
+  horista, as metas da aba Regência).
+- Impacto do mês = (produção − regência do mês anterior × capacidade do mês) × valor da hora: horas a mais
+  (ou a menos) do que haveria no ritmo do mês anterior. Comparar pela taxa neutraliza meses com mais ou menos
+  dias úteis. Professor sem dados no mês anterior não entra no impacto daquele mês.
 """
 from __future__ import annotations
 
@@ -66,8 +65,19 @@ async def _professores(db: AsyncSession, area: Optional[str], modalidade: Option
     return profs
 
 
-async def _base_planejada(db, profs, meses, ini, fim) -> dict[tuple[int, str], tuple[float, float]]:
-    """(horas em sala, capacidade) por (professor, mês): só aulas realizadas, sobre a carga contratada."""
+def _capacidade(profs, meses) -> dict[tuple[int, str], float]:
+    """Carga semanal contratada × semanas úteis, por (professor, mês)."""
+    saida = {}
+    for k, m_ini, m_fim in meses:
+        semanas = _semanas_uteis(m_ini, m_fim)
+        for pid, p in profs.items():
+            if (p.horas_contratadas or 0) > 0:
+                saida[(pid, k)] = p.horas_contratadas * semanas
+    return saida
+
+
+async def _producao_aulas(db, profs, meses, ini, fim) -> dict[tuple[int, str], float]:
+    """Horas das aulas realizadas por (professor, mês) — slot dia+horário contado uma vez."""
     aulas = (await db.execute(select(Aula).where(
         Aula.status == "Realizada", Aula.data >= ini, Aula.data <= fim,
         Aula.professor_id.in_(list(profs) or [0]),
@@ -83,19 +93,13 @@ async def _base_planejada(db, profs, meses, ini, fim) -> dict[tuple[int, str], t
         if slot not in vistos[(a.professor_id, k)]:
             vistos[(a.professor_id, k)].add(slot)
             horas[(a.professor_id, k)] += _horas_aula(a)
-    saida = {}
-    for k, m_ini, m_fim in meses:
-        semanas = _semanas_uteis(m_ini, m_fim)
-        for pid, p in profs.items():
-            saida[(pid, k)] = (horas.get((pid, k), 0.0), p.horas_contratadas * semanas)
-    return saida
+    return dict(horas)
 
 
-async def _base_real(db, profs, meses, ini, fim) -> dict[tuple[int, str], tuple[float, float]]:
-    """(horas do diário, horas do ponto) por (professor, mês) — mesma fórmula da Regência Real."""
+async def _producao_diario(db, profs, meses, ini) -> dict[tuple[int, str], float]:
+    """Horas do diário por (professor, mês) — mesma regra da Regência Real."""
     from app.api.v1.diario import horas_executadas
     from app.models.diario import DiarioAula
-    from app.services import ponto_gestao
 
     if not meses:
         return {}
@@ -106,11 +110,7 @@ async def _base_real(db, profs, meses, ini, fim) -> dict[tuple[int, str], tuple[
     regs: dict[tuple, list] = defaultdict(list)
     for r in rows:
         regs[(r.professor_id, f"{r.data.year}-{r.data.month:02d}")].append(r)
-    diario = {k: horas_executadas(v) for k, v in regs.items()}
-    ponto: dict[tuple, float] = defaultdict(float)
-    for r in await ponto_gestao.registros(db, ini, ate, set(profs)):
-        ponto[(r.professor_id, f"{r.data_inicio.year}-{r.data_inicio.month:02d}")] += r.horas_total
-    return {k: (diario.get(k, 0.0), cap) for k, cap in ponto.items() if cap > 0}
+    return {k: horas_executadas(v) for k, v in regs.items()}
 
 
 async def calcular(db: AsyncSession, ini: date, fim: date, valor_hora: float, hoje: date,
@@ -121,12 +121,15 @@ async def calcular(db: AsyncSession, ini: date, fim: date, valor_hora: float, ho
     # Carrega também o mês anterior ao período: o primeiro mês precisa de referência
     ini_ref = (ini.replace(day=1) - timedelta(days=1)).replace(day=1)
     meses = meses_do_periodo(ini_ref, fim, hoje)
-    real = await _base_real(db, profs, meses, ini_ref, fim) if fonte in ("auto", "real") else {}
-    meses_com_real = {k for (_, k) in real}
+    fonte = {"real": "diario", "planejada": "aulas"}.get(fonte, fonte)
+    diario = await _producao_diario(db, profs, meses, ini_ref) if fonte in ("auto", "diario") else {}
+    meses_diario = {k for (_, k) in diario}
     if fonte == "auto":
-        fonte = "real" if len(meses_com_real) >= 2 else "planejada"
-    base = real if fonte == "real" else await _base_planejada(db, profs, meses, ini_ref, fim)
-    todas = [k for k, _, _ in meses if fonte == "planejada" or k in meses_com_real]
+        fonte = "diario" if len(meses_diario) >= 2 else "aulas"
+    producao = diario if fonte == "diario" else await _producao_aulas(db, profs, meses, ini_ref, fim)
+    capacidade = _capacidade(profs, meses)
+    base = {chave: (producao.get(chave, 0.0), cap) for chave, cap in capacidade.items()}
+    todas = [k for k, _, _ in meses if fonte == "aulas" or k in meses_diario]
     ref = f"{ini_ref.year}-{ini_ref.month:02d}"
     chaves = [k for k in todas if k != ref]
     mes = mes if mes in chaves else (chaves[-1] if chaves else None)
@@ -147,7 +150,7 @@ async def calcular(db: AsyncSession, ini: date, fim: date, valor_hora: float, ho
     por_prof: dict[tuple[int, str], dict] = {}
     for k in chaves:
         anterior = todas[todas.index(k) - 1] if todas.index(k) > 0 else None
-        h_tot = cap_tot = falt = opp = ganho_h = ganho_r = 0.0
+        h_tot = cap_tot = falt = opp = ganho_h = ganho_r = ocio = 0.0
         n = 0
         sim = []
         for pid, p in profs.items():
@@ -162,6 +165,7 @@ async def calcular(db: AsyncSession, ini: date, fim: date, valor_hora: float, ho
             sim.append([round(h, 2), round(cap, 2), _meta(p.tipo)])
             h_tot += h
             cap_tot += cap
+            ocio += cap - h
             falt += f
             opp += f * valor(pid)
             if g is not None:
@@ -174,6 +178,8 @@ async def calcular(db: AsyncSession, ini: date, fim: date, valor_hora: float, ho
                 "ganho_horas": round(g, 1) if g is not None else None,
                 "ganho_reais": round(g * valor(pid), 2) if g is not None else None,
                 "faltante_horas": round(f, 1), "oportunidade_reais": round(f * valor(pid), 2),
+                "capacidade": round(cap, 1), "producao": round(h, 1),
+                "ociosas_horas": round(cap - h, 1), "oportunidade_total_reais": round((cap - h) * valor(pid), 2),
             }
         linhas_mes.append({
             "mes": k, "mes_anterior": anterior, "n_professores": n,
@@ -183,6 +189,7 @@ async def calcular(db: AsyncSession, ini: date, fim: date, valor_hora: float, ho
             "regencia_ponderada_pct": round(h_tot / cap_tot * 100, 1) if cap_tot else 0.0,
             "sim": sim,  # [horas em sala, capacidade, meta] por professor — base do simulador
             "faltante_horas": round(falt, 1), "oportunidade_reais": round(opp, 2),
+            "ociosas_horas": round(ocio, 1), "oportunidade_total_reais": round(ocio * valor_hora, 2),
             "ganho_horas": round(ganho_h, 1) if anterior else None,
             "ganho_reais": round(ganho_r, 2) if anterior else None,
         })
@@ -204,6 +211,10 @@ async def calcular(db: AsyncSession, ini: date, fim: date, valor_hora: float, ho
             "ganho_reais": m["ganho_reais"] if m else None,
             "oportunidade_horas": m["faltante_horas"] if m else 0.0,
             "oportunidade_reais": m["oportunidade_reais"] if m else 0.0,
+            "capacidade": m["capacidade"] if m else 0.0,
+            "producao": m["horas_sala"] if m else 0.0,
+            "ociosas_horas": m["ociosas_horas"] if m else 0.0,
+            "oportunidade_total_reais": m["oportunidade_total_reais"] if m else 0.0,
             "ganho_periodo_reais": round(sum(x["ganho_reais"] for x in com_ganho), 2),
             "ganho_periodo_horas": round(sum(x["ganho_horas"] for x in com_ganho), 1),
             "n_professores": m["n_professores"] if m else 0,

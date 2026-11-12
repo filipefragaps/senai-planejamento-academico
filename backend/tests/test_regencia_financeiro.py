@@ -49,7 +49,7 @@ async def test_ganho_e_oportunidade_planejada(client, db_session):
     r = await client.get("/api/v1/regencia-financeiro", headers=_hdr(admin), params=params)
     assert r.status_code == 200, r.text
     d = r.json()
-    assert d["fonte"] == "planejada" and d["mes"] == "2026-04"
+    assert d["fonte"] == "aulas" and d["mes"] == "2026-04"
     mar, abr = d["meses"]  # fevereiro é só a referência do primeiro mês
     assert (mar["mes_anterior"], abr["mes_anterior"]) == ("2026-02", "2026-03")
     # Março × fevereiro (sem aulas): Ana 12h + Bia 44h (limitado à carga)
@@ -64,6 +64,9 @@ async def test_ganho_e_oportunidade_planejada(client, db_session):
     assert res["regencia_anterior"] == round((12 / 88 + 1) / 2 * 100, 1) and res["regencia"] == round((40 / 88 + 1) / 2 * 100, 1)
     assert abr["regencia_ponderada_pct"] == round(84 / 132 * 100, 1) and len(abr["sim"]) == 2
     assert res["oportunidade_reais"] == pytest.approx(1080) and res["ganho_periodo_reais"] == 4200
+    # Oportunidade total = capacidade contratada − produção: abril 132h − 84h = 48h
+    assert (res["capacidade"], res["producao"], res["ociosas_horas"]) == (132, 84, 48)
+    assert res["oportunidade_total_reais"] == 2400
     profs = {p["nome"]: p for p in d["professores"]}
     assert set(profs) == {"Ana", "Bia"} and profs["Ana"]["ganho_reais"] == 1400
 

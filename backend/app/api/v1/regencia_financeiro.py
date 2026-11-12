@@ -23,6 +23,6 @@ async def impacto_financeiro(
         raise HTTPException(400, "A data final é anterior à inicial")
     if valor_hora < 0:
         raise HTTPException(400, "O valor da hora não pode ser negativo")
-    if fonte not in ("auto", "real", "planejada"):
+    if fonte not in ("auto", "diario", "aulas", "real", "planejada"):
         raise HTTPException(400, "Fonte inválida")
     return await svc.calcular(db, data_inicio, data_fim, valor_hora, date.today(), fonte, mes, area, modalidade)

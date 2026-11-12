@@ -68,11 +68,12 @@ function Simulador({ meses, mes, valorHora }: { meses: any[]; mes: string; valor
     const horasAlvo = profs.reduce((a, [, cap], i) => a + novas[i] * cap, 0);
     const extra = horasAlvo - x.horas_sala;
     const restante = profs.reduce((a, [, cap, meta], i) => a + Math.max(0, meta * cap - novas[i] * cap), 0);
+    const ociosas = profs.reduce((a, [, cap], i) => a + (cap - novas[i] * cap), 0);
     return {
       horasAlvo, extra, reais: extra * valorHora,
       vsAnteriorH: x.ganho_horas == null ? null : x.ganho_horas + extra,
       vsAnteriorR: x.ganho_reais == null ? null : x.ganho_reais + extra * valorHora,
-      oportunidadeRestante: restante,
+      oportunidadeRestante: restante, ociosasRestantes: ociosas,
     };
   };
   const s0 = sim(m);
@@ -82,7 +83,7 @@ function Simulador({ meses, mes, valorHora }: { meses: any[]; mes: string; valor
       <div className="mb-3 flex flex-wrap items-end gap-3">
         <div className="mr-auto">
           <h3 className="flex items-center gap-1.5 text-sm font-semibold text-gray-800"><Calculator className="h-4 w-4 text-indigo-600" /> Simular regência</h3>
-          <p className="text-xs text-gray-500">E se a regência da equipe (média, como no gráfico) fosse outra? Sobe primeiro quem está mais abaixo; capacidade e valor da hora do mês.</p>
+          <p className="text-xs text-gray-500">E se a regência da equipe (média dos professores) fosse outra? Sobe primeiro quem está mais abaixo; capacidade e valor da hora do mês.</p>
         </div>
         <div className="flex items-center gap-1">
           {[70, 75, 80, 85, 90].map((v) => (
@@ -112,8 +113,8 @@ function Simulador({ meses, mes, valorHora }: { meses: any[]; mes: string; valor
               valor={reais(s0.vsAnteriorR)}
               detalhe={s0.vsAnteriorH == null ? "sem dados do mês anterior" : `se tivesse saído de ${pct(m.regencia_anterior_pct)} para ${pct(alvo)}`}
               tom={(s0.vsAnteriorR ?? 0) > 0 ? "verde" : (s0.vsAnteriorR ?? 0) < 0 ? "vermelho" : undefined} />
-        <Card icon={Target} titulo="Oportunidade que restaria" valor={reais(s0.oportunidadeRestante * valorHora)}
-              detalhe={`${hrs(s0.oportunidadeRestante)} até a meta de cada professor`} tom="ambar" />
+        <Card icon={Target} titulo="Oportunidade que restaria" valor={reais(s0.ociosasRestantes * valorHora)}
+              detalhe={`${hrs(s0.ociosasRestantes)} disponíveis sem aula · ${reais(s0.oportunidadeRestante * valorHora)} até a meta`} tom="ambar" />
       </div>
 
       {meses.length > 1 && (
@@ -150,7 +151,7 @@ function Simulador({ meses, mes, valorHora }: { meses: any[]; mes: string; valor
         </div>
       )}
       <p className="mt-2 text-[11px] text-gray-400">
-        Regência da equipe = média simples dos percentuais dos professores do quadro (a mesma do gráfico geral). Para chegar ao percentual
+        Regência da equipe = média simples de produção ÷ carga contratada dos professores do quadro. Para chegar ao percentual
         simulado, os professores mais abaixo sobem primeiro até um piso comum; quem já está acima não muda. Os valores em reais seguem as horas de cada um.
       </p>
     </div>
@@ -204,20 +205,20 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
     const cab = [
       ["Impacto financeiro da regência — professores do quadro"],
       [`Período: ${dataInicio.split("-").reverse().join("/")} a ${dataFim.split("-").reverse().join("/")}`],
-      [`Valor médio da hora: ${reais(data.valor_hora)} · Fonte: ${data.fonte === "real" ? "Regência Real (diário ÷ ponto)" : "Aulas realizadas ÷ carga contratada"} · Cada mês comparado com o mês anterior`],
+      [`Valor médio da hora: ${reais(data.valor_hora)} · Capacidade: carga semanal contratada · Produção: ${data.fonte === "diario" ? "diário de classe" : "aulas realizadas"} · Cada mês comparado com o mês anterior`],
       [`Filtros: ${[area && `área ${area}`, modalidade && `modalidade ${modalidade}`].filter(Boolean).join("; ") || "nenhum"}`],
       [],
     ];
     const meses = XLSX.utils.aoa_to_sheet([...cab,
-      ["Mês", "Professores", "Horas em sala", "Capacidade (h)", "Regência mês anterior %", "Regência %", "Ganho vs mês anterior (h)", "Ganho vs mês anterior (R$)", "Horas até a meta", "Oportunidade (R$)"],
+      ["Mês", "Professores", "Horas em sala", "Capacidade (h)", "Regência mês anterior %", "Regência %", "Ganho vs mês anterior (h)", "Ganho vs mês anterior (R$)", "Horas sem aula (capacidade − produção)", "Oportunidade total (R$)", "Horas até a meta", "Oportunidade até a meta (R$)"],
       ...data.meses.map((m: any) => [rotuloMes(m.mes), m.n_professores, m.horas_sala, m.capacidade, m.regencia_anterior_pct ?? "", m.regencia_pct,
-        m.ganho_horas ?? "", m.ganho_reais ?? "", m.faltante_horas, m.oportunidade_reais]),
+        m.ganho_horas ?? "", m.ganho_reais ?? "", m.ociosas_horas, m.oportunidade_total_reais, m.faltante_horas, m.oportunidade_reais]),
     ]);
     const profs = XLSX.utils.aoa_to_sheet([...cab,
       [`Mês analisado: ${data.mes ? rotuloMes(data.mes) : "—"}`],
-      ["Professor", "Tipo", "Área", "Regência mês anterior %", "Regência no mês %", "Meta %", "Ganho (h)", "Ganho (R$)", "Horas até a meta", "Oportunidade (R$)"],
+      ["Professor", "Tipo", "Área", "Regência mês anterior %", "Regência no mês %", "Meta %", "Capacidade (h)", "Produção (h)", "Ganho (h)", "Ganho (R$)", "Horas sem aula", "Oportunidade total (R$)", "Horas até a meta", "Oportunidade até a meta (R$)"],
       ...data.professores.map((p: any) => [p.nome, p.tipo, p.area ?? "", p.regencia_anterior ?? "", p.regencia, p.meta,
-        p.ganho_horas ?? "", p.ganho_reais ?? "", p.faltante_horas, p.oportunidade_reais]),
+        p.capacidade, p.producao, p.ganho_horas ?? "", p.ganho_reais ?? "", p.ociosas_horas, p.oportunidade_total_reais, p.faltante_horas, p.oportunidade_reais]),
     ]);
     XLSX.utils.book_append_sheet(wb, meses, "Por mês");
     XLSX.utils.book_append_sheet(wb, profs, "Por professor");
@@ -256,11 +257,11 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
               </div>
             </label>
             <label className="space-y-1">
-              <span className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Fonte da regência</span>
+              <span className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Produção (horas realizadas)</span>
               <select className="rounded border px-2 py-1.5 text-sm" value={fonte} onChange={(e) => setFonte(e.target.value)}>
-                <option value="auto">Automática (como o gráfico)</option>
-                <option value="real">Real (diário ÷ ponto)</option>
-                <option value="planejada">Aulas realizadas ÷ carga contratada</option>
+                <option value="auto">Automática (diário, se houver)</option>
+                <option value="diario">Diário de classe</option>
+                <option value="aulas">Aulas com status Realizada</option>
               </select>
             </label>
             <label className="space-y-1">
@@ -296,7 +297,8 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
                   {(r.ganho_reais ?? 0) >= 0
                     ? <> Essa melhoria gerou <b>{reais(r.ganho_reais)}</b> ({hrs(r.ganho_horas)} a mais em sala).</>
                     : <> A queda representou <b>{reais(Math.abs(r.ganho_reais))}</b> ({hrs(Math.abs(r.ganho_horas))} a menos em sala).</>}
-                  {" "}Ainda há <b>{reais(r.oportunidade_reais)}</b> de oportunidade ({hrs(r.oportunidade_horas)} até a meta).
+                  {" "}Dos <b>{hrs(r.capacidade)}</b> disponíveis, <b>{hrs(r.producao)}</b> viraram produção: ainda há <b>{reais(r.oportunidade_total_reais)}</b> de
+                  oportunidade ({hrs(r.ociosas_horas)} sem aula), dos quais {reais(r.oportunidade_reais)} só para atingir a meta.
                 </div>
               ) : (
                 <p className="rounded-lg border bg-white p-3 text-xs text-gray-500">Sem dados do mês anterior a {rotuloMes(r.mes)} para comparar.</p>
@@ -310,8 +312,8 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
                 <Card icon={Coins} titulo="Impacto da melhoria no mês" valor={reais(r.ganho_reais)}
                       detalhe={r.ganho_horas == null ? undefined : `${hrs(r.ganho_horas)} em relação ao ritmo do mês anterior`}
                       tom={(r.ganho_reais ?? 0) > 0 ? "verde" : (r.ganho_reais ?? 0) < 0 ? "vermelho" : undefined} />
-                <Card icon={Target} titulo="Oportunidade ainda disponível" valor={reais(r.oportunidade_reais)}
-                      detalhe={`${hrs(r.oportunidade_horas)} pagas que ainda podem ir para a sala até a meta`} tom="ambar" />
+                <Card icon={Target} titulo="Oportunidade (capacidade − produção)" valor={reais(r.oportunidade_total_reais)}
+                      detalhe={`${hrs(r.ociosas_horas)} sem aula de ${hrs(r.capacidade)} · ${reais(r.oportunidade_reais)} até a meta`} tom="ambar" />
                 <Card icon={Coins} titulo="Impacto somado no período" valor={reais(r.ganho_periodo_reais)}
                       detalhe={`soma das melhorias mês a mês (${hrs(r.ganho_periodo_horas)})`}
                       tom={r.ganho_periodo_reais > 0 ? "verde" : r.ganho_periodo_reais < 0 ? "vermelho" : undefined} />
@@ -321,7 +323,7 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
 
               <div className="rounded-lg border bg-white p-4">
                 <h3 className="mb-1 text-sm font-semibold text-gray-800">Evolução mensal</h3>
-                <p className="mb-3 text-xs text-gray-500">Barras em reais (impacto de cada mês sobre o anterior e oportunidade até a meta) e linha da regência da equipe.</p>
+                <p className="mb-3 text-xs text-gray-500">Barras em reais (impacto de cada mês sobre o anterior e oportunidade: capacidade − produção) e linha da regência da equipe.</p>
                 <div className="h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={data.meses.map((m: any) => ({ ...m, rotulo: rotuloMes(m.mes) }))}>
@@ -332,7 +334,8 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
                       <Tooltip formatter={(v: any, n: any) => (n === "Regência" ? pct(v) : reais(v))} />
                       <Legend wrapperStyle={{ fontSize: 11 }} />
                       <Bar yAxisId="r" dataKey="ganho_reais" name="Impacto vs mês anterior" fill="#16a34a" />
-                      <Bar yAxisId="r" dataKey="oportunidade_reais" name="Oportunidade até a meta" fill="#f59e0b" />
+                      <Bar yAxisId="r" dataKey="oportunidade_total_reais" name="Oportunidade total" fill="#f59e0b" />
+                      <Bar yAxisId="r" dataKey="oportunidade_reais" name="Oportunidade até a meta" fill="#fcd34d" />
                       <Line yAxisId="p" type="monotone" dataKey="regencia_pct" name="Regência" stroke="hsl(218 100% 28%)" strokeWidth={2} dot />
                     </ComposedChart>
                   </ResponsiveContainer>
@@ -350,8 +353,9 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
                         <th className="px-3 py-2 text-right">No mês</th>
                         <th className="px-3 py-2 text-right">Meta</th>
                         <th className="px-3 py-2 text-right">Ganho</th>
-                        <th className="px-3 py-2 text-right">Horas até a meta</th>
-                        <th className="px-4 py-2 text-right">Oportunidade</th>
+                        <th className="px-3 py-2 text-right">Capacidade / produção</th>
+                        <th className="px-3 py-2 text-right">Oportunidade total</th>
+                        <th className="px-4 py-2 text-right">Até a meta</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
@@ -367,8 +371,9 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
                           <td className={cn("px-3 py-2 text-right tabular-nums", p.ganho_reais > 0 ? "text-green-700" : p.ganho_reais < 0 ? "text-red-700" : "text-gray-500")}>
                             {p.ganho_reais == null ? <span className="text-[11px] text-gray-400">sem mês anterior</span> : <>{reais(p.ganho_reais)}<p className="text-[11px]">{hrs(p.ganho_horas)}</p></>}
                           </td>
-                          <td className="px-3 py-2 text-right tabular-nums">{hrs(p.faltante_horas)}</td>
-                          <td className="px-4 py-2 text-right font-medium tabular-nums text-amber-700">{reais(p.oportunidade_reais)}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{hrs(p.capacidade)} / {hrs(p.producao)}</td>
+                          <td className="px-3 py-2 text-right font-medium tabular-nums text-amber-700">{reais(p.oportunidade_total_reais)}<p className="text-[11px] font-normal">{hrs(p.ociosas_horas)}</p></td>
+                          <td className="px-4 py-2 text-right tabular-nums text-amber-600">{reais(p.oportunidade_reais)}<p className="text-[11px]">{hrs(p.faltante_horas)}</p></td>
                         </tr>
                       ))}
                     </tbody>
@@ -379,9 +384,9 @@ export function RegenciaFinanceiroModal({ dataInicio, dataFim, area, modalidade,
               <div className="flex gap-2 rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
                 <Info className="mt-0.5 h-4 w-4 shrink-0" />
                 <div className="space-y-1">
-                  <p><b>Como é calculado.</b> Fonte: {data.fonte === "real" ? "Regência Real — horas do diário ÷ horas do ponto" : "aulas com status Realizada ÷ carga contratada × semanas úteis"}. Só a produção efetiva conta (aulas agendadas ficam de fora) e só professores do quadro (mensalistas e horistas); horas acima da carga do mês não contam. A regência mostrada é a média simples dos professores, a mesma do gráfico geral; os reais seguem as horas de cada professor.</p>
-                  <p><b>Impacto da melhoria</b> = horas em sala no mês − (regência do professor no mês anterior × capacidade do mês), × valor da hora. Compara pela taxa, então meses com mais ou menos dias úteis não distorcem. Fica negativo se a regência cair.</p>
-                  <p><b>Oportunidade</b> = horas que faltam para a meta (70% mensalista, 100% horista) × valor da hora: capacidade já paga que ainda pode ir para a sala. Não é custo a cortar — o salário do mensalista é fixo.</p>
+                  <p><b>Como é calculado.</b> Capacidade = carga semanal contratada × semanas úteis do mês. Produção = horas efetivamente realizadas ({data.fonte === "diario" ? "diário de classe" : "aulas com status Realizada"}); aulas só agendadas não contam. Só professores do quadro (mensalistas e horistas); a produção de cada um é limitada à sua capacidade. Regência = média simples de produção ÷ capacidade.</p>
+                  <p><b>Impacto da melhoria</b> = produção do mês − (regência do professor no mês anterior × capacidade do mês), × valor da hora. Compara pela taxa, então meses com mais ou menos dias úteis não distorcem. Fica negativo se a regência cair.</p>
+                  <p><b>Oportunidade total</b> = (capacidade − produção) × valor da hora: horas disponíveis que não viraram aula. <b>Até a meta</b> = só o que falta para 70% (mensalista) ou 100% (horista). Não é custo a cortar — o salário do mensalista é fixo.</p>
                 </div>
               </div>
             </>
