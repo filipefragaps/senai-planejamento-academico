@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -9,7 +9,7 @@ import {
 } from "recharts";
 import {
   AlertTriangle, CalendarClock, CheckCircle2, Clock, FolderKanban, Hourglass, Loader2, Scale, ShieldAlert,
-  Users, ClipboardCheck, ClipboardList, BellRing, Inbox,
+  Users, ClipboardCheck, ClipboardList, BellRing, Inbox, Eye, EyeOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -30,6 +30,28 @@ const COR = {
 
 type Detalhe = { titulo: string; tipo: "vinculos" | "apontamentos" | "entregas" | "professores" | "projetos"; itens: any[] };
 
+const CHAVE_EXCLUIDOS = "nr-excluidos";
+
+/** Professores que não entram no gráfico, na tabela gerencial e nos cartões de saldo — lembrados neste navegador. */
+function useExcluidos() {
+  const [excluidos, setExcluidos] = useState<Set<number>>(new Set());
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CHAVE_EXCLUIDOS);
+      if (raw) setExcluidos(new Set(JSON.parse(raw) as number[]));
+    } catch { /* sem armazenamento local */ }
+  }, []);
+  function alternar(id: number) {
+    setExcluidos((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      try { localStorage.setItem(CHAVE_EXCLUIDOS, JSON.stringify(Array.from(next))); } catch { /* ignora */ }
+      return next;
+    });
+  }
+  return { excluidos, alternar };
+}
+
 const MES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 
 export function Dashboard({ filtros, opcoes, setFiltros }: { filtros: NrFiltros; opcoes?: NrOpcoes; setFiltros: (f: NrFiltros) => void }) {
@@ -39,20 +61,29 @@ export function Dashboard({ filtros, opcoes, setFiltros }: { filtros: NrFiltros;
     queryFn: () => nrApi.dashboard(filtros),
   });
   const [detalhe, setDetalhe] = useState<Detalhe | null>(null);
+  const { excluidos, alternar } = useExcluidos();
+  const [verOcultos, setVerOcultos] = useState(false);
+  const linhas = useMemo(() => (data?.professores ?? []).filter((l: any) => !excluidos.has(l.professor_id)), [data, excluidos]);
+  const ocultos = useMemo(() => (data?.professores ?? []).filter((l: any) => excluidos.has(l.professor_id)), [data, excluidos]);
 
-  const graficoProf = useMemo(() => (data?.professores ?? [])
+  const graficoProf = useMemo(() => linhas
     .filter((l: any) => l.quadro && (l.nr_prevista > 0 || l.regencia_prevista > 0 || l.outras_alocacoes > 0))
     .sort((a: any, b: any) => b.nr_prevista - a.nr_prevista)
     .map((l: any) => ({
       id: l.professor_id, nome: l.nome.split(" ").slice(0, 2).join(" "),
       Regência: l.regencia_prevista, "Não regência": l.nr_prevista, Outras: l.outras_alocacoes,
       Saldo: Math.max(0, l.saldo_previsto),
-    })), [data]);
+    })), [linhas]);
 
   if (isLoading) return <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>;
   if (isError || !data) return <p className="py-10 text-center text-sm text-red-600">Não foi possível carregar o dashboard.</p>;
 
-  const ind = data.indicadores;
+  // Saldo e sobrecarga sem os professores ocultados
+  const ind = {
+    ...data.indicadores,
+    saldo_disponivel: linhas.reduce((s: number, l: any) => s + Math.max(0, l.saldo_previsto), 0),
+    professores_sobrecarga: linhas.filter((l: any) => l.sobrecarga).length,
+  };
   const ini = data.periodo.inicio, fim = data.periodo.fim;
   const entregasPeriodo = data.entregas.filter((e: any) => e.prazo && e.prazo >= ini && e.prazo <= fim);
   const oficiais = data.vinculos.filter((v: any) => ["aprovada", "encerrada"].includes(v.situacao) && (v.previsto_periodo ?? 0) > 0);
@@ -81,10 +112,10 @@ export function Dashboard({ filtros, opcoes, setFiltros }: { filtros: NrFiltros;
         <Tile icon={Hourglass} label="Pendentes de validação" valor={horas(ind.horas_pendentes)} tom={ind.horas_pendentes ? "atencao" : undefined}
               onClick={() => abrir("Horas aguardando validação", "apontamentos", data.apontamentos.filter((a: any) => a.situacao === "enviado"))} />
         <Tile icon={Scale} label="Saldo disponível" valor={horas(ind.saldo_disponivel)} detalhe="soma dos saldos positivos"
-              onClick={() => abrir("Saldo previsto por professor", "professores", data.professores.filter((l: any) => l.saldo_previsto > 0))} />
+              onClick={() => abrir("Saldo previsto por professor", "professores", linhas.filter((l: any) => l.saldo_previsto > 0))} />
         <Tile icon={ShieldAlert} label="Sobrecarga prevista" valor={ind.professores_sobrecarga} tom={ind.professores_sobrecarga ? "alerta" : undefined}
               detalhe="professores com saldo negativo"
-              onClick={() => abrir("Professores com sobrecarga prevista", "professores", data.professores.filter((l: any) => l.sobrecarga))} />
+              onClick={() => abrir("Professores com sobrecarga prevista", "professores", linhas.filter((l: any) => l.sobrecarga))} />
         <Tile icon={ClipboardCheck} label="Entregas no período" valor={ind.entregas_periodo}
               onClick={() => abrir("Entregas com prazo no período", "entregas", entregasPeriodo)} />
         <Tile icon={CheckCircle2} label="Entregas aprovadas" valor={ind.entregas_aprovadas} tom="sucesso" detalhe="com prazo no período"
@@ -238,13 +269,22 @@ export function Dashboard({ filtros, opcoes, setFiltros }: { filtros: NrFiltros;
 
       <div className="card overflow-hidden">
         <div className="border-b px-4 py-3">
-          <h3 className="text-sm font-semibold text-gray-800">Tabela gerencial</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="mr-auto text-sm font-semibold text-gray-800">Tabela gerencial</h3>
+            {ocultos.length > 0 && (
+              <button onClick={() => setVerOcultos((v) => !v)}
+                      className="inline-flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs text-amber-800 hover:bg-amber-100">
+                <EyeOff className="h-3 w-3" /> {ocultos.length} oculto(s) · {verOcultos ? "esconder" : "ver"}
+              </button>
+            )}
+          </div>
           <p className="text-xs text-gray-500">
             Carga disponível = contratual − afastamentos. Saldo previsto = disponível − reserva de planejamento − regência prevista − não regência prevista − outras alocações.
             Regência realizada e não regência validada mostram a execução, sem descontar do saldo planejado.
+            Use o olho para ocultar um professor do gráfico, da tabela e dos cartões de saldo (fica lembrado neste navegador).
           </p>
         </div>
-        <TabelaGerencial linhas={data.professores} />
+        <TabelaGerencial linhas={verOcultos ? [...linhas, ...ocultos] : linhas} excluidos={excluidos} onAlternar={alternar} />
       </div>
 
       {detalhe && <DetalheModal detalhe={detalhe} onClose={() => setDetalhe(null)} />}
@@ -252,7 +292,9 @@ export function Dashboard({ filtros, opcoes, setFiltros }: { filtros: NrFiltros;
   );
 }
 
-export function TabelaGerencial({ linhas }: { linhas: any[] }) {
+export function TabelaGerencial({ linhas, excluidos, onAlternar }: {
+  linhas: any[]; excluidos?: Set<number>; onAlternar?: (id: number) => void;
+}) {
   return (
     <Tabela
       cabecalho={<>
@@ -269,9 +311,15 @@ export function TabelaGerencial({ linhas }: { linhas: any[] }) {
       vazio={linhas.length === 0 ? <Vazio icone={Users} titulo="Nenhum professor nos filtros" /> : undefined}
     >
       {linhas.map((l) => (
-        <tr key={l.professor_id} className="hover:bg-gray-50">
+        <tr key={l.professor_id} className={cn("hover:bg-gray-50", excluidos?.has(l.professor_id) && "opacity-50")}>
           <td className="px-4 py-2">
             <div className="flex items-center gap-2">
+              {onAlternar && (
+                <button onClick={() => onAlternar(l.professor_id)} className="shrink-0 text-gray-300 hover:text-gray-600"
+                        title={excluidos?.has(l.professor_id) ? "Voltar a considerar este professor" : "Não considerar este professor"}>
+                  {excluidos?.has(l.professor_id) ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </button>
+              )}
               <Avatar nome={l.nome} foto={l.foto} />
               <div className="min-w-0">
                 <LinkProfessor id={l.professor_id} nome={l.nome} />
