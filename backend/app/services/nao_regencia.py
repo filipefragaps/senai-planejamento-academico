@@ -40,7 +40,7 @@ from app.models.nao_regencia import (
 from app.models.professor import Professor
 from app.models.usuario import Usuario
 from app.services.regencia import (
-    META_REGENCIA_MENSALISTA, _TIPOS_MENSALISTA, _horas_aula, _semanas_uteis, calcular_status_regencia,
+    META_REGENCIA_MENSALISTA, _TIPOS_MENSALISTA, _TIPOS_QUADRO, _horas_aula, _semanas_uteis, calcular_status_regencia,
 )
 
 FUSO_BR = timezone(timedelta(hours=-3))
@@ -464,7 +464,7 @@ async def calcular(db: AsyncSession, ini: date, fim: date, f: Filtros, esc: Esco
                     atrasadas += 1
         linhas.append({
             "professor_id": p.id, "nome": p.nome, "foto": p.foto, "tipo": p.tipo, "area": p.area,
-            "horas_semanais_contrato": p.horas_contratadas,
+            "horas_semanais_contrato": p.horas_contratadas, "quadro": p.tipo in _TIPOS_QUADRO,
             "dias_uteis": len(meus_dias),
             "dias_afastado": sum(1 for d in meus_dias if d in dias_afast.get(p.id, ())),
             "carga_contratual": r(contratual), "indisponivel": r(indisp), "disponivel": r(disponivel),

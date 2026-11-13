@@ -41,7 +41,7 @@ export function Dashboard({ filtros, opcoes, setFiltros }: { filtros: NrFiltros;
   const [detalhe, setDetalhe] = useState<Detalhe | null>(null);
 
   const graficoProf = useMemo(() => (data?.professores ?? [])
-    .filter((l: any) => l.nr_prevista > 0 || l.regencia_prevista > 0 || l.outras_alocacoes > 0)
+    .filter((l: any) => l.quadro && (l.nr_prevista > 0 || l.regencia_prevista > 0 || l.outras_alocacoes > 0))
     .sort((a: any, b: any) => b.nr_prevista - a.nr_prevista)
     .map((l: any) => ({
       id: l.professor_id, nome: l.nome.split(" ").slice(0, 2).join(" "),
@@ -98,7 +98,7 @@ export function Dashboard({ filtros, opcoes, setFiltros }: { filtros: NrFiltros;
       <div className="grid gap-4 xl:grid-cols-2">
         <div className="card p-4">
           <h3 className="mb-1 text-sm font-semibold text-gray-800">Distribuição da carga prevista por professor</h3>
-          <p className="mb-3 text-xs text-gray-500">Regência prevista, não regência aprovada, outras alocações e saldo. Clique na barra para abrir a visão do professor.</p>
+          <p className="mb-3 text-xs text-gray-500">Professores do quadro: regência prevista, não regência aprovada, outras alocações e saldo. Clique na barra para abrir a visão do professor.</p>
           {graficoProf.length === 0 ? (
             <Vazio icone={Inbox} titulo="Nenhuma carga registrada no período" texto="Cadastre projetos e aprove alocações para ver a distribuição." />
           ) : (

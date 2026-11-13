@@ -94,6 +94,7 @@ async def test_carga_no_periodo_com_meio_do_mes_mudanca_afastamento_e_encerramen
     dash = (await client.get(f"{URL}/dashboard", headers=H, params=MARCO)).json()
     ana = _linha(dash, c["ana"].id)
     assert (ana["dias_uteis"], ana["dias_afastado"]) == (21, 5)
+    assert ana["quadro"] is True
     assert (ana["carga_contratual"], ana["indisponivel"], ana["disponivel"]) == (168, 40, 128)
     assert (ana["regencia_prevista"], ana["regencia_realizada"]) == (6, 3)
     # P1: 16–19/03 a 2h/dia (8h) + 30–31/03 a 4h/dia (8h); P2: 02–10/03 a 1h/dia (7 dias, para na conclusão)
