@@ -202,41 +202,60 @@ async def _datas_sabado_com_fallback_util(
     db: AsyncSession,
 ) -> list[date]:
     """
-    Uma aula por semana: usa um dia útil livre da semana quando houver (mantendo o
-    mesmo dia da semana sempre que possível) e o sábado só quando a semana não tem
-    dia útil livre.
-    """
-    uteis = [
-        d for d in await get_datas_letivas(inicio, fim, dias_uteis, db)
-        if d not in ocupadas and d not in excluir
-    ]
-    sabs = [d for d in sabados if d >= inicio and d not in ocupadas and d not in excluir]
+    Sábado só quando não há dia útil livre suficiente para fechar a CH no semestre.
 
+    Dentro do semestre do início, a ordem de preferência é:
+      1. um dia útil livre por semana (mantendo o mesmo dia da semana sempre que possível);
+      2. dias úteis livres adicionais na mesma semana;
+      3. sábados, só na quantidade que ainda faltar (os primeiros disponíveis).
+    Se nem assim couber, continua após o semestre, uma aula por semana.
+    """
     def semana(d: date) -> tuple[int, int]:
         iso = d.isocalendar()
         return (iso[0], iso[1])
 
+    fim_sem = min(fim, fim_do_semestre(inicio))
+    uteis_todos = [
+        d for d in await get_datas_letivas(inicio, fim, dias_uteis, db)
+        if d not in ocupadas and d not in excluir
+    ]
+    sabs_todos = [d for d in sabados if d >= inicio and d not in ocupadas and d not in excluir]
+    uteis = [d for d in uteis_todos if d <= fim_sem]
+    sabs = [d for d in sabs_todos if d <= fim_sem]
+
+    # 1. Um dia útil por semana, preferindo repetir o mesmo dia
     uteis_por_semana: dict[tuple[int, int], list[date]] = {}
     for d in uteis:
         uteis_por_semana.setdefault(semana(d), []).append(d)
-    sab_por_semana = {semana(d): d for d in sabs}
-
-    escolhidas: list[date] = []
+    semanais: list[date] = []
     dia_atual: int | None = None
-    for sem in sorted(set(uteis_por_semana) | set(sab_por_semana)):
-        if len(escolhidas) >= n:
-            break
-        livres = uteis_por_semana.get(sem)
-        if livres:
-            mesmo_dia = [d for d in livres if d.weekday() == dia_atual]
-            d = mesmo_dia[0] if mesmo_dia else livres[0]
-            dia_atual = d.weekday()
-        elif sem in sab_por_semana:
-            d = sab_por_semana[sem]
-        else:
-            continue
-        escolhidas.append(d)
-    return escolhidas
+    for sem in sorted(uteis_por_semana):
+        livres = uteis_por_semana[sem]
+        mesmo_dia = [d for d in livres if d.weekday() == dia_atual]
+        d = mesmo_dia[0] if mesmo_dia else livres[0]
+        dia_atual = d.weekday()
+        semanais.append(d)
+
+    escolhidas = semanais[:n]
+    if len(escolhidas) < n:
+        # 2. Dias úteis extras antes de recorrer ao sábado
+        extras = [d for d in uteis if d not in set(semanais)]
+        escolhidas += extras[: n - len(escolhidas)]
+    if len(escolhidas) < n:
+        # 3. Sábados, só os que faltarem
+        escolhidas += sabs[: n - len(escolhidas)]
+    if len(escolhidas) < n:
+        # Não coube no semestre: segue depois dele, uma aula por semana
+        usadas_sem = {semana(d) for d in escolhidas}
+        depois = sorted([d for d in uteis_todos if d > fim_sem] + [d for d in sabs_todos if d > fim_sem])
+        for d in depois:
+            if len(escolhidas) >= n:
+                break
+            if semana(d) in usadas_sem:
+                continue
+            escolhidas.append(d)
+            usadas_sem.add(semana(d))
+    return sorted(escolhidas)
 
 
 async def gerar_planejamento(

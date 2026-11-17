@@ -61,37 +61,67 @@ async def test_superior_planeja_a_partir_do_inicio_do_modulo(client, db_session)
         assert min(datas) >= "2027-01-25" and max(datas) <= "2027-06-30", (rota, min(datas), max(datas))
 
 
-async def test_superior_sabado_so_enquanto_nao_ha_dia_util_livre(client, db_session):
-    """UC fixada no sábado passa para o dia útil que ficar livre quando outra UC termina."""
+async def _planejar_superior_com_sabado(client, db_session, codigo: str, ch_pi: int, rota: str = "gerar"):
     admin = await _usuario(db_session, "admin", "Admin")
-    curso = Curso(nome="DESIGN SUP SAB", codigo="21860", carga_horaria_total=1700)
+    curso = Curso(nome=f"DESIGN SUP {codigo}", codigo=codigo, carga_horaria_total=1700)
     db_session.add(curso)
     await db_session.flush()
-    nomes = [("SEG", 80, 0), ("TER", 80, 1), ("QUA CURTA", 16, 2), ("QUI", 80, 3), ("SEX", 80, 4), ("PI II", 40, 5)]
+    nomes = [("SEG", 80, 0), ("TER", 80, 1), ("QUA CURTA", 16, 2), ("QUI", 80, 3), ("SEX", 80, 4), ("PI II", ch_pi, 5)]
     ucs = []
     for nome, ch, _ in nomes:
-        u = UnidadeCurricular(curso_id=curso.id, codigo_uc=f"S{len(ucs)}", nome=nome, modulo_etapa="2º PERÍODO", carga_horaria=ch)
+        u = UnidadeCurricular(curso_id=curso.id, codigo_uc=f"{codigo}{len(ucs)}", nome=nome,
+                              modulo_etapa="2º PERÍODO", carga_horaria=ch)
         db_session.add(u)
         ucs.append(u)
-    ev = Evento(nome_turma="SAB1", disciplina="DESIGN", carga_horaria_total=1700, horas_semanais=20,
-                data_inicio=date(2026, 8, 24), data_fim=date(2028, 7, 1), dias_semana=[0, 1, 2, 3, 4], status="Ativo",
+    ev = Evento(nome_turma=f"T{codigo}", disciplina="DESIGN", carga_horaria_total=1700, horas_semanais=20,
+                data_inicio=date(2026, 8, 24), data_fim=date(2028, 7, 1), dias_semana=[0, 1, 2, 3, 4, 5], status="Ativo",
                 horario_inicio=time(18, 45), horario_fim=time(22, 45), curso_id=curso.id)
     db_session.add(ev)
     await db_session.flush()
-
-    r = await client.post(f"/api/v1/planejamento/gerar/{ev.id}", headers=_hdr(admin), json={
+    r = await client.post(f"/api/v1/planejamento/{rota}/{ev.id}", headers=_hdr(admin), json={
         "ucs": [{"uc_id": u.id, "ordem": i + 1, "data_inicio": "2027-01-25", "dias_semana": [dia]}
                 for i, (u, (_, _, dia)) in enumerate(zip(ucs, nomes))],
         "modo_superior": True, "clipar_semestre": True,
     })
+    if r.status_code == 503 and rota == "gerar-otimizado":
+        return None  # OR-Tools não instalado neste ambiente
     assert r.status_code == 200, r.text
     alocs = r.json()["alocacoes"]
     assert [a["uc_nome"] for a in alocs] == [n for n, _, _ in nomes]  # ordem do currículo mantida
-    pi = [date.fromisoformat(d) for d in alocs[-1]["datas_aulas"]]
-    assert len(pi) == 10
-    fim_qua = max(date.fromisoformat(d) for d in alocs[2]["datas_aulas"])  # última aula da UC de quarta
-    sabados = [d for d in pi if d.weekday() == 5]
-    assert sabados and all(d < fim_qua + timedelta(days=7) for d in sabados), (fim_qua, pi)
-    assert all(d.weekday() == 2 for d in pi if d > fim_qua + timedelta(days=3)), " ".join(str(d) for d in pi)  # depois, quarta-feira
     todas = [d for a in alocs for d in a["datas_aulas"]]
     assert len(todas) == len(set(todas))  # nenhuma data com duas UCs
+    return alocs
+
+
+async def test_superior_sabado_nao_usado_quando_dias_uteis_bastam(client, db_session):
+    """A UC fixada no sábado vai para a quarta que fica livre e não usa sábado, pois a CH cabe no semestre."""
+    alocs = await _planejar_superior_com_sabado(client, db_session, "S1", 40)
+    pi = [date.fromisoformat(d) for d in alocs[-1]["datas_aulas"]]
+    fim_qua = max(date.fromisoformat(d) for d in alocs[2]["datas_aulas"])
+    assert len(pi) == 10
+    assert all(d.weekday() == 2 and d > fim_qua for d in pi), " ".join(map(str, pi))
+
+
+async def test_superior_sabado_so_o_que_faltar(client, db_session):
+    """CH maior que os dias úteis livres: usa todos eles e completa com os primeiros sábados."""
+    alocs = await _planejar_superior_com_sabado(client, db_session, "S2", 160)
+    pi = [date.fromisoformat(d) for d in alocs[-1]["datas_aulas"]]
+    assert len(pi) == 40
+    assert any(d.weekday() == 5 for d in pi)
+    ocupadas = {date.fromisoformat(d) for a in alocs for d in a["datas_aulas"]}
+    d, livres = date(2027, 1, 25), []
+    while d <= date(2027, 6, 30):
+        if d.weekday() < 5 and d not in ocupadas:
+            livres.append(d)
+        d += timedelta(days=1)
+    assert not livres, livres  # nenhum dia útil ficou vazio enquanto se usou sábado
+
+
+async def test_otimizado_superior_sabado_so_sem_dia_util(client, db_session):
+    """Otimizado: mesma regra do sábado e início no módulo."""
+    alocs = await _planejar_superior_com_sabado(client, db_session, "S3", 40, rota="gerar-otimizado")
+    if alocs is None:
+        return
+    todas = [date.fromisoformat(d) for a in alocs for d in a["datas_aulas"]]
+    assert min(todas) >= date(2027, 1, 25)
+    assert not [d for d in todas if d.weekday() == 5], "sábado usado com dia útil livre"

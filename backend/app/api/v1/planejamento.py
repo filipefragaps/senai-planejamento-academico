@@ -1621,13 +1621,41 @@ async def gerar_otimizado(
     all_sorted_dates: list[tuple[date, int]] = sorted(
         (d, dia) for dia in dias_semana for d in day_pool[dia]
     )
-    for d, dia in all_sorted_dates:
-        for uc_idx in day_priority[dia]:
-            uc_id = ucs_datas_solver[uc_idx]["uc"].id
-            if remaining_budget[uc_id] > 0:
-                new_dates_map[uc_id].append(d)
-                remaining_budget[uc_id] -= 1
-                break
+
+    def _distribuir(datas: list[tuple[date, int]], prioridade: dict[int, list[int]]) -> None:
+        for d, dia in datas:
+            for uc_idx in prioridade[dia]:
+                uc_id = ucs_datas_solver[uc_idx]["uc"].id
+                if remaining_budget[uc_id] > 0:
+                    new_dates_map[uc_id].append(d)
+                    remaining_budget[uc_id] -= 1
+                    break
+
+    # Ensino Superior: sábado é exceção — só quando não há dia útil livre no semestre
+    sabado_excecao = body.modo_superior and 5 in dias_semana and not apenas_sabado
+    if sabado_excecao:
+        dias_item = {it.uc_id: set(it.dias_semana or []) for it in body.ucs}
+        idx_sab = [
+            i for i, ud in enumerate(ucs_datas_solver)
+            if dias_item.get(ud["uc"].id) == {5} or set(uc_dias_atribuidos.get(ud["uc"].id, [])) == {5}
+        ]
+        limite_sem = min(data_fim_efetiva, fim_do_semestre(inicio_ref))
+        # Dias úteis: o dono do dia primeiro; quando ele termina, a UC de sábado herda o dia
+        def _dono(i: int, dia: int) -> bool:
+            return dia in uc_dias_atribuidos.get(ucs_datas_solver[i]["uc"].id, dias_semana)
+
+        prio_util = {
+            dia: [i for i in day_priority[dia] if i not in idx_sab and _dono(i, dia)]
+                 + idx_sab
+                 + [i for i in day_priority[dia] if i not in idx_sab and not _dono(i, dia)]
+            for dia in dias_semana if dia != 5
+        }
+        prio_sab = {5: idx_sab + [i for i in range(len(ucs_datas_solver)) if i not in idx_sab]}
+        _distribuir([(d, dia) for d, dia in all_sorted_dates if dia != 5 and d <= limite_sem], prio_util)
+        _distribuir([(d, dia) for d, dia in all_sorted_dates if dia == 5 and d <= limite_sem], prio_sab)
+        _distribuir([(d, dia) for d, dia in all_sorted_dates if d > limite_sem], {**prio_util, **prio_sab})
+    else:
+        _distribuir(all_sorted_dates, day_priority)
 
     # ── Gap-fill de cauda: preenche a janela de transição final ──────────────────
     # Após os budgets primários esgotarem, podem restar dias no pool na janela entre
@@ -1652,6 +1680,8 @@ async def gerar_otimizado(
 
     remaining_fill: list[tuple[date, int]] = []
     for dia in dias_semana:
+        if sabado_excecao and dia == 5:
+            continue  # não completa a cauda com sábados
         for d in day_pool[dia]:
             if (d not in used_dates
                     and (fill_cutoff is None or d <= fill_cutoff)
