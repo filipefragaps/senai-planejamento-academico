@@ -1476,11 +1476,11 @@ async def gerar_otimizado(
     # Pool de datas letivas
     dias_sem_sabado = [d for d in dias_semana if d != 5]
     if dias_sem_sabado:
-        datas_letivas = await get_datas_letivas(evento.data_inicio, data_fim_efetiva, dias_sem_sabado, db)
+        datas_letivas = await get_datas_letivas(inicio_ref, data_fim_efetiva, dias_sem_sabado, db)
         if 5 in dias_semana:
-            datas_letivas += await get_datas_letivas(evento.data_inicio, data_fim_efetiva, [5], db)
+            datas_letivas += await get_datas_letivas(inicio_ref, data_fim_efetiva, [5], db)
     else:
-        datas_letivas = await get_datas_letivas(evento.data_inicio, data_fim_efetiva, dias_semana, db)
+        datas_letivas = await get_datas_letivas(inicio_ref, data_fim_efetiva, dias_semana, db)
 
     # Filtra datas explicitamente excluídas (ex: sábados FIC marcados como "sem aula")
     if body.datas_excluir:
@@ -1524,7 +1524,7 @@ async def gerar_otimizado(
         # Compute dates for this UC (same cursor logic as greedy)
         dias_semana_uc = item.dias_semana or []
         if dias_semana_uc:
-            datas_pool_uc = await get_datas_letivas(evento.data_inicio, data_fim_efetiva, dias_semana_uc, db)
+            datas_pool_uc = await get_datas_letivas(inicio_ref, data_fim_efetiva, dias_semana_uc, db)
             cursor_uc = 0
             if item.data_inicio:
                 try:
@@ -1598,7 +1598,7 @@ async def gerar_otimizado(
     day_pool: dict[int, list[date]] = {}
     for dia in dias_semana:
         day_pool[dia] = await get_datas_letivas(
-            evento.data_inicio, data_fim_efetiva, [dia], db
+            inicio_ref, data_fim_efetiva, [dia], db
         )
 
     # Para cada dia da semana, ordem de prioridade das UCs:

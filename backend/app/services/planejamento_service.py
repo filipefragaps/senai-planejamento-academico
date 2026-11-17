@@ -191,6 +191,54 @@ def inicio_planejamento(inicio_evento: date, ucs: list) -> date:
     return max(inicio_evento, min(datas)) if datas else inicio_evento
 
 
+async def _datas_sabado_com_fallback_util(
+    sabados: list[date],
+    inicio: date,
+    fim: date,
+    dias_uteis: list[int],
+    ocupadas: set[date],
+    excluir: set[date],
+    n: int,
+    db: AsyncSession,
+) -> list[date]:
+    """
+    Uma aula por semana: usa um dia útil livre da semana quando houver (mantendo o
+    mesmo dia da semana sempre que possível) e o sábado só quando a semana não tem
+    dia útil livre.
+    """
+    uteis = [
+        d for d in await get_datas_letivas(inicio, fim, dias_uteis, db)
+        if d not in ocupadas and d not in excluir
+    ]
+    sabs = [d for d in sabados if d >= inicio and d not in ocupadas and d not in excluir]
+
+    def semana(d: date) -> tuple[int, int]:
+        iso = d.isocalendar()
+        return (iso[0], iso[1])
+
+    uteis_por_semana: dict[tuple[int, int], list[date]] = {}
+    for d in uteis:
+        uteis_por_semana.setdefault(semana(d), []).append(d)
+    sab_por_semana = {semana(d): d for d in sabs}
+
+    escolhidas: list[date] = []
+    dia_atual: int | None = None
+    for sem in sorted(set(uteis_por_semana) | set(sab_por_semana)):
+        if len(escolhidas) >= n:
+            break
+        livres = uteis_por_semana.get(sem)
+        if livres:
+            mesmo_dia = [d for d in livres if d.weekday() == dia_atual]
+            d = mesmo_dia[0] if mesmo_dia else livres[0]
+            dia_atual = d.weekday()
+        elif sem in sab_por_semana:
+            d = sab_por_semana[sem]
+        else:
+            continue
+        escolhidas.append(d)
+    return escolhidas
+
+
 async def gerar_planejamento(
     evento_id: int,
     ucs_ordenadas: list[dict],   # [{uc_id, ordem, professor_preferido_id?}]
@@ -325,7 +373,14 @@ async def gerar_planejamento(
     # Datas já ocupadas por qualquer UC neste evento (um evento tem horário único — 1 UC/data)
     datas_ocupadas: set[date] = set()
 
-    for item in sorted(ucs_ordenadas, key=lambda x: x.get("ordem", 0)):
+    def _so_sabado(it: dict) -> bool:
+        # No Ensino Superior, UC com dia fixo no sábado é "sobra" de dias úteis:
+        # usa sábado só enquanto não houver dia útil livre (ex.: outra UC terminou)
+        return bool(modo_superior and not apenas_sabado and set(it.get("dias_semana") or []) == {5})
+
+    ordem_original = {it["uc_id"]: it.get("ordem", 0) for it in ucs_ordenadas}
+    # UCs de sábado por último, para só ocuparem os dias úteis que as outras deixaram livres
+    for item in sorted(ucs_ordenadas, key=lambda x: (_so_sabado(x), x.get("ordem", 0))):
         uc_id = item["uc_id"]
         prof_preferido_uc = item.get("professor_preferido_id")
         data_inicio_uc = item.get("data_inicio")   # data de início opcional para este módulo
@@ -386,7 +441,18 @@ async def gerar_planejamento(
                 except (ValueError, TypeError):
                     pass
             datas_uc: list[date] = []
-            while len(datas_uc) < aulas_necessarias and cursor_uc < len(datas_pool_uc):
+            if _so_sabado(item):
+                datas_uc = await _datas_sabado_com_fallback_util(
+                    sabados=datas_pool_uc[cursor_uc:],
+                    inicio=max(data_inicio_pool_uc, inicio_ref),
+                    fim=data_fim_efetiva,
+                    dias_uteis=dias_sem_sabado or [0, 1, 2, 3, 4],
+                    ocupadas=datas_ocupadas,
+                    excluir={date.fromisoformat(d) for d in (datas_excluir or []) if d},
+                    n=aulas_necessarias,
+                    db=db,
+                )
+            while len(datas_uc) < aulas_necessarias and cursor_uc < len(datas_pool_uc) and not _so_sabado(item):
                 d = datas_pool_uc[cursor_uc]
                 cursor_uc += 1
                 if d not in datas_ocupadas:
@@ -546,6 +612,9 @@ async def gerar_planejamento(
             alerta=alerta,
             score=score_escolhido,
         ))
+
+    # Devolve as UCs na ordem do currículo (as de sábado foram processadas por último)
+    alocacoes.sort(key=lambda a: ordem_original.get(a.uc_id, 0))
 
     # 5. Passo 2: UCs incompletas completam CH em datas livres do semestre.
     # Roda sempre (modoSuperior ou não): a regra do dia fixo é ponto de partida,

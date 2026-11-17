@@ -73,9 +73,14 @@ async def resolver_com_ortools(
     usar_fracionamento = (n_dias >= 2 and n_ucs >= 2)
 
     # Semanas disponíveis no período (para calcular dias mínimos por UC)
+    # Período efetivamente planejado (ex.: 2º semestre), não o evento inteiro
+    _todas = [d for ud in ucs_datas for d in ud.get("datas", [])]
+    periodo_ini = min(_todas) if _todas else evento.data_inicio
+    periodo_fim = max(_todas) if _todas else evento.data_fim
+
     weeks = 20
-    if usar_fracionamento and evento.data_fim and evento.data_inicio:
-        weeks = max(1, (evento.data_fim - evento.data_inicio).days // 7 + 1)
+    if usar_fracionamento and periodo_fim and periodo_ini:
+        weeks = max(1, (periodo_fim - periodo_ini).days // 7 + 1)
 
     # Dias mínimos que cada UC precisa no track para caber no período
     min_days_uc: list[int] = []
@@ -88,7 +93,7 @@ async def resolver_com_ortools(
     # aulas em OUTROS eventos durante o período deste evento.
     prof_busy_weekdays: list[set[int]] = [set() for _ in range(n_profs)]
 
-    if usar_fracionamento and evento.id and evento.data_inicio and evento.data_fim:
+    if usar_fracionamento and evento.id and periodo_ini and periodo_fim:
         prof_ids = [p.id for p in todos_profs]
         busy_rows = await db.execute(
             select(
@@ -100,8 +105,8 @@ async def resolver_com_ortools(
                     Aula.professor_id.in_(prof_ids),
                     Aula.evento_id != evento.id,
                     Aula.status != "Cancelada",
-                    Aula.data >= evento.data_inicio,
-                    Aula.data <= evento.data_fim,
+                    Aula.data >= periodo_ini,
+                    Aula.data <= periodo_fim,
                 )
             )
             .distinct()
