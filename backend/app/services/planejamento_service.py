@@ -173,6 +173,24 @@ async def _candidatos_uc(
     return sorted(candidatos, key=lambda x: x["score"], reverse=True)
 
 
+def fim_do_semestre(ref: date) -> date:
+    """Último dia do semestre civil da data (30/06 ou 31/12)."""
+    return date(ref.year, 12, 31) if ref.month >= 7 else date(ref.year, 6, 30)
+
+
+def inicio_planejamento(inicio_evento: date, ucs: list) -> date:
+    """Menor data de início informada nas UCs, quando posterior ao início do evento; senão o início do evento."""
+    datas = []
+    for item in ucs:
+        di = item.get("data_inicio") if isinstance(item, dict) else getattr(item, "data_inicio", None)
+        if di:
+            try:
+                datas.append(date.fromisoformat(di) if isinstance(di, str) else di)
+            except (ValueError, TypeError):
+                pass
+    return max(inicio_evento, min(datas)) if datas else inicio_evento
+
+
 async def gerar_planejamento(
     evento_id: int,
     ucs_ordenadas: list[dict],   # [{uc_id, ordem, professor_preferido_id?}]
@@ -191,14 +209,11 @@ async def gerar_planejamento(
     if not evento:
         raise ValueError(f"Evento {evento_id} não encontrado")
 
+    # Início efetivo: a data de início informada para o módulo (ex.: 2º semestre), se for depois do evento
+    inicio_ref = inicio_planejamento(evento.data_inicio, ucs_ordenadas)
     data_fim_efetiva = evento.data_fim
     if modo_superior and clipar_semestre:
-        ano = evento.data_inicio.year
-        if evento.data_inicio.month >= 7:
-            data_fim_semestre = date(ano, 12, 31)
-        else:
-            data_fim_semestre = date(ano, 6, 30)
-        data_fim_efetiva = min(evento.data_fim, data_fim_semestre)
+        data_fim_efetiva = min(evento.data_fim, fim_do_semestre(inicio_ref))
 
     horas_por_aula = _horas_aula(evento)
     turno = _turno(evento)
@@ -238,7 +253,7 @@ async def gerar_planejamento(
             dias_base = [d for d in dias_semana if d != 5] or dias_semana
             excluir_set_ext = {date.fromisoformat(d) for d in (datas_excluir or []) if d}
             datas_letivas_atuais = [
-                d for d in await get_datas_letivas(evento.data_inicio, data_fim_efetiva, dias_base, db)
+                d for d in await get_datas_letivas(inicio_ref, data_fim_efetiva, dias_base, db)
                 if d not in excluir_set_ext
             ]
             if total_aulas_prev > len(datas_letivas_atuais):

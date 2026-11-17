@@ -1444,11 +1444,12 @@ async def gerar_otimizado(
             detail="Evento sem dias da semana configurados. Configure os dias do evento antes de planejar."
         )
 
+    from app.services.planejamento_service import fim_do_semestre, inicio_planejamento
+    # Início efetivo: a data informada para o módulo (ex.: 2º semestre), se for depois do evento
+    inicio_ref = inicio_planejamento(evento.data_inicio, body.ucs)
     data_fim_efetiva = evento.data_fim
     if body.modo_superior and body.clipar_semestre:
-        ano = evento.data_inicio.year
-        data_fim_semestre = date(ano, 12, 31) if evento.data_inicio.month >= 7 else date(ano, 6, 30)
-        data_fim_efetiva = min(evento.data_fim, data_fim_semestre)
+        data_fim_efetiva = min(evento.data_fim, fim_do_semestre(inicio_ref))
 
     # Estender data_fim se total de aulas excede datas letivas no período
     # Eventos só-sábado (FIC/51/54) nunca estendem: o período é fixo por design.
@@ -1464,7 +1465,7 @@ async def gerar_otimizado(
         dias_base = [d for d in dias_semana if d != 5] or dias_semana
         excluir_set_check = {date.fromisoformat(d) for d in (body.datas_excluir or []) if d}
         datas_check = [
-            d for d in await get_datas_letivas(evento.data_inicio, data_fim_efetiva, dias_base, db)
+            d for d in await get_datas_letivas(inicio_ref, data_fim_efetiva, dias_base, db)
             if d not in excluir_set_check
         ]
         if total_aulas_prev > len(datas_check):

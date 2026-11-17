@@ -1570,8 +1570,8 @@ export default function EventosPage() {
         carga_horaria: u.carga_horaria,
         ordem: i + 1,
         professor_preferido_id: u.professor_preferido_id,
-        // Em modoSuperior cada UC cobre o semestre inteiro — sem data_inicio restritiva
-        data_inicio: undefined,
+        // Em modoSuperior cada UC tem seu dia fixo; todas começam no início do módulo (ex.: 2º semestre)
+        data_inicio: moduloDataInicio || undefined,
         nao_agendar: u.nao_agendar ?? false,
         dias_semana: diasUc,
       };
