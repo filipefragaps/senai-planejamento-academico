@@ -27,6 +27,7 @@ import {
   ListChecks,
   Settings2,
   Briefcase,
+  Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clearAuth } from "@/lib/auth";
@@ -58,6 +59,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/cronograma",  label: "Cronograma",    icon: Calendar,      perfis: ["admin", "coordenador", "analista", "secretario", "professor", "apoio"] },
       { href: "/ofertas",     label: "Eventos SENAI", icon: ClipboardList, perfis: ["admin", "coordenador", "analista", "secretario", "atendente", "consultor"] },
       { href: "/eventos",     label: "Planejamento",  icon: Calendar,      perfis: ["admin", "coordenador"] },
+      { href: "/planejamento-lote", label: "Planejamento em lote", icon: Layers, perfis: ["admin", "coordenador"] },
       { href: "/calendario",  label: "Calendário",    icon: CalendarDays,  perfis: ["admin", "coordenador"] },
     ],
   },

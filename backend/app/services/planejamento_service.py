@@ -265,6 +265,8 @@ async def gerar_planejamento(
     modo_superior: bool = False,
     clipar_semestre: bool = False,
     datas_excluir: list[str] | None = None,
+    escolher_professor: bool = True,
+    regencias_cache: dict[int, dict] | None = None,
 ) -> PlanejamentoResult:
     """
     Gera proposta de cronograma sem salvar no banco.
@@ -373,10 +375,11 @@ async def gerar_planejamento(
     # 3. Regências atuais de todos os professores
     result_profs = await db.execute(select(Professor).where(Professor.ativo == True))
     todos_profs = result_profs.scalars().all()
-    regencias_atuais: dict[int, dict] = {}
-    for prof in todos_profs:
-        reg = await calcular_regencia_professor(prof, db)
-        regencias_atuais[prof.id] = reg
+    regencias_atuais: dict[int, dict] = dict(regencias_cache) if regencias_cache is not None else {}
+    if regencias_cache is None:
+        for prof in todos_profs:
+            reg = await calcular_regencia_professor(prof, db)
+            regencias_atuais[prof.id] = reg
 
     # 4. Projeção acumulada (horas a adicionar por professor neste planejamento)
     horas_projetadas: dict[int, float] = {}
@@ -502,7 +505,8 @@ async def gerar_planejamento(
             conflitos.append({"uc_id": uc_id, "uc_nome": uc.nome, "motivo": "Sem datas letivas disponíveis"})
 
         # Encontrar melhor professor para esta UC
-        candidatos = await _candidatos_uc(uc, evento, preferidos, regencias_atuais, db)
+        # Planejamento em lote só usa as datas; os professores são escolhidos depois, em conjunto
+        candidatos = await _candidatos_uc(uc, evento, preferidos, regencias_atuais, db) if escolher_professor else []
 
         professor_escolhido = None
         professor_nome = None
@@ -512,7 +516,7 @@ async def gerar_planejamento(
         cand = None
 
         # Professor selecionado explicitamente: prioridade absoluta, independente de atuação/score
-        if prof_preferido_uc:
+        if prof_preferido_uc and escolher_professor:
             cand = next((c for c in candidatos if c["professor"].id == prof_preferido_uc), None)
             if cand is None:
                 # Professor não está nos candidatos (sem atuação ou disponibilidade cadastrada)
