@@ -134,6 +134,31 @@ def _get(row: pd.Series, *keys: str, default: str = "") -> str:
     return default
 
 
+def _col_etapa(df: pd.DataFrame) -> str | None:
+    """Coluna da etapa da UC: "Módulo"/"Etapa"; nos cursos superiores, "Período", "Semestre" ou "Fase"."""
+    for chaves in (("modulo", "etapa"), ("periodo", "semestre", "fase")):
+        col = next((c for c in df.columns if any(k in c for k in chaves)), None)
+        if col:
+            return col
+    return None
+
+
+def _etapa(row, col: str | None) -> str | None:
+    """Valor da etapa; número puro vira rótulo legível ("2" na coluna Período → "2º Período")."""
+    if not col:
+        return None
+    v = _str(row.get(col))
+    if not v:
+        return None
+    try:
+        n = int(float(v.replace(",", ".")))
+    except ValueError:
+        return v
+    rotulo = next((r for k, r in (("semestre", "Semestre"), ("fase", "Fase"), ("periodo", "Período"),
+                                  ("etapa", "Etapa"), ("modulo", "Módulo")) if k in col), "Etapa")
+    return f"{n}º {rotulo}"
+
+
 def _col_first(df: pd.DataFrame, *candidates: str) -> str | None:
     """Retorna o primeiro nome de coluna que existe no DataFrame."""
     for c in candidates:
@@ -244,7 +269,7 @@ class ExcelImportService:
         ch_col      = next((c for c in df.columns if "carga" in c), None)
         uc_seq_col  = _col_first(df, "uc")
         tipo_col    = _col_first(df, "tipo")
-        modulo_col  = next((c for c in df.columns if "modulo" in c or "etapa" in c), None)
+        modulo_col  = _col_etapa(df)
         cod_uc_col  = next((c for c in df.columns if "cod_uc" in c), None)
         nome_uc_col = next((c for c in df.columns if "unidade" in c), None)
 
@@ -310,7 +335,7 @@ class ExcelImportService:
                 dados_uc = {
                     "nome":        nome_uc.upper(),
                     "tipo":        _str(row.get(tipo_col), "Presencial").capitalize() if tipo_col else "Presencial",
-                    "modulo_etapa": _str(row.get(modulo_col)) if modulo_col else None,
+                    "modulo_etapa": _etapa(row, modulo_col),
                     "sequencia":   int(_parse_float(row.get(uc_seq_col))) if uc_seq_col else None,
                     "carga_horaria": int(_parse_float(row.get(ch_col))) if ch_col else 0,
                 }
@@ -338,7 +363,7 @@ class ExcelImportService:
         # Colunas de UC para criar UnidadeCurricular junto com o Curso
         cod_uc_col  = next((c for c in df.columns if "cod_uc" in c), None)
         nome_uc_col = next((c for c in df.columns if "unidade" in c), None)
-        modulo_col  = next((c for c in df.columns if "modulo" in c or "etapa" in c), None)
+        modulo_col  = _col_etapa(df)
         uc_seq_col  = _col_first(df, "uc")
         tipo_col    = _col_first(df, "tipo")
 
@@ -420,7 +445,7 @@ class ExcelImportService:
                 dados_uc = {
                     "nome":        nome_uc.upper(),
                     "tipo":        _str(row.get(tipo_col), "Presencial").capitalize() if tipo_col else "Presencial",
-                    "modulo_etapa": _str(row.get(modulo_col)) if modulo_col else None,
+                    "modulo_etapa": _etapa(row, modulo_col),
                     "sequencia":   int(_parse_float(row.get(uc_seq_col))) if uc_seq_col else None,
                     "carga_horaria": int(_parse_float(row.get(ch_col))) if ch_col else 0,
                 }
@@ -450,7 +475,7 @@ class ExcelImportService:
         nome_uc_col = next((c for c in df.columns if "unidade" in c), None)
         ch_col      = next((c for c in df.columns if "carga" in c), None)
         tipo_col    = _col_first(df, "tipo")
-        modulo_col  = next((c for c in df.columns if "modulo" in c or "etapa" in c), None)
+        modulo_col  = _col_etapa(df)
         uc_seq_col  = _col_first(df, "uc")
         # Tenta detectar coluna de código de curso (PASTA ou similar)
         pasta_col   = _col_first(df, "pasta", "cod_curso", "codigo", "cod_ppc")
@@ -494,7 +519,7 @@ class ExcelImportService:
             dados_uc = {
                 "nome":          nome_uc,
                 "tipo":          _str(row.get(tipo_col), "Presencial").capitalize() if tipo_col else "Presencial",
-                "modulo_etapa":  _str(row.get(modulo_col)) if modulo_col else None,
+                "modulo_etapa":  _etapa(row, modulo_col),
                 "sequencia":     int(_parse_float(row.get(uc_seq_col))) if uc_seq_col else None,
                 "carga_horaria": int(_parse_float(row.get(ch_col))) if ch_col else 0,
             }

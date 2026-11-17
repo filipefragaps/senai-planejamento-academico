@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import {
   Search, Plus, Upload, Loader2, RefreshCw, ArrowUp, ArrowDown, X, Download,
   ChevronLeft, ChevronRight, Trash2, BarChart3, ArrowRightLeft, UserSearch,
+  Info,
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 import { downloadModeloBancoDados } from "@/lib/templates";
@@ -2606,6 +2607,18 @@ export default function EventosPage() {
                                   <option key={m} value={m}>{m}</option>
                                 ))}
                               </select>
+                            </div>
+                          )}
+
+                          {/* Curso sem etapas: todas as UCs aparecem juntas */}
+                          {modList.length === 0 && ucsOrdenadas.length > 1 && (
+                            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                              <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                              <p>
+                                As UCs deste curso não têm etapa (período, semestre ou módulo) cadastrada, por isso aparecem todas juntas.
+                                Para planejar uma etapa por vez, organize as UCs em <b>Cursos</b> (marque as UCs de cada etapa e use
+                                “Mover para a etapa…”). Depois disso, o seletor de etapa aparece aqui.
+                              </p>
                             </div>
                           )}
 

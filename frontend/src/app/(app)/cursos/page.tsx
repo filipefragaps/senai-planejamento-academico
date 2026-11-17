@@ -110,6 +110,8 @@ export default function CursosPage() {
   const [ucEditId, setUcEditId] = useState<number | "new" | null>(null);
   const [ucModuloNovo, setUcModuloNovo] = useState<string | null>(null); // módulo alvo para "nova UC"
   const [formUc, setFormUc] = useState(FORM_VAZIO_UC);
+  // UCs marcadas para mover de etapa em lote
+  const [marcadas, setMarcadas] = useState<Set<number>>(new Set());
 
   // PDF plano de curso
   const pdfInputRef = useRef<HTMLInputElement>(null);
@@ -242,6 +244,7 @@ export default function CursosPage() {
   const paginados = filtered.slice((paginaAtual - 1) * POR_PAGINA, paginaAtual * POR_PAGINA);
 
   function selecionarCurso(c: Curso) {
+    setMarcadas(new Set());
     if (selected?.id === c.id) { setSelected(null); return; }
     setSelected(c);
     setEditandoCurso(false);
@@ -273,6 +276,36 @@ export default function CursosPage() {
     itens[idx].sequencia = itens[troca].sequencia;
     itens[troca].sequencia = tmp;
     reordenarUcs.mutate(itens);
+  }
+
+  function alternarMarcada(id: number) {
+    setMarcadas((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function marcarModulo(items: UC[], marcar: boolean) {
+    setMarcadas((prev) => {
+      const next = new Set(prev);
+      items.forEach((u) => (marcar ? next.add(u.id) : next.delete(u.id)));
+      return next;
+    });
+  }
+
+  function moverMarcadasPara(destinoRotulo: string) {
+    const destino = destinoRotulo === "Etapa Única" ? null : destinoRotulo;
+    const jaNoDestino = ucs.filter((u) => (u.modulo_etapa || "Etapa Única") === destinoRotulo && !marcadas.has(u.id)).length;
+    const mover = ucs.filter((u) => marcadas.has(u.id))
+      .sort((a, b) => (a.sequencia ?? 999) - (b.sequencia ?? 999));
+    const itens = mover.map((u, i) => ({ id: u.id, sequencia: jaNoDestino + i + 1, modulo_etapa: destino ?? "" }));
+    reordenarUcs.mutate(itens, {
+      onSuccess: () => {
+        toast.success(`${itens.length} UC(s) movida(s) para ${destinoRotulo}.`);
+        setMarcadas(new Set());
+      },
+    });
   }
 
   function moverUcParaModulo(uc: UC, novoModulo: string) {
@@ -669,8 +702,35 @@ export default function CursosPage() {
                 </div>
               ) : (
                 <>
+                  {marcadas.size > 0 ? (
+                    <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 p-2 text-xs">
+                      <span className="font-medium text-blue-800">{marcadas.size} UC(s) selecionada(s)</span>
+                      <select className="input h-7 w-auto py-0 text-xs" value=""
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                if (!v) return;
+                                if (v === "__nova__") {
+                                  const nome = prompt("Nome da etapa (ex.: 1º Período, 2º Semestre, Módulo II):");
+                                  if (nome?.trim()) moverMarcadasPara(nome.trim());
+                                } else moverMarcadasPara(v);
+                              }}>
+                        <option value="">Mover para a etapa…</option>
+                        {modulosExistentes.map((m) => <option key={m} value={m}>{m}</option>)}
+                        <option value="__nova__">+ Nova etapa…</option>
+                      </select>
+                      <button onClick={() => setMarcadas(new Set())} className="ml-auto text-blue-700 hover:underline">Limpar seleção</button>
+                    </div>
+                  ) : grupos.length === 1 && ucs.length > 1 && (
+                    <p className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                      Todas as UCs estão em uma única etapa. Para planejar por etapa (período, semestre ou módulo), marque as UCs
+                      de cada etapa e use “Mover para a etapa…”.
+                    </p>
+                  )}
                   {grupos.map(([modulo, items]) => (
                     <ModuloSection
+                      marcadas={marcadas}
+                      onAlternarMarcada={alternarMarcada}
+                      onMarcarModulo={(m) => marcarModulo(items, m)}
                       key={modulo}
                       modulo={modulo}
                       items={items}
@@ -728,8 +788,10 @@ interface UC { id: number; curso_id: number; codigo_uc: string; nome: string; ti
 function ModuloSection({
   modulo, items, modulosExistentes, ucEditId, formUc, setFormUc, ucPending,
   onAbrirEdicao, onSalvarUc, onCancelarUc, onDeletar, onMoverNaLista, onMoverParaModulo, onAdicionarUc,
+  marcadas, onAlternarMarcada, onMarcarModulo,
 }: {
   modulo: string; items: UC[]; modulosExistentes: string[];
+  marcadas: Set<number>; onAlternarMarcada: (id: number) => void; onMarcarModulo: (marcar: boolean) => void;
   ucEditId: number | "new" | null; formUc: any; setFormUc: any; ucPending: boolean;
   onAbrirEdicao: (uc: UC) => void;
   onSalvarUc: () => void; onCancelarUc: () => void;
@@ -743,6 +805,9 @@ function ModuloSection({
   return (
     <div>
       <div className="flex items-center gap-2 mb-2">
+        <input type="checkbox" className="h-3.5 w-3.5" title="Selecionar todas as UCs desta etapa"
+               checked={items.length > 0 && items.every((u) => marcadas.has(u.id))}
+               onChange={(e) => onMarcarModulo(e.target.checked)} />
         <span className="text-xs font-bold text-primary uppercase tracking-wide">{modulo}</span>
         <div className="flex-1 h-px bg-blue-100" />
         <span className="text-xs text-gray-400">{totalCH}h</span>
@@ -765,6 +830,8 @@ function ModuloSection({
               />
             ) : (
               <UCRow
+                marcada={marcadas.has(uc.id)}
+                onMarcar={() => onAlternarMarcada(uc.id)}
                 uc={uc}
                 idx={idx}
                 total={items.length}
@@ -795,14 +862,16 @@ function ModuloSection({
   );
 }
 
-function UCRow({ uc, idx, total, modulosExistentes, moduloAtual, onEditar, onDeletar, onMover, onMoverParaModulo }: {
+function UCRow({ uc, idx, total, modulosExistentes, moduloAtual, onEditar, onDeletar, onMover, onMoverParaModulo, marcada, onMarcar }: {
   uc: UC; idx: number; total: number; modulosExistentes: string[]; moduloAtual: string;
+  marcada: boolean; onMarcar: () => void;
   onEditar: () => void; onDeletar: () => void;
   onMover: (dir: "up" | "down") => void;
   onMoverParaModulo: (m: string) => void;
 }) {
   return (
-    <div className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50 group">
+    <div className={cn("flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50 group", marcada && "bg-blue-50/60")}>
+      <input type="checkbox" className="h-3.5 w-3.5 shrink-0" checked={marcada} onChange={onMarcar} title="Selecionar para mover de etapa" />
       {/* Setas de ordem */}
       <div className="flex flex-col shrink-0">
         <button onClick={() => onMover("up")} disabled={idx === 0}
