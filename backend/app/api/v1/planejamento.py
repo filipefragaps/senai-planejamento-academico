@@ -46,6 +46,13 @@ def _norm(s: str) -> str:
     return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode().lower().strip()
 
 
+def _ordem_etapa(nome: str) -> tuple:
+    """Ordena etapas pelo número inicial ("2º Período" antes de "10º Período"); as demais pelo nome."""
+    import re
+    m = re.match(r"\s*(\d+)", nome or "")
+    return (0, int(m.group(1)), nome) if m else (1, 0, nome or "")
+
+
 async def _resolver_curso_id(evento: Evento, evento_id: int, db: AsyncSession) -> int | None:
     """
     Resolve curso_id de um evento usando fallbacks baseados em código/ID.
@@ -675,13 +682,8 @@ async def listar_modulos_evento(
     if not evento:
         return []
 
-    curso_id = evento.curso_id
-    if not curso_id and evento.oferta_id:
-        res_of = await db.execute(
-            select(OfertaCurso.curso_id).where(OfertaCurso.id == evento.oferta_id)
-        )
-        curso_id = res_of.scalar_one_or_none()
-
+    # Mesma resolução de curso da lista de UCs: senão as UCs aparecem e o seletor de etapa não
+    curso_id = await _resolver_curso_id(evento, evento_id, db)
     if not curso_id:
         return []
 
@@ -695,9 +697,8 @@ async def listar_modulos_evento(
             )
         )
         .distinct()
-        .order_by(UnidadeCurricular.modulo_etapa)
     )
-    return [row[0] for row in res.fetchall()]
+    return sorted((row[0] for row in res.fetchall()), key=_ordem_etapa)
 
 
 @router.get("/ucs/{evento_id}")
