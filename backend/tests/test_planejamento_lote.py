@@ -169,3 +169,42 @@ async def test_lote_evento_com_fim_antes_da_etapa_usa_inicio_da_etapa(client, db
         assert all(len(a["datas_aulas"]) == a["aulas_necessarias"]
                    for ev in resp["eventos"] for a in ev["alocacoes"]), motor
         assert all(ev["motor"] == motor for ev in resp["eventos"]), (motor, resp.get("avisos"))
+
+
+async def test_lote_superior_evento_sem_dias_cadastrados_um_dia_por_uc(client, db_session):
+    """Evento sem dias da semana no cadastro (deduz das aulas já gravadas): no Superior cada
+    UC fica no seu dia fixo — não em sequência todos os dias —, nos dois motores."""
+    from datetime import timedelta
+    from app.models.aula import Aula
+
+    admin = await _usuario(db_session, "admin", "Admin")
+    curso = Curso(nome="ENG SEM DIAS", codigo=f"SD{uuid.uuid4().hex[:6]}", carga_horaria_total=400)
+    db_session.add(curso)
+    await db_session.flush()
+    for i, (nome, ch) in enumerate([("CALC SD", 80), ("FIS SD", 76), ("ALG SD", 80), ("QUIM SD", 60), ("MET SD", 40)]):
+        db_session.add(UnidadeCurricular(curso_id=curso.id, codigo_uc=f"SD{i}", nome=nome, modulo_etapa="SEGUNDO PERÍODO",
+                                         sequencia=i + 1, carga_horaria=ch))
+    antiga = UnidadeCurricular(curso_id=curso.id, codigo_uc="SDX", nome="ANTIGA SD", modulo_etapa="PRIMEIRO PERÍODO",
+                               sequencia=1, carga_horaria=40)
+    db_session.add(antiga)
+    ev = Evento(nome_turma="TURMA SEM DIAS", disciplina="ENG", carga_horaria_total=400, horas_semanais=20,
+                data_inicio=date(2026, 8, 11), data_fim=date(2026, 8, 11), dias_semana=None, status="Ativo",
+                horario_inicio=time(8, 0), horario_fim=time(12, 0), curso_id=curso.id)
+    db_session.add(ev)
+    await db_session.flush()
+    for k in [0, 1, 2, 3, 4, 7, 8, 9, 10, 11]:  # aulas antigas de segunda a sexta
+        db_session.add(Aula(evento_id=ev.id, unidade_curricular_id=antiga.id, data=date(2026, 8, 17) + timedelta(days=k),
+                            horario_inicio=time(8, 0), horario_fim=time(12, 0), status="Planejada"))
+    await db_session.flush()
+
+    for motor in ("otimizado", "padrao"):
+        r = await client.post("/api/v1/planejamento-lote/preview", headers=_hdr(admin), json={
+            "eventos": [{"evento_id": ev.id, "modulo": "SEGUNDO PERÍODO", "data_inicio": "2027-01-25",
+                         "modo_superior": True, "clipar_semestre": True, "motor": motor}],
+        })
+        assert r.status_code == 200, r.text
+        alocs = r.json()["eventos"][0]["alocacoes"]
+        dias_por_uc = [{date.fromisoformat(d).weekday() for d in a["datas_aulas"]} for a in alocs]
+        assert all(len(d) == 1 for d in dias_por_uc), (motor, dias_por_uc)
+        assert sorted(next(iter(d)) for d in dias_por_uc) == [0, 1, 2, 3, 4], motor
+        assert all(len(a["datas_aulas"]) == a["aulas_necessarias"] for a in alocs), motor

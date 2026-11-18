@@ -1443,6 +1443,9 @@ async def gerar_otimizado(
             status_code=422,
             detail="Evento sem dias da semana configurados. Configure os dias do evento antes de planejar."
         )
+    # Ensino Superior: o dia fixo de cada UC pode estender os dias do evento (ex.: sexta/sábado)
+    if body.modo_superior:
+        dias_semana = sorted(set(dias_semana) | {d for it in body.ucs for d in (it.dias_semana or [])})
 
     from app.services.planejamento_service import fim_base_planejamento, fim_do_semestre, inicio_planejamento
     # Início efetivo: a data informada para o módulo (ex.: 2º semestre), se for depois do evento
@@ -1585,6 +1588,16 @@ async def gerar_otimizado(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro no solver: {str(e)}")
 
+    # Ensino Superior: cada UC fica no seu dia fixo (regra do curso), não no dia que o
+    # solver escolheu; e UC sem dia definido usa todos os dias do evento.
+    dias_item_map = {it.uc_id: sorted(set(it.dias_semana)) for it in body.ucs if it.dias_semana}
+    for ud in ucs_datas_solver:
+        uid = ud["uc"].id
+        if body.modo_superior and uid in dias_item_map:
+            uc_dias_atribuidos[uid] = dias_item_map[uid]
+        elif not uc_dias_atribuidos.get(uid):
+            uc_dias_atribuidos[uid] = dias_semana
+
     # ── Re-gera datas: atribuição cronológica por track ──────────────────────────
     # Para cada data letiva em ordem cronológica, a UC que "possui" aquele dia
     # (via d_var do CP-SAT) recebe a data desde que ainda tenha orçamento.
@@ -1622,13 +1635,18 @@ async def gerar_otimizado(
         (d, dia) for dia in dias_semana for d in day_pool[dia]
     )
 
+    usadas_regen: set[date] = set()
+
     def _distribuir(datas: list[tuple[date, int]], prioridade: dict[int, list[int]]) -> None:
         for d, dia in datas:
-            for uc_idx in prioridade[dia]:
+            if d in usadas_regen:
+                continue
+            for uc_idx in prioridade.get(dia, []):
                 uc_id = ucs_datas_solver[uc_idx]["uc"].id
                 if remaining_budget[uc_id] > 0:
                     new_dates_map[uc_id].append(d)
                     remaining_budget[uc_id] -= 1
+                    usadas_regen.add(d)
                     break
 
     # Ensino Superior: sábado é exceção — só quando não há dia útil livre no semestre
@@ -1644,16 +1662,25 @@ async def gerar_otimizado(
         def _dono(i: int, dia: int) -> bool:
             return dia in uc_dias_atribuidos.get(ucs_datas_solver[i]["uc"].id, dias_semana)
 
+        # Dentro do semestre: cada dia útil só para o dono e, quando ele termina, para a UC
+        # de sábado. As demais UCs não "herdam" dias de outras (cada dia é uma UC).
         prio_util = {
-            dia: [i for i in day_priority[dia] if i not in idx_sab and _dono(i, dia)]
-                 + idx_sab
-                 + [i for i in day_priority[dia] if i not in idx_sab and not _dono(i, dia)]
+            dia: [i for i in day_priority[dia] if i not in idx_sab and _dono(i, dia)] + idx_sab
             for dia in dias_semana if dia != 5
         }
         prio_sab = {5: idx_sab + [i for i in range(len(ucs_datas_solver)) if i not in idx_sab]}
         _distribuir([(d, dia) for d, dia in all_sorted_dates if dia != 5 and d <= limite_sem], prio_util)
         _distribuir([(d, dia) for d, dia in all_sorted_dates if dia == 5 and d <= limite_sem], prio_sab)
-        _distribuir([(d, dia) for d, dia in all_sorted_dates if d > limite_sem], {**prio_util, **prio_sab})
+        # Sobra (UC que não coube no seu dia): qualquer dia livre, sábado por último
+        _distribuir([(d, dia) for d, dia in all_sorted_dates if dia != 5], day_priority)
+        _distribuir(all_sorted_dates, day_priority)
+    elif body.modo_superior:
+        # Superior sem sábado: cada UC no seu dia; outros dias só para o que não couber
+        prio_dono = {dia: [i for i in day_priority[dia]
+                           if dia in uc_dias_atribuidos.get(ucs_datas_solver[i]["uc"].id, dias_semana)]
+                     for dia in dias_semana}
+        _distribuir(all_sorted_dates, prio_dono)
+        _distribuir(all_sorted_dates, day_priority)
     else:
         _distribuir(all_sorted_dates, day_priority)
 
@@ -1679,7 +1706,7 @@ async def gerar_otimizado(
         fill_budget[uid] = n_liberados * _MAX_FILL_WEEKS
 
     remaining_fill: list[tuple[date, int]] = []
-    for dia in dias_semana:
+    for dia in ([] if body.modo_superior else dias_semana):  # Superior: não passa da CH
         if sabado_excecao and dia == 5:
             continue  # não completa a cauda com sábados
         for d in day_pool[dia]:

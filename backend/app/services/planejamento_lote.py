@@ -65,8 +65,17 @@ def ordenar_etapas(etapas: list[str]) -> list[str]:
     return sorted(etapas, key=_ordem_etapa)
 
 
+async def dias_do_evento(evento: Evento, db: AsyncSession) -> list[int]:
+    """Dias da semana do evento; se não cadastrados, deduz das aulas já gravadas
+    (mesma regra dos planejadores)."""
+    if evento.dias_semana:
+        return list(evento.dias_semana)
+    res = await db.execute(select(Aula.data).where(Aula.evento_id == evento.id).limit(500))
+    return sorted({row[0].weekday() for row in res.all() if row[0]})
+
+
 def montar_ucs_evento(evento: Evento, ucs: list[UnidadeCurricular], data_inicio: str | None,
-                      modo_superior: bool) -> list[dict]:
+                      modo_superior: bool, dias: list[int] | None = None) -> list[dict]:
     """Mesma montagem da tela de planejamento (ucsParaPlanejar)."""
     ucs = sorted(ucs, key=lambda u: (u.sequencia if u.sequencia is not None else 999, u.id))
     if not modo_superior:
@@ -75,7 +84,8 @@ def montar_ucs_evento(evento: Evento, ucs: list[UnidadeCurricular], data_inicio:
             for i, u in enumerate(ucs)
         ]
     # Ensino Superior: um dia fixo por UC; com mais UCs que dias, estende com sexta e sábado
-    pool = list(evento.dias_semana or [])
+    pool = list(dias if dias is not None else (evento.dias_semana or []))
+    pool = [d for d in pool if d != 5] + ([5] if 5 in pool else [])  # sábado por último
     if len(ucs) > len(pool):
         for d in (4, 5):
             if d not in pool:
@@ -189,7 +199,7 @@ async def eventos_para_lote(db: AsyncSession, curso_id: int | None = None) -> di
             "etapas": etapas,
             "data_inicio": ev.data_inicio.isoformat() if ev.data_inicio else None,
             "data_fim": ev.data_fim.isoformat() if ev.data_fim else None,
-            "dias_semana": ev.dias_semana or [],
+            "dias_semana": await dias_do_evento(ev, db),
             "horario_inicio": str(ev.horario_inicio)[:5] if ev.horario_inicio else None,
             "horario_fim": str(ev.horario_fim)[:5] if ev.horario_fim else None,
             "etapas_planejadas": planejadas,
@@ -240,7 +250,8 @@ async def preview_lote(db: AsyncSession, curso_id: int | None, eventos_cfg: list
         if not ucs_ev:
             erros.append({"evento_id": ev.id, "erro": f"Nenhuma UC na etapa {modulo or '(todas)'}"})
             continue
-        ucs_ordenadas = montar_ucs_evento(ev, ucs_ev, cfg.get("data_inicio"), cfg.get("modo_superior", False))
+        dias_ev = await dias_do_evento(ev, db)
+        ucs_ordenadas = montar_ucs_evento(ev, ucs_ev, cfg.get("data_inicio"), cfg.get("modo_superior", False), dias_ev)
         alocs = None
         motor = "otimizado"
         if cfg.get("motor", "otimizado") == "otimizado":
