@@ -1,4 +1,5 @@
 """Planejamento em lote: professores escolhidos em conjunto para todos os eventos do curso."""
+import uuid
 from collections import defaultdict
 from datetime import date, time
 
@@ -11,7 +12,7 @@ from tests.test_crm import _hdr, _usuario
 
 
 async def _cenario(db):
-    curso = Curso(nome="CURSO LOTE", codigo="LOTE1", carga_horaria_total=400)
+    curso = Curso(nome="CURSO LOTE", codigo=f"LOTE{uuid.uuid4().hex[:8]}", carga_horaria_total=400)
     db.add(curso)
     await db.flush()
     u1 = UnidadeCurricular(curso_id=curso.id, codigo_uc="L1", nome="MODELAGEM LOTE", modulo_etapa="1º PERÍODO",
@@ -113,3 +114,20 @@ async def test_lote_respeita_trava_e_confirma_com_rota_existente(client, db_sess
         rc = await client.post(f"/api/v1/planejamento/confirmar/{ev['evento_id']}", headers=_hdr(admin),
                                json={"alocacoes": ev["alocacoes"], "substituir_futuras": True})
         assert rc.status_code == 200, rc.text
+
+
+async def test_lote_seleciona_eventos_sem_escolher_curso(client, db_session):
+    admin = await _usuario(db_session, "admin", "Admin")
+    curso, (u1, u2, u3), (x, y), evs = await _cenario(db_session)
+    r = await client.get("/api/v1/planejamento-lote/eventos", headers=_hdr(admin))
+    assert r.status_code == 200, r.text
+    meus = [e for e in r.json()["eventos"] if e["id"] in {ev.id for ev in evs}]
+    assert len(meus) == 2
+    assert all(e["curso_id"] == curso.id and e["curso_nome"] == "CURSO LOTE" for e in meus)
+    assert all(e["etapas"] == ["1º PERÍODO", "2º PERÍODO"] for e in meus)
+
+    r = await client.post("/api/v1/planejamento-lote/preview", headers=_hdr(admin), json={
+        "eventos": [{"evento_id": e.id, "modulo": "1º PERÍODO"} for e in evs],
+    })
+    assert r.status_code == 200, r.text
+    assert r.json()["resumo"]["cobertas"] == 3

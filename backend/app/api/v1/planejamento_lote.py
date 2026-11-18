@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.core.deps import get_current_user
-from app.services.planejamento_lote import eventos_do_curso, preview_lote
+from app.services.planejamento_lote import eventos_do_curso, eventos_para_lote, preview_lote
 
 router = APIRouter(prefix="/planejamento-lote", tags=["Planejamento em lote"])
 
@@ -27,9 +27,15 @@ class Trava(BaseModel):
 
 
 class PreviewLoteRequest(BaseModel):
-    curso_id: int
+    curso_id: Optional[int] = None
     eventos: list[EventoLote]
     travas: list[Trava] = []
+
+
+@router.get("/eventos")
+async def listar_todos_eventos(db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
+    """Todos os eventos ativos, com o curso de cada um, para escolher os que entram no lote."""
+    return await eventos_para_lote(db)
 
 
 @router.get("/eventos/{curso_id}")

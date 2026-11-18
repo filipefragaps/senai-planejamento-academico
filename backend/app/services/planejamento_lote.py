@@ -1,5 +1,5 @@
 """
-Planejamento em lote: todos os eventos de um curso de uma vez.
+Planejamento em lote: vários eventos de uma vez (escolhidos pelo usuário).
 
 1. Datas: cada evento gera suas datas com a mesma regra do planejamento por evento
    (gerar_planejamento), sem escolher professor.
@@ -27,6 +27,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.aula import Aula
+from app.models.curso import Curso
 from app.models.evento import Evento
 from app.models.professor import Professor
 from app.models.unidade_curricular import UnidadeCurricular
@@ -89,56 +90,81 @@ def montar_ucs_evento(evento: Evento, ucs: list[UnidadeCurricular], data_inicio:
     return itens
 
 
-async def eventos_do_curso(db: AsyncSession, curso_id: int) -> dict:
+async def eventos_para_lote(db: AsyncSession, curso_id: int | None = None) -> dict:
+    """Eventos ativos (de um curso ou de todos), com o curso resolvido, as etapas já
+    planejadas e a próxima sugerida."""
+    from sqlalchemy import func
     from app.api.v1.planejamento import _resolver_curso_id
 
-    res = await db.execute(
-        select(Evento).where(
-            and_(
-                or_(Evento.curso_id == curso_id, Evento.curso_id.is_(None)),
-                or_(Evento.status.is_(None), Evento.status.notin_(["Concluído", "Cancelado"])),
-            )
-        )
-    )
-    eventos = []
+    filtros = [or_(Evento.status.is_(None), Evento.status.notin_(["Concluído", "Cancelado"]))]
+    if curso_id:
+        filtros.append(or_(Evento.curso_id == curso_id, Evento.curso_id.is_(None)))
+    res = await db.execute(select(Evento).where(and_(*filtros)))
+    eventos: list[tuple[Evento, int | None]] = []
     for ev in res.scalars().all():
-        if ev.curso_id != curso_id and await _resolver_curso_id(ev, ev.id, db) != curso_id:
+        cid = ev.curso_id or await _resolver_curso_id(ev, ev.id, db)
+        if curso_id and cid != curso_id:
             continue
-        eventos.append(ev)
+        eventos.append((ev, cid))
 
-    res_ucs = await db.execute(select(UnidadeCurricular).where(UnidadeCurricular.curso_id == curso_id))
-    ucs = list(res_ucs.scalars().all())
-    etapa_de = {u.id: (u.modulo_etapa or "") for u in ucs}
-    etapas = ordenar_etapas(sorted({e for e in etapa_de.values() if e}))
-
-    saida = []
-    for ev in sorted(eventos, key=lambda e: (e.data_inicio or date.max, e.nome_turma or "")):
-        res_a = await db.execute(
-            select(Aula.unidade_curricular_id, Aula.data).where(
-                and_(Aula.evento_id == ev.id, Aula.status != "Cancelada")
-            )
+    curso_ids = {cid for _, cid in eventos if cid}
+    cursos: dict[int, Curso] = {}
+    etapa_de: dict[int, str] = {}
+    etapas_curso: dict[int, list[str]] = defaultdict(list)
+    if curso_ids:
+        for c in (await db.execute(select(Curso).where(Curso.id.in_(curso_ids)))).scalars().all():
+            cursos[c.id] = c
+        res_ucs = await db.execute(
+            select(UnidadeCurricular.id, UnidadeCurricular.curso_id, UnidadeCurricular.modulo_etapa)
+            .where(UnidadeCurricular.curso_id.in_(curso_ids))
         )
-        por_etapa: dict[str, dict] = {}
-        for uc_id, d in res_a.all():
+        brutas: dict[int, set[str]] = defaultdict(set)
+        for uc_id, cid, et in res_ucs.all():
+            etapa_de[uc_id] = et or ""
+            if et:
+                brutas[cid].add(et)
+        for cid, ets in brutas.items():
+            etapas_curso[cid] = ordenar_etapas(sorted(ets))
+
+    # Aulas já gravadas por evento/UC (uma consulta só)
+    planejado: dict[int, dict[str, dict]] = defaultdict(dict)
+    ids = [ev.id for ev, _ in eventos]
+    if ids:
+        res_a = await db.execute(
+            select(Aula.evento_id, Aula.unidade_curricular_id, func.count(), func.max(Aula.data))
+            .where(and_(Aula.evento_id.in_(ids), Aula.status != "Cancelada"))
+            .group_by(Aula.evento_id, Aula.unidade_curricular_id)
+        )
+        for ev_id, uc_id, n, ultima in res_a.all():
             et = etapa_de.get(uc_id)
             if not et:
                 continue
-            info = por_etapa.setdefault(et, {"aulas": 0, "ultima": None})
-            info["aulas"] += 1
-            if d and (info["ultima"] is None or d > info["ultima"]):
-                info["ultima"] = d
+            info = planejado[ev_id].setdefault(et, {"aulas": 0, "ultima": None})
+            info["aulas"] += n
+            if ultima and (info["ultima"] is None or ultima > info["ultima"]):
+                info["ultima"] = ultima
+
+    saida = []
+    for ev, cid in sorted(eventos, key=lambda t: (t[0].data_inicio or date.max, t[0].nome_turma or "")):
+        etapas = etapas_curso.get(cid, []) if cid else []
+        por_etapa = planejado.get(ev.id, {})
         planejadas = [
             {"etapa": et, "aulas": por_etapa[et]["aulas"],
              "ultima_aula": por_etapa[et]["ultima"].isoformat() if por_etapa[et]["ultima"] else None}
             for et in etapas if et in por_etapa
         ]
         proxima = next((et for et in etapas if et not in por_etapa), etapas[0] if etapas else None)
+        curso = cursos.get(cid) if cid else None
         saida.append({
             "id": ev.id,
             "nome_turma": ev.nome_turma,
             "disciplina": ev.disciplina,
             "tipo_modalidade": ev.tipo_modalidade,
             "status": ev.status,
+            "curso_id": cid,
+            "curso_nome": curso.nome if curso else None,
+            "curso_codigo": curso.codigo if curso else None,
+            "etapas": etapas,
             "data_inicio": ev.data_inicio.isoformat() if ev.data_inicio else None,
             "data_fim": ev.data_fim.isoformat() if ev.data_fim else None,
             "dias_semana": ev.dias_semana or [],
@@ -147,10 +173,14 @@ async def eventos_do_curso(db: AsyncSession, curso_id: int) -> dict:
             "etapas_planejadas": planejadas,
             "etapa_sugerida": proxima,
         })
-    return {"etapas": etapas, "eventos": saida}
+    return {"etapas": etapas_curso.get(curso_id, []) if curso_id else [], "eventos": saida}
 
 
-async def preview_lote(db: AsyncSession, curso_id: int, eventos_cfg: list[dict], travas: list[dict]) -> dict:
+async def eventos_do_curso(db: AsyncSession, curso_id: int) -> dict:
+    return await eventos_para_lote(db, curso_id)
+
+
+async def preview_lote(db: AsyncSession, curso_id: int | None, eventos_cfg: list[dict], travas: list[dict]) -> dict:
     try:
         from ortools.sat.python import cp_model
     except ImportError as e:  # pragma: no cover
@@ -161,8 +191,9 @@ async def preview_lote(db: AsyncSession, curso_id: int, eventos_cfg: list[dict],
     prof_map = {p.id: p for p in todos_profs}
     regencias = {p.id: await calcular_regencia_professor(p, db) for p in todos_profs}
 
-    res_ucs = await db.execute(select(UnidadeCurricular).where(UnidadeCurricular.curso_id == curso_id))
-    ucs_curso = list(res_ucs.scalars().all())
+    from app.api.v1.planejamento import _resolver_curso_id
+
+    ucs_por_curso: dict[int, list[UnidadeCurricular]] = {}
     trava_de = {(t["evento_id"], t["uc_id"]): t["professor_id"] for t in travas if t.get("professor_id")}
 
     # ── 1. Datas de cada evento (mesma regra do planejamento por evento) ─────────
@@ -174,8 +205,15 @@ async def preview_lote(db: AsyncSession, curso_id: int, eventos_cfg: list[dict],
         if not ev:
             erros.append({"evento_id": cfg["evento_id"], "erro": "Evento não encontrado"})
             continue
+        cid = ev.curso_id or await _resolver_curso_id(ev, ev.id, db) or curso_id
+        if not cid:
+            erros.append({"evento_id": ev.id, "erro": "Evento sem curso cadastrado"})
+            continue
+        if cid not in ucs_por_curso:
+            res_ucs = await db.execute(select(UnidadeCurricular).where(UnidadeCurricular.curso_id == cid))
+            ucs_por_curso[cid] = list(res_ucs.scalars().all())
         modulo = cfg.get("modulo")
-        ucs_ev = [u for u in ucs_curso if not modulo or (u.modulo_etapa or "") == modulo]
+        ucs_ev = [u for u in ucs_por_curso[cid] if not modulo or (u.modulo_etapa or "") == modulo]
         if not ucs_ev:
             erros.append({"evento_id": ev.id, "erro": f"Nenhuma UC na etapa {modulo or '(todas)'}"})
             continue

@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
-  AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Layers, Loader2, Lock, RefreshCw, Save, Unlock, Users,
+  AlertTriangle, CheckCircle2, Search, X, ChevronDown, ChevronRight, Layers, Loader2, Lock, RefreshCw, Save, Unlock, Users,
 } from "lucide-react";
-import { api, cursosApi } from "@/lib/api";
+import { api } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 
@@ -18,9 +18,10 @@ type EventoCurso = {
   id: number; nome_turma: string; disciplina: string | null; tipo_modalidade: string | null; status: string | null;
   data_inicio: string | null; data_fim: string | null; dias_semana: number[];
   horario_inicio: string | null; horario_fim: string | null;
+  curso_id: number | null; curso_nome: string | null; curso_codigo: string | null; etapas: string[];
   etapas_planejadas: EtapaPlanejada[]; etapa_sugerida: string | null;
 };
-type Config = { selecionado: boolean; modulo: string; data_inicio: string; modo_superior: boolean; clipar_semestre: boolean };
+type Config = { modulo: string; data_inicio: string; modo_superior: boolean; clipar_semestre: boolean };
 type Candidato = { professor_id: number; nome: string; tipo: string; disponivel: boolean };
 type Alocacao = {
   uc_id: number; uc_nome: string; uc_codigo: string; etapa: string | null; carga_horaria: number;
@@ -70,57 +71,74 @@ const GRUPOS_INDIVIDUAIS = new Set(["fic", "ead", "pos", "seduc"]);
 
 export default function PlanejamentoLotePage() {
   const [busca, setBusca] = useState("");
-  const [cursoId, setCursoId] = useState<number | null>(null);
-  const [config, setConfig] = useState<Record<number, Config>>({});
+  const [soPendentes, setSoPendentes] = useState(false);
+  const [config, setConfig] = useState<Record<number, Config>>({}); // eventos selecionados
   const [travas, setTravas] = useState<Record<string, number>>({}); // "evento:uc" → professor
   const [proposta, setProposta] = useState<Proposta | null>(null);
   const [desatualizada, setDesatualizada] = useState(false);
   const [abertos, setAbertos] = useState<Set<number>>(new Set());
   const [gravados, setGravados] = useState<Record<number, "ok" | string>>({});
 
-  const { data: cursos = [] } = useQuery({
-    queryKey: ["cursos-lote"],
-    queryFn: () => cursosApi.listar(true),
-    staleTime: 300_000,
+  const { data: dados, isLoading: carregandoEventos } = useQuery({
+    queryKey: ["lote-eventos-todos"],
+    queryFn: () => api.get("/planejamento-lote/eventos", { timeout: 120_000 }).then((r) => r.data as { eventos: EventoCurso[] }),
+    staleTime: 60_000,
   });
-  const cursosFiltrados = useMemo(() => {
-    const b = busca.trim().toLowerCase();
-    return (cursos as any[]).filter((c) => !b || c.nome.toLowerCase().includes(b) || String(c.codigo).toLowerCase().includes(b)).slice(0, 50);
-  }, [cursos, busca]);
-  const cursoSel = (cursos as any[]).find((c) => c.id === cursoId);
+  const todosEventos = dados?.eventos ?? [];
 
-  const { data: dadosCurso, isLoading: carregandoEventos } = useQuery({
-    queryKey: ["lote-eventos", cursoId],
-    queryFn: () => api.get(`/planejamento-lote/eventos/${cursoId}`).then((r) => r.data as { etapas: string[]; eventos: EventoCurso[] }),
-    enabled: !!cursoId,
-  });
+  const resultados = useMemo(() => {
+    const termos = busca.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return todosEventos.filter((ev) => {
+      if (config[ev.id]) return false;
+      if (soPendentes && ev.etapas.length > 0 && ev.etapas.every((et) => ev.etapas_planejadas.some((p) => p.etapa === et))) return false;
+      if (!termos.length) return true;
+      const texto = `${ev.id} ${ev.nome_turma} ${ev.disciplina ?? ""} ${ev.curso_nome ?? ""} ${ev.curso_codigo ?? ""} ${ev.tipo_modalidade ?? ""}`.toLowerCase();
+      return termos.every((t) => texto.includes(t));
+    });
+  }, [todosEventos, busca, soPendentes, config]);
+  const RESULTADOS_MAX = 80;
 
-  // Configuração padrão de cada evento ao carregar o curso
-  useEffect(() => {
-    if (!dadosCurso) return;
-    const novo: Record<number, Config> = {};
-    for (const ev of dadosCurso.eventos) {
-      const superior = grupoModalidade(ev.tipo_modalidade) === "superior";
-      novo[ev.id] = {
-        selecionado: false,
-        modulo: ev.etapa_sugerida ?? "",
-        data_inicio: "",
-        modo_superior: superior,
-        clipar_semestre: superior,
-      };
-    }
-    setConfig(novo);
+  function bloqueio(ev: EventoCurso): string | null {
+    if (GRUPOS_INDIVIDUAIS.has(grupoModalidade(ev.tipo_modalidade))) return "Planeje pela tela individual (fluxo próprio da modalidade).";
+    if (!ev.curso_id) return "Evento sem curso cadastrado.";
+    return null;
+  }
+
+  function limparProposta() {
     setProposta(null);
     setTravas({});
     setGravados({});
-  }, [dadosCurso]);
+  }
 
-  const selecionados = (dadosCurso?.eventos ?? []).filter((e) => config[e.id]?.selecionado);
+  function selecionar(evs: EventoCurso[]) {
+    const livres = evs.filter((ev) => !bloqueio(ev));
+    if (!livres.length) return;
+    setConfig((prev) => {
+      const next = { ...prev };
+      for (const ev of livres) {
+        const superior = grupoModalidade(ev.tipo_modalidade) === "superior";
+        next[ev.id] = { modulo: ev.etapa_sugerida ?? "", data_inicio: "", modo_superior: superior, clipar_semestre: superior };
+      }
+      return next;
+    });
+    limparProposta();
+  }
+
+  function remover(id: number) {
+    setConfig((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    limparProposta();
+  }
+
+  const selecionados = todosEventos.filter((e) => config[e.id]);
+  const nCursos = new Set(selecionados.map((e) => e.curso_id)).size;
 
   const gerar = useMutation({
     mutationFn: (travasAtuais: Record<string, number>) =>
       api.post("/planejamento-lote/preview", {
-        curso_id: cursoId,
         eventos: selecionados.map((e) => ({
           evento_id: e.id,
           modulo: config[e.id].modulo || null,
@@ -196,128 +214,161 @@ export default function PlanejamentoLotePage() {
     <div className="space-y-6">
       <PageHeader
         title="Planejamento em lote"
-        description="Planeje todos os eventos de um curso de uma vez: os professores são escolhidos em conjunto, para não faltar docente nas últimas turmas."
+        description="Escolha os eventos e planeje todos de uma vez: os professores são escolhidos em conjunto, para não faltar docente nas últimas turmas."
       >
         <Link href="/eventos" className="btn-secondary text-sm">Planejar um evento</Link>
       </PageHeader>
 
-      {/* 1. Curso */}
-      <div className="card p-4 space-y-3">
-        <h2 className="text-sm font-semibold text-gray-800">1. Curso</h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <input className="input max-w-sm" placeholder="Buscar curso por nome ou código…" value={busca}
-                 onChange={(e) => setBusca(e.target.value)} />
-          <select className="input max-w-xl" value={cursoId ?? ""}
-                  onChange={(e) => setCursoId(e.target.value ? Number(e.target.value) : null)}>
-            <option value="">Selecione o curso…</option>
-            {cursoSel && !cursosFiltrados.some((c: any) => c.id === cursoSel.id) && (
-              <option value={cursoSel.id}>{cursoSel.codigo} — {cursoSel.nome}</option>
-            )}
-            {cursosFiltrados.map((c: any) => <option key={c.id} value={c.id}>{c.codigo} — {c.nome}</option>)}
-          </select>
-        </div>
-      </div>
-
-      {/* 2. Eventos */}
-      {cursoId && (
-        <div className="card overflow-hidden">
-          <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
-            <h2 className="mr-auto text-sm font-semibold text-gray-800">2. Eventos do curso e etapa a planejar</h2>
-            {dadosCurso && dadosCurso.eventos.length > 0 && (
-              <button className="text-xs text-primary hover:underline"
-                      onClick={() => {
-                        const todos = dadosCurso.eventos.filter((e) => !GRUPOS_INDIVIDUAIS.has(grupoModalidade(e.tipo_modalidade)));
-                        const marcar = !todos.every((e) => config[e.id]?.selecionado);
-                        todos.forEach((e) => setCfg(e.id, { selecionado: marcar }));
-                      }}>
-                Marcar / desmarcar todos
+      {/* 1. Buscar eventos */}
+      <div className="card overflow-hidden">
+        <div className="space-y-3 border-b p-4">
+          <h2 className="text-sm font-semibold text-gray-800">1. Escolha os eventos</h2>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative w-full max-w-lg">
+              <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
+              <input className="input pl-8" placeholder="Buscar por turma, curso, código ou nº do evento…" value={busca}
+                     onChange={(e) => setBusca(e.target.value)} />
+            </div>
+            <label className="flex items-center gap-1.5 text-xs text-gray-600">
+              <input type="checkbox" checked={soPendentes} onChange={(e) => setSoPendentes(e.target.checked)} />
+              só eventos com etapa a planejar
+            </label>
+            {resultados.length > 0 && busca.trim() && (
+              <button className="ml-auto text-xs text-primary hover:underline" onClick={() => selecionar(resultados.slice(0, RESULTADOS_MAX))}>
+                Adicionar {Math.min(resultados.length, RESULTADOS_MAX)} resultado(s)
               </button>
             )}
           </div>
-          {carregandoEventos ? (
-            <div className="flex items-center gap-2 p-6 text-sm text-gray-500"><Loader2 className="h-4 w-4 animate-spin" /> Carregando eventos…</div>
-          ) : !dadosCurso?.eventos.length ? (
-            <p className="p-6 text-sm text-gray-500">Nenhum evento ativo encontrado para este curso.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-left text-xs text-gray-500">
-                  <tr>
-                    <th className="px-3 py-2 w-8" />
-                    <th className="px-3 py-2">Turma</th>
-                    <th className="px-3 py-2">Horário</th>
-                    <th className="px-3 py-2">Já planejado</th>
-                    <th className="px-3 py-2">Etapa a planejar</th>
-                    <th className="px-3 py-2">Início da etapa</th>
-                    <th className="px-3 py-2">Ensino Superior</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {dadosCurso.eventos.map((ev) => {
-                    const c = config[ev.id];
-                    if (!c) return null;
-                    const grupo = grupoModalidade(ev.tipo_modalidade);
-                    const individual = GRUPOS_INDIVIDUAIS.has(grupo);
-                    return (
-                      <tr key={ev.id} className={cn(c.selecionado && "bg-blue-50/40", individual && "opacity-60")}>
-                        <td className="px-3 py-2 align-top">
-                          <input type="checkbox" disabled={individual} checked={c.selecionado}
-                                 onChange={(e) => setCfg(ev.id, { selecionado: e.target.checked })} />
-                        </td>
-                        <td className="px-3 py-2 align-top">
-                          <div className="font-medium text-gray-800">{ev.nome_turma}</div>
-                          <div className="text-[11px] text-gray-400">
-                            #{ev.id} · {fmt(ev.data_inicio)} → {fmt(ev.data_fim)}{ev.tipo_modalidade ? ` · ${ev.tipo_modalidade}` : ""}
-                          </div>
-                          {individual && <div className="text-[11px] text-amber-700">Planeje este evento pela tela individual (fluxo próprio da modalidade).</div>}
-                        </td>
-                        <td className="px-3 py-2 align-top text-xs text-gray-600 whitespace-nowrap">
-                          {ev.dias_semana.map((d) => DIAS[d]).join(", ")}<br />{ev.horario_inicio}–{ev.horario_fim}
-                        </td>
-                        <td className="px-3 py-2 align-top">
-                          <div className="flex flex-wrap gap-1">
-                            {ev.etapas_planejadas.length === 0 ? <span className="text-xs text-gray-400">nada ainda</span> :
-                              ev.etapas_planejadas.map((p) => (
-                                <span key={p.etapa} title={`${p.aulas} aula(s), última em ${fmt(p.ultima_aula)}`}
-                                      className="rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-700">
-                                  {p.etapa} · até {fmt(p.ultima_aula)}
-                                </span>
-                              ))}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2 align-top">
-                          <select className="input h-8 py-0 text-xs" value={c.modulo} disabled={individual}
-                                  onChange={(e) => setCfg(ev.id, { modulo: e.target.value })}>
-                            {dadosCurso.etapas.length === 0 && <option value="">Todas as UCs</option>}
-                            {dadosCurso.etapas.map((et) => <option key={et} value={et}>{et}</option>)}
-                          </select>
-                        </td>
-                        <td className="px-3 py-2 align-top">
-                          <input type="date" className="input h-8 py-0 text-xs" value={c.data_inicio} disabled={individual}
-                                 onChange={(e) => setCfg(ev.id, { data_inicio: e.target.value })} />
-                          {!c.data_inicio && <div className="text-[10px] text-gray-400">vazio = início do evento</div>}
-                        </td>
-                        <td className="px-3 py-2 align-top text-xs">
-                          <label className="flex items-center gap-1">
-                            <input type="checkbox" checked={c.modo_superior} disabled={individual}
-                                   onChange={(e) => setCfg(ev.id, { modo_superior: e.target.checked, clipar_semestre: e.target.checked })} />
-                            dia fixo por UC
+        </div>
+        {carregandoEventos ? (
+          <div className="flex items-center gap-2 p-6 text-sm text-gray-500"><Loader2 className="h-4 w-4 animate-spin" /> Carregando eventos…</div>
+        ) : !busca.trim() ? (
+          <p className="px-4 py-3 text-xs text-gray-500">Digite para buscar entre {todosEventos.length} eventos ativos. Você pode misturar turmas de cursos diferentes.</p>
+        ) : !resultados.length ? (
+          <p className="px-4 py-3 text-xs text-gray-500">Nenhum evento encontrado.</p>
+        ) : (
+          <div className="max-h-80 overflow-y-auto">
+            <table className="w-full text-sm">
+              <tbody className="divide-y">
+                {resultados.slice(0, RESULTADOS_MAX).map((ev) => {
+                  const motivo = bloqueio(ev);
+                  return (
+                    <tr key={ev.id} className={cn(motivo ? "opacity-60" : "cursor-pointer hover:bg-blue-50/40")}
+                        onClick={() => !motivo && selecionar([ev])}>
+                      <td className="px-4 py-2">
+                        <div className="font-medium text-gray-800">{ev.nome_turma}</div>
+                        <div className="text-[11px] text-gray-400">
+                          #{ev.id} · {ev.curso_codigo ? `${ev.curso_codigo} — ${ev.curso_nome}` : "sem curso"} · {fmt(ev.data_inicio)} → {fmt(ev.data_fim)}
+                        </div>
+                        {motivo && <div className="text-[11px] text-amber-700">{motivo}</div>}
+                      </td>
+                      <td className="px-4 py-2 text-xs text-gray-600 whitespace-nowrap">
+                        {ev.dias_semana.map((d) => DIAS[d]).join(", ")}<br />{ev.horario_inicio}–{ev.horario_fim}
+                      </td>
+                      <td className="px-4 py-2 text-xs text-gray-500">
+                        {ev.etapas_planejadas.length ? `${ev.etapas_planejadas.length}/${ev.etapas.length} etapa(s) planejada(s)` : "nada planejado"}
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        {!motivo && <span className="text-xs text-primary">+ adicionar</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {resultados.length > RESULTADOS_MAX && (
+              <p className="px-4 py-2 text-[11px] text-gray-400">Mostrando {RESULTADOS_MAX} de {resultados.length}. Refine a busca.</p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 2. Eventos selecionados */}
+      {selecionados.length > 0 && (
+        <div className="card overflow-hidden">
+          <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
+            <h2 className="mr-auto text-sm font-semibold text-gray-800">
+              2. Eventos no lote e etapa a planejar
+              <span className="ml-2 font-normal text-gray-400">{selecionados.length} evento(s) · {nCursos} curso(s)</span>
+            </h2>
+            <button className="text-xs text-red-600 hover:underline" onClick={() => { setConfig({}); limparProposta(); }}>
+              Remover todos
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-left text-xs text-gray-500">
+                <tr>
+                  <th className="px-3 py-2">Turma</th>
+                  <th className="px-3 py-2">Horário</th>
+                  <th className="px-3 py-2">Já planejado</th>
+                  <th className="px-3 py-2">Etapa a planejar</th>
+                  <th className="px-3 py-2">Início da etapa</th>
+                  <th className="px-3 py-2">Ensino Superior</th>
+                  <th className="px-3 py-2 w-8" />
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {selecionados.map((ev) => {
+                  const c = config[ev.id];
+                  return (
+                    <tr key={ev.id}>
+                      <td className="px-3 py-2 align-top">
+                        <div className="font-medium text-gray-800">{ev.nome_turma}</div>
+                        <div className="text-[11px] text-gray-400">#{ev.id} · {ev.curso_codigo} — {ev.curso_nome}</div>
+                        <div className="text-[11px] text-gray-400">{fmt(ev.data_inicio)} → {fmt(ev.data_fim)}</div>
+                      </td>
+                      <td className="px-3 py-2 align-top text-xs text-gray-600 whitespace-nowrap">
+                        {ev.dias_semana.map((d) => DIAS[d]).join(", ")}<br />{ev.horario_inicio}–{ev.horario_fim}
+                      </td>
+                      <td className="px-3 py-2 align-top">
+                        <div className="flex flex-wrap gap-1">
+                          {ev.etapas_planejadas.length === 0 ? <span className="text-xs text-gray-400">nada ainda</span> :
+                            ev.etapas_planejadas.map((p) => (
+                              <span key={p.etapa} title={`${p.aulas} aula(s), última em ${fmt(p.ultima_aula)}`}
+                                    className="rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-700">
+                                {p.etapa} · até {fmt(p.ultima_aula)}
+                              </span>
+                            ))}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 align-top">
+                        <select className="input h-8 py-0 text-xs" value={c.modulo}
+                                onChange={(e) => setCfg(ev.id, { modulo: e.target.value })}>
+                          {ev.etapas.length === 0 && <option value="">Todas as UCs</option>}
+                          {ev.etapas.map((et) => <option key={et} value={et}>{et}</option>)}
+                        </select>
+                      </td>
+                      <td className="px-3 py-2 align-top">
+                        <input type="date" className="input h-8 py-0 text-xs" value={c.data_inicio}
+                               onChange={(e) => setCfg(ev.id, { data_inicio: e.target.value })} />
+                        {!c.data_inicio && <div className="text-[10px] text-gray-400">vazio = início do evento</div>}
+                      </td>
+                      <td className="px-3 py-2 align-top text-xs">
+                        <label className="flex items-center gap-1">
+                          <input type="checkbox" checked={c.modo_superior}
+                                 onChange={(e) => setCfg(ev.id, { modo_superior: e.target.checked, clipar_semestre: e.target.checked })} />
+                          dia fixo por UC
+                        </label>
+                        {c.modo_superior && (
+                          <label className="mt-1 flex items-center gap-1 text-gray-500">
+                            <input type="checkbox" checked={c.clipar_semestre}
+                                   onChange={(e) => setCfg(ev.id, { clipar_semestre: e.target.checked })} />
+                            limitar ao semestre
                           </label>
-                          {c.modo_superior && (
-                            <label className="mt-1 flex items-center gap-1 text-gray-500">
-                              <input type="checkbox" checked={c.clipar_semestre}
-                                     onChange={(e) => setCfg(ev.id, { clipar_semestre: e.target.checked })} />
-                              limitar ao semestre
-                            </label>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+                        )}
+                      </td>
+                      <td className="px-3 py-2 align-top">
+                        <button title="Remover do lote" onClick={() => remover(ev.id)} className="text-gray-400 hover:text-red-600">
+                          <X className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
           <div className="flex flex-wrap items-center gap-3 border-t px-4 py-3">
             <span className="text-xs text-gray-500">{selecionados.length} evento(s) selecionado(s)</span>
             <button className="btn-primary ml-auto inline-flex items-center gap-2 text-sm"
