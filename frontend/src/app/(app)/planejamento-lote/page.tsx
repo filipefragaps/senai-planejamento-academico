@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
-  AlertTriangle, CheckCircle2, Search, X, ChevronDown, ChevronRight, Layers, Loader2, Lock, RefreshCw, Save, Unlock, Users,
+  AlertTriangle, CheckCircle2, FileText, Printer, Search, X, ChevronDown, ChevronRight, Layers, Loader2, Lock, RefreshCw, Save, Unlock, Users,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
@@ -22,7 +22,7 @@ type EventoCurso = {
   etapas_planejadas: EtapaPlanejada[]; etapa_sugerida: string | null;
 };
 type Config = { modulo: string; data_inicio: string; modo_superior: boolean; clipar_semestre: boolean };
-type Candidato = { professor_id: number; nome: string; tipo: string; disponivel: boolean };
+type Candidato = { professor_id: number; nome: string; tipo: string; disponivel: boolean; conflito?: boolean };
 type Alocacao = {
   uc_id: number; uc_nome: string; uc_codigo: string; etapa: string | null; carga_horaria: number;
   professor_id: number | null; professor_nome: string | null; aulas_necessarias: number; datas_aulas: string[];
@@ -78,6 +78,7 @@ export default function PlanejamentoLotePage() {
   const [desatualizada, setDesatualizada] = useState(false);
   const [abertos, setAbertos] = useState<Set<number>>(new Set());
   const [gravados, setGravados] = useState<Record<number, "ok" | string>>({});
+  const [relatorio, setRelatorio] = useState(false);
 
   const { data: dados, isLoading: carregandoEventos } = useQuery({
     queryKey: ["lote-eventos-todos"],
@@ -522,9 +523,9 @@ export default function PlanejamentoLotePage() {
                                     <select className="input h-8 py-0 text-xs" value={valor}
                                             onChange={(e) => trocarProfessor(ev.evento_id, a.uc_id, e.target.value ? Number(e.target.value) : null)}>
                                       <option value="">— sem professor —</option>
-                                      {a.candidatos.map((c) => (
+                                      {[...a.candidatos].sort((p, q) => Number(!!p.conflito) - Number(!!q.conflito)).map((c) => (
                                         <option key={c.professor_id} value={c.professor_id}>
-                                          {c.nome} ({c.tipo}){c.disponivel ? "" : " · sem disponibilidade"}
+                                          {c.nome} ({c.tipo}){c.conflito ? " · já tem aula neste horário" : c.disponivel ? "" : " · sem disponibilidade"}
                                         </option>
                                       ))}
                                     </select>
@@ -551,7 +552,11 @@ export default function PlanejamentoLotePage() {
               Ao gravar, cada turma recebe as aulas da proposta. As aulas futuras dessas UCs que não foram alteradas à mão
               são substituídas, como no planejamento por evento (dá para reverter turma a turma pela tela de Planejamento).
             </p>
-            <button className="btn-primary ml-auto inline-flex items-center gap-2 text-sm"
+            <button className="btn-secondary ml-auto inline-flex items-center gap-2 text-sm"
+                    disabled={!proposta.eventos.length} onClick={() => setRelatorio(true)}>
+              <FileText className="h-4 w-4" /> Relatório
+            </button>
+            <button className="btn-primary inline-flex items-center gap-2 text-sm"
                     disabled={gravar.isPending || desatualizada || todosGravados || !proposta.eventos.length}
                     title={desatualizada ? "Recalcule antes de gravar" : undefined}
                     onClick={() => {
@@ -563,6 +568,155 @@ export default function PlanejamentoLotePage() {
           </div>
         </div>
       )}
+
+      {relatorio && proposta && (
+        <RelatorioLote proposta={proposta} eventos={todosEventos} configs={config}
+                       desatualizada={desatualizada} onClose={() => setRelatorio(false)} />
+      )}
+    </div>
+  );
+}
+
+// ── Relatório da proposta (antes de gravar) ────────────────────────────────────
+
+const CSS_IMPRESSAO = `
+  body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:24px;font-size:12px}
+  h1{font-size:18px;margin:0 0 4px} h2{font-size:14px;margin:20px 0 6px;border-bottom:1px solid #ccc;padding-bottom:3px}
+  h3{font-size:12px;margin:14px 0 4px} table{width:100%;border-collapse:collapse;margin-bottom:8px}
+  th,td{border:1px solid #ddd;padding:4px 6px;text-align:left;vertical-align:top} th{background:#f3f4f6}
+  .num{text-align:right} .muted{color:#666} .alerta{color:#b45309} .sem{background:#fffbeb}
+  .tiles{display:flex;gap:16px;margin:10px 0} .tile{border:1px solid #ddd;padding:6px 10px;border-radius:4px}
+`;
+
+function RelatorioLote({ proposta, eventos, configs, desatualizada, onClose }: {
+  proposta: Proposta; eventos: EventoCurso[]; configs: Record<number, Config>; desatualizada: boolean; onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const evMap = new Map(eventos.map((e) => [e.id, e]));
+  const r = proposta.resumo;
+  const geradoEm = new Date().toLocaleString("pt-BR");
+
+  // Professor → UCs que recebeu no lote
+  const porProfessor = new Map<number, { turma: string; uc: string; periodo: string; aulas: number }[]>();
+  for (const ev of proposta.eventos) {
+    for (const a of ev.alocacoes) {
+      if (!a.professor_id) continue;
+      const lista = porProfessor.get(a.professor_id) ?? [];
+      lista.push({ turma: ev.nome_turma, uc: a.uc_nome, periodo: `${fmt(a.primeira_aula)} a ${fmt(a.ultima_aula)}`, aulas: a.datas_aulas.length });
+      porProfessor.set(a.professor_id, lista);
+    }
+  }
+
+  function imprimir() {
+    const w = window.open("", "_blank", "width=1000,height=800");
+    if (!w || !ref.current) return;
+    w.document.write(
+      `<!doctype html><html><head><meta charset="utf-8"><title>Relatório - Planejamento em lote</title>` +
+      `<style>${CSS_IMPRESSAO}</style></head><body>${ref.current.innerHTML}</body></html>`,
+    );
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 300);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-5xl rounded-lg bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 border-b px-5 py-3">
+          <FileText className="h-4 w-4 text-gray-500" />
+          <h2 className="mr-auto text-sm font-semibold text-gray-800">Relatório da proposta (ainda não gravada)</h2>
+          <button className="btn-secondary inline-flex items-center gap-1 text-xs" onClick={imprimir}>
+            <Printer className="h-3.5 w-3.5" /> Imprimir / PDF
+          </button>
+          <button className="text-gray-400 hover:text-gray-700" onClick={onClose} title="Fechar"><X className="h-5 w-5" /></button>
+        </div>
+        {desatualizada && (
+          <p className="mx-5 mt-3 rounded border border-blue-200 bg-blue-50 p-2 text-xs text-blue-900">
+            Há trocas manuais de professor ainda não recalculadas. O relatório mostra a última proposta calculada.
+          </p>
+        )}
+        <div ref={ref} className="space-y-4 p-5 text-sm [&_td]:border [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:bg-gray-50 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_table]:w-full">
+          <div>
+            <h1 className="text-lg font-bold">Planejamento em lote - proposta</h1>
+            <p className="muted text-xs text-gray-500">Gerado em {geradoEm} · {r.eventos} turma(s) · situação: ainda não gravado</p>
+          </div>
+          <div className="tiles flex flex-wrap gap-3 text-xs">
+            <div className="tile rounded border px-3 py-2">UCs com professor: <b>{r.cobertas} de {r.ucs}</b></div>
+            <div className="tile rounded border px-3 py-2">Aulas com professor: <b>{r.aulas_cobertas} de {r.aulas}</b></div>
+            <div className="tile rounded border px-3 py-2">Horas sem professor: <b>{r.horas_sem_professor}h</b></div>
+            <div className="tile rounded border px-3 py-2">Professores envolvidos: <b>{proposta.professores.length}</b></div>
+          </div>
+
+          <h2 className="border-b pb-1 text-base font-semibold">Por turma</h2>
+          {proposta.eventos.map((ev) => {
+            const info = evMap.get(ev.evento_id);
+            const cfg = configs[ev.evento_id];
+            return (
+              <div key={ev.evento_id}>
+                <h3 className="font-semibold">{ev.nome_turma}</h3>
+                <p className="muted mb-1 text-xs text-gray-500">
+                  #{ev.evento_id}{info?.curso_nome ? ` · ${info.curso_codigo} - ${info.curso_nome}` : ""} · etapa {ev.modulo ?? "todas"}
+                  {info ? ` · ${info.dias_semana.map((d) => DIAS[d]).join(", ")} ${info.horario_inicio}-${info.horario_fim}` : ""}
+                  {cfg?.data_inicio ? ` · início da etapa ${fmt(cfg.data_inicio)}` : ""}
+                </p>
+                <table className="text-xs">
+                  <thead><tr><th>UC</th><th className="num">CH</th><th>Professor</th><th>Período</th><th className="num">Aulas</th><th>Observação</th></tr></thead>
+                  <tbody>
+                    {ev.alocacoes.map((a) => (
+                      <tr key={a.uc_id} className={cn(!a.professor_id && "sem bg-amber-50")}>
+                        <td>{a.uc_nome}</td>
+                        <td className="num text-right">{a.carga_horaria}h</td>
+                        <td>{a.professor_nome ?? <span className="alerta text-amber-700">sem professor</span>}</td>
+                        <td className="whitespace-nowrap">{fmt(a.primeira_aula)} a {fmt(a.ultima_aula)}</td>
+                        <td className="num text-right">{a.datas_aulas.length}</td>
+                        <td className="alerta text-amber-700">{a.alerta?.replace("⚠ Sem professor: ", "") ?? ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
+
+          <h2 className="border-b pb-1 text-base font-semibold">Por professor</h2>
+          <table className="text-xs">
+            <thead><tr><th>Professor</th><th>Tipo</th><th>Turmas / UCs</th><th className="num">Horas no lote</th><th className="num">Semana mais cheia</th><th className="num">Regência atual</th></tr></thead>
+            <tbody>
+              {proposta.professores.map((p) => (
+                <tr key={p.professor_id}>
+                  <td className="font-medium">{p.nome}</td>
+                  <td>{p.tipo}</td>
+                  <td>
+                    {(porProfessor.get(p.professor_id) ?? []).map((u, i) => (
+                      <div key={i}>{u.turma} - {u.uc} <span className="muted text-gray-500">({u.periodo}, {u.aulas} aulas)</span></div>
+                    ))}
+                  </td>
+                  <td className="num text-right">{p.horas_lote}h</td>
+                  <td className="num text-right">{p.pico_semanal}h / {p.horas_contratadas}h</td>
+                  <td className="num text-right">{p.regencia_atual.toFixed(1)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {proposta.sem_professor.length > 0 && (
+            <>
+              <h2 className="border-b pb-1 text-base font-semibold">UCs sem professor ({proposta.sem_professor.length})</h2>
+              <table className="text-xs">
+                <thead><tr><th>Turma</th><th>UC</th><th className="num">Horas</th><th>Motivo</th><th>Habilitados</th></tr></thead>
+                <tbody>
+                  {proposta.sem_professor.map((s) => (
+                    <tr key={`${s.evento_id}:${s.uc_id}`}>
+                      <td>{s.nome_turma}</td><td>{s.uc_nome}</td><td className="num text-right">{s.horas}h</td>
+                      <td>{s.motivo}</td><td className="muted text-gray-500">{s.habilitados.join(", ") || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -131,3 +131,17 @@ async def test_lote_seleciona_eventos_sem_escolher_curso(client, db_session):
     })
     assert r.status_code == 200, r.text
     assert r.json()["resumo"]["cobertas"] == 3
+
+
+async def test_lote_horista_ch_contratada_e_minimo_nao_teto(client, db_session):
+    """Horista com 4h/sem contratadas ainda pode pegar uma turma de 20h/sem."""
+    admin = await _usuario(db_session, "admin", "Admin")
+    curso, (u1, u2, u3), (x, y), evs = await _cenario(db_session)
+    y.horas_contratadas = 4
+    await db_session.flush()
+    r = await client.post("/api/v1/planejamento-lote/preview", headers=_hdr(admin), json={
+        "eventos": [{"evento_id": e.id, "modulo": "1º PERÍODO"} for e in evs],
+    })
+    assert r.status_code == 200, r.text
+    aloc = {(ev["evento_id"], a["uc_id"]): a for ev in r.json()["eventos"] for a in ev["alocacoes"]}
+    assert {aloc[(e.id, u1.id)]["professor_id"] for e in evs} == {x.id, y.id}

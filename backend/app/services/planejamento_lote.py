@@ -12,7 +12,8 @@ Regras do modelo:
   - só professores habilitados (atuação), ou o professor travado pelo usuário;
   - sem choque: mesmo professor, mesma data, horário sobreposto — entre as UCs do lote e
     com as aulas já gravadas de outras turmas;
-  - carga semanal: aulas do lote + aulas já gravadas ≤ horas contratadas por semana.
+  - carga semanal (só Mensalista): aulas do lote + já gravadas ≤ horas contratadas/semana.
+    Horista: a CH contratada é o mínimo semanal, não um teto.
 Objetivo (em ordem): cobrir o máximo de aulas → Mensalista antes de Horista, RPA/PJ por
 último → professor disponível no horário → maior score (necessidade de regência,
 preferência, competência).
@@ -32,7 +33,7 @@ from app.models.evento import Evento
 from app.models.professor import Professor
 from app.models.unidade_curricular import UnidadeCurricular
 from app.services.planejamento_service import _candidatos_uc, _horas_aula, gerar_planejamento
-from app.services.regencia import calcular_regencia_professor
+from app.services.regencia import _TIPOS_MENSALISTA, calcular_regencia_professor
 
 _PESO_COBERTURA = 100_000   # por aula coberta: domina todo o resto
 _CUSTO_TIPO = {"Mensalista": 0, "Horista": 300}
@@ -345,6 +346,10 @@ async def preview_lote(db: AsyncSession, curso_id: int | None, eventos_cfg: list
         for sem, n in cont.items():
             por_prof_semana[(pid, sem)].append((i, round(n * it["horas_aula"] * 60)))
     for (pid, sem), termos in por_prof_semana.items():
+        # Só Mensalista tem teto: para Horista a CH contratada é o MÍNIMO semanal (regra da
+        # regência) e RPA/PJ recebem por hora — o limite deles é só não ter choque de horário.
+        if prof_map[pid].tipo not in _TIPOS_MENSALISTA:
+            continue
         cap = prof_map[pid].horas_contratadas or 0
         if cap <= 0:
             continue
@@ -408,8 +413,8 @@ async def preview_lote(db: AsyncSession, curso_id: int | None, eventos_cfg: list
                 alerta = f"Prof. {p.nome} sem disponibilidade cadastrada neste horário. Verificar."
         else:
             motivo = motivo_base.get(i) or (
-                "Os habilitados não têm carga semanal ou horário livre dentro deste lote "
-                "(disputam com outras turmas)."
+                "Os habilitados já estão em outras turmas deste lote no mesmo horário ou "
+                "sem carga semanal livre (Mensalista) (disputam com outras turmas)."
             )
             justificativa = motivo
             alerta = "⚠ Sem professor: " + motivo
@@ -435,7 +440,8 @@ async def preview_lote(db: AsyncSession, curso_id: int | None, eventos_cfg: list
             "travado": bool(it["travado"]),
             "candidatos": [
                 {"professor_id": c["professor"].id, "nome": c["professor"].nome, "tipo": c["professor"].tipo,
-                 "disponivel": c.get("disponivel", True)}
+                 "disponivel": c.get("disponivel", True),
+                 "conflito": choca_com_gravadas(c["professor"].id, it)}
                 for c in sorted(it["candidatos"].values(), key=lambda c: -c["score"])
             ],
             "primeira_aula": min(it["datas"]).isoformat() if it["datas"] else None,
