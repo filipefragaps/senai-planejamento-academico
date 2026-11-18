@@ -1,8 +1,8 @@
 """
 Planejamento em lote: vários eventos de uma vez (escolhidos pelo usuário).
 
-1. Datas: cada evento gera suas datas com a mesma regra do planejamento por evento
-   (gerar_planejamento), sem escolher professor.
+1. Datas: cada evento gera suas datas pelo planejamento otimizado (OR-Tools) do evento —
+   se falhar, pelo padrão (gerar_planejamento) — sem escolher professor.
 2. Professores: um único modelo CP-SAT escolhe o professor de TODAS as UCs juntas, para
    que a escolha de uma turma não deixe outra sem docente no final.
 3. Gravação: o frontend confirma evento por evento com o /planejamento/confirmar existente.
@@ -89,6 +89,27 @@ def montar_ucs_evento(evento: Evento, ucs: list[UnidadeCurricular], data_inicio:
             "dias_semana": [pool[i % len(pool)]] if pool else None,
         })
     return itens
+
+
+async def _datas_otimizadas(evento_id: int, ucs_ordenadas: list[dict], cfg: dict, db: AsyncSession) -> list:
+    """Datas de cada UC pelo planejamento otimizado (CP-SAT) do evento."""
+    from types import SimpleNamespace
+    from app.api.v1.planejamento import GerarRequest, gerar_otimizado
+
+    body = GerarRequest(
+        ucs=ucs_ordenadas,
+        modo_superior=cfg.get("modo_superior", False),
+        clipar_semestre=cfg.get("clipar_semestre", False),
+    )
+    res = await gerar_otimizado(evento_id, body, db, None)
+    return [
+        SimpleNamespace(
+            uc_id=a["uc_id"],
+            datas_aulas=[date.fromisoformat(d) for d in a["datas_aulas"]],
+            aulas_necessarias=a.get("aulas_necessarias") or len(a["datas_aulas"]),
+        )
+        for a in res["alocacoes"]
+    ]
 
 
 async def eventos_para_lote(db: AsyncSession, curso_id: int | None = None) -> dict:
@@ -200,6 +221,7 @@ async def preview_lote(db: AsyncSession, curso_id: int | None, eventos_cfg: list
     # ── 1. Datas de cada evento (mesma regra do planejamento por evento) ─────────
     itens: list[dict] = []   # uma entrada por (evento, UC) com aulas
     erros: list[dict] = []
+    avisos: list[dict] = []
     eventos_out: dict[int, dict] = {}
     for cfg in eventos_cfg:
         ev = (await db.execute(select(Evento).where(Evento.id == cfg["evento_id"]))).scalar_one_or_none()
@@ -218,29 +240,46 @@ async def preview_lote(db: AsyncSession, curso_id: int | None, eventos_cfg: list
         if not ucs_ev:
             erros.append({"evento_id": ev.id, "erro": f"Nenhuma UC na etapa {modulo or '(todas)'}"})
             continue
-        try:
-            r = await gerar_planejamento(
-                evento_id=ev.id,
-                ucs_ordenadas=montar_ucs_evento(ev, ucs_ev, cfg.get("data_inicio"), cfg.get("modo_superior", False)),
-                db=db,
-                modo_superior=cfg.get("modo_superior", False),
-                clipar_semestre=cfg.get("clipar_semestre", False),
-                escolher_professor=False,
-                regencias_cache=regencias,
-            )
-        except ValueError as e:
-            erros.append({"evento_id": ev.id, "erro": str(e)})
-            continue
-        eventos_out[ev.id] = {"evento_id": ev.id, "nome_turma": ev.nome_turma, "modulo": modulo, "alocacoes": []}
+        ucs_ordenadas = montar_ucs_evento(ev, ucs_ev, cfg.get("data_inicio"), cfg.get("modo_superior", False))
+        alocs = None
+        motor = "otimizado"
+        if cfg.get("motor", "otimizado") == "otimizado":
+            # Datas pelo OR-Tools (mesmo "Gerar planejamento otimizado" da tela do evento);
+            # o professor que ele sugere é descartado — quem escolhe é o modelo do lote.
+            try:
+                alocs = await _datas_otimizadas(ev.id, ucs_ordenadas, cfg, db)
+            except Exception as e:  # noqa: BLE001 — cai para o padrão e avisa
+                detalhe = getattr(e, "detail", None) or str(e)
+                avisos.append({"evento_id": ev.id, "aviso": f"Otimizado indisponível ({detalhe}); datas pelo modo padrão."})
+        if alocs is None:
+            motor = "padrao"
+            try:
+                r = await gerar_planejamento(
+                    evento_id=ev.id,
+                    ucs_ordenadas=ucs_ordenadas,
+                    db=db,
+                    modo_superior=cfg.get("modo_superior", False),
+                    clipar_semestre=cfg.get("clipar_semestre", False),
+                    escolher_professor=False,
+                    regencias_cache=regencias,
+                )
+            except ValueError as e:
+                erros.append({"evento_id": ev.id, "erro": str(e)})
+                continue
+            alocs = r.alocacoes
+        eventos_out[ev.id] = {"evento_id": ev.id, "nome_turma": ev.nome_turma, "modulo": modulo,
+                              "motor": motor, "alocacoes": []}
         uc_map = {u.id: u for u in ucs_ev}
-        for a in r.alocacoes:
+        for a in alocs:
+            if a.uc_id not in uc_map:
+                continue
             itens.append({
                 "evento": ev, "uc": uc_map[a.uc_id], "aloc": a,
                 "datas": list(a.datas_aulas), "horas_aula": _horas_aula(ev),
             })
 
     if not itens:
-        return {"eventos": list(eventos_out.values()), "erros": erros, "sem_professor": [],
+        return {"eventos": list(eventos_out.values()), "erros": erros, "avisos": avisos, "sem_professor": [],
                 "professores": [], "resumo": {"ucs": 0, "cobertas": 0, "aulas": 0, "aulas_cobertas": 0},
                 "status": "SEM_ITENS"}
 
@@ -371,7 +410,7 @@ async def preview_lote(db: AsyncSession, curso_id: int | None, eventos_cfg: list
     model.Maximize(sum(termos_obj))
 
     solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = 45.0
+    solver.parameters.max_time_in_seconds = 30.0
     solver.parameters.num_workers = 8
     status = solver.Solve(model)
     status_nome = solver.StatusName(status)
@@ -467,6 +506,7 @@ async def preview_lote(db: AsyncSession, curso_id: int | None, eventos_cfg: list
         "status": status_nome,
         "eventos": list(eventos_out.values()),
         "erros": erros,
+        "avisos": avisos,
         "sem_professor": sem_professor,
         "professores": professores,
         "resumo": {

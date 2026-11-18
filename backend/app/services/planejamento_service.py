@@ -178,6 +178,14 @@ def fim_do_semestre(ref: date) -> date:
     return date(ref.year, 12, 31) if ref.month >= 7 else date(ref.year, 6, 30)
 
 
+def fim_base_planejamento(fim_evento: date | None, inicio_ref: date) -> date:
+    """Fim do evento; se ele terminar antes do início da etapa (cadastro desatualizado),
+    usa o fim do semestre do início da etapa — senão não sobra nenhuma data letiva."""
+    if fim_evento and fim_evento >= inicio_ref:
+        return fim_evento
+    return fim_do_semestre(inicio_ref)
+
+
 def inicio_planejamento(inicio_evento: date, ucs: list) -> date:
     """Menor data de início informada nas UCs, quando posterior ao início do evento; senão o início do evento."""
     datas = []
@@ -280,9 +288,9 @@ async def gerar_planejamento(
 
     # Início efetivo: a data de início informada para o módulo (ex.: 2º semestre), se for depois do evento
     inicio_ref = inicio_planejamento(evento.data_inicio, ucs_ordenadas)
-    data_fim_efetiva = evento.data_fim
+    data_fim_efetiva = fim_base_planejamento(evento.data_fim, inicio_ref)
     if modo_superior and clipar_semestre:
-        data_fim_efetiva = min(evento.data_fim, fim_do_semestre(inicio_ref))
+        data_fim_efetiva = min(data_fim_efetiva, fim_do_semestre(inicio_ref))
 
     horas_por_aula = _horas_aula(evento)
     turno = _turno(evento)
@@ -654,8 +662,9 @@ async def gerar_planejamento(
         # pois nesse caso os dias habituais podem esgotar antes de preencher a CH.
         # Sem clipping, o evento tem datas suficientes; usa apenas os dias configurados.
         dias_catchup = list(range(6)) if (modo_superior and clipar_semestre) else dias_semana
+        # Nunca antes do início da etapa informado (ex.: 2º semestre)
         pool_geral = await get_datas_letivas(
-            data_inicio_pool, data_fim_efetiva, dias_catchup, db
+            max(data_inicio_pool, inicio_ref), data_fim_efetiva, dias_catchup, db
         )
         # Apenas datas ainda livres (não consumidas por nenhuma UC no passo 1)
         livres_geral = [d for d in pool_geral if d not in datas_ocupadas]

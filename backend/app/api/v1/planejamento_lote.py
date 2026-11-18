@@ -18,6 +18,7 @@ class EventoLote(BaseModel):
     data_inicio: Optional[str] = None
     modo_superior: bool = False
     clipar_semestre: bool = False
+    motor: str = "otimizado"  # "otimizado" (OR-Tools) ou "padrao"
 
 
 class Trava(BaseModel):

@@ -70,7 +70,7 @@ async def test_lote_escolhe_professores_em_conjunto(client, db_session):
     curso, (u1, u2, u3), (x, y), evs = await _cenario(db_session)
     r = await client.post("/api/v1/planejamento-lote/preview", headers=_hdr(admin), json={
         "curso_id": curso.id,
-        "eventos": [{"evento_id": e.id, "modulo": "1º PERÍODO"} for e in evs],
+        "eventos": [{"evento_id": e.id, "modulo": "1º PERÍODO", "motor": "padrao"} for e in evs],
     })
     assert r.status_code == 200, r.text
     resp = r.json()
@@ -100,7 +100,7 @@ async def test_lote_respeita_trava_e_confirma_com_rota_existente(client, db_sess
     a, b = evs
     r = await client.post("/api/v1/planejamento-lote/preview", headers=_hdr(admin), json={
         "curso_id": curso.id,
-        "eventos": [{"evento_id": e.id, "modulo": "1º PERÍODO"} for e in evs],
+        "eventos": [{"evento_id": e.id, "modulo": "1º PERÍODO", "motor": "padrao"} for e in evs],
         "travas": [{"evento_id": b.id, "uc_id": u1.id, "professor_id": x.id}],
     })
     assert r.status_code == 200, r.text
@@ -127,7 +127,7 @@ async def test_lote_seleciona_eventos_sem_escolher_curso(client, db_session):
     assert all(e["etapas"] == ["1º PERÍODO", "2º PERÍODO"] for e in meus)
 
     r = await client.post("/api/v1/planejamento-lote/preview", headers=_hdr(admin), json={
-        "eventos": [{"evento_id": e.id, "modulo": "1º PERÍODO"} for e in evs],
+        "eventos": [{"evento_id": e.id, "modulo": "1º PERÍODO", "motor": "padrao"} for e in evs],
     })
     assert r.status_code == 200, r.text
     assert r.json()["resumo"]["cobertas"] == 3
@@ -140,8 +140,32 @@ async def test_lote_horista_ch_contratada_e_minimo_nao_teto(client, db_session):
     y.horas_contratadas = 4
     await db_session.flush()
     r = await client.post("/api/v1/planejamento-lote/preview", headers=_hdr(admin), json={
-        "eventos": [{"evento_id": e.id, "modulo": "1º PERÍODO"} for e in evs],
+        "eventos": [{"evento_id": e.id, "modulo": "1º PERÍODO", "motor": "padrao"} for e in evs],
     })
     assert r.status_code == 200, r.text
     aloc = {(ev["evento_id"], a["uc_id"]): a for ev in r.json()["eventos"] for a in ev["alocacoes"]}
     assert {aloc[(e.id, u1.id)]["professor_id"] for e in evs} == {x.id, y.id}
+
+
+async def test_lote_evento_com_fim_antes_da_etapa_usa_inicio_da_etapa(client, db_session):
+    """Evento cadastrado com fim antigo (11/08/2026) e etapa começando em 25/01/2027,
+    dia fixo por UC e limitado ao semestre: as datas saem a partir de 25/01/2027."""
+    admin = await _usuario(db_session, "admin", "Admin")
+    curso, (u1, u2, u3), (x, y), evs = await _cenario(db_session)
+    for e in evs:
+        e.data_inicio = date(2026, 8, 11)
+        e.data_fim = date(2026, 8, 11)
+    await db_session.flush()
+    for motor in ("otimizado", "padrao"):
+        r = await client.post("/api/v1/planejamento-lote/preview", headers=_hdr(admin), json={
+            "eventos": [{"evento_id": e.id, "modulo": "1º PERÍODO", "data_inicio": "2027-01-25",
+                         "modo_superior": True, "clipar_semestre": True, "motor": motor} for e in evs],
+        })
+        assert r.status_code == 200, r.text
+        resp = r.json()
+        datas = [d for ev in resp["eventos"] for a in ev["alocacoes"] for d in a["datas_aulas"]]
+        assert datas, (motor, resp)
+        assert min(datas) >= "2027-01-25" and max(datas) <= "2027-06-30", motor
+        assert all(len(a["datas_aulas"]) == a["aulas_necessarias"]
+                   for ev in resp["eventos"] for a in ev["alocacoes"]), motor
+        assert all(ev["motor"] == motor for ev in resp["eventos"]), (motor, resp.get("avisos"))

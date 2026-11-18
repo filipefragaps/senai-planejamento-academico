@@ -1444,12 +1444,12 @@ async def gerar_otimizado(
             detail="Evento sem dias da semana configurados. Configure os dias do evento antes de planejar."
         )
 
-    from app.services.planejamento_service import fim_do_semestre, inicio_planejamento
+    from app.services.planejamento_service import fim_base_planejamento, fim_do_semestre, inicio_planejamento
     # Início efetivo: a data informada para o módulo (ex.: 2º semestre), se for depois do evento
     inicio_ref = inicio_planejamento(evento.data_inicio, body.ucs)
-    data_fim_efetiva = evento.data_fim
+    data_fim_efetiva = fim_base_planejamento(evento.data_fim, inicio_ref)
     if body.modo_superior and body.clipar_semestre:
-        data_fim_efetiva = min(evento.data_fim, fim_do_semestre(inicio_ref))
+        data_fim_efetiva = min(data_fim_efetiva, fim_do_semestre(inicio_ref))
 
     # Estender data_fim se total de aulas excede datas letivas no período
     # Eventos só-sábado (FIC/51/54) nunca estendem: o período é fixo por design.

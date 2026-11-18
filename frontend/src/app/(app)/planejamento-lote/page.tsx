@@ -29,11 +29,12 @@ type Alocacao = {
   justificativa: string; alerta: string | null; score: number; travado: boolean; candidatos: Candidato[];
   primeira_aula: string | null; ultima_aula: string | null;
 };
-type EventoProposta = { evento_id: number; nome_turma: string; modulo: string | null; alocacoes: Alocacao[] };
+type EventoProposta = { evento_id: number; nome_turma: string; modulo: string | null; motor?: "otimizado" | "padrao"; alocacoes: Alocacao[] };
 type Proposta = {
   status: string;
   eventos: EventoProposta[];
   erros: { evento_id: number; erro: string }[];
+  avisos?: { evento_id: number; aviso: string }[];
   sem_professor: { evento_id: number; nome_turma: string; uc_id: number; uc_nome: string; aulas: number; horas: number; motivo: string; habilitados: string[] }[];
   professores: { professor_id: number; nome: string; tipo: string; horas_contratadas: number; horas_lote: number; ucs: number; pico_semanal: number; regencia_atual: number }[];
   resumo: { eventos: number; ucs: number; cobertas: number; aulas: number; aulas_cobertas: number; horas_sem_professor: number };
@@ -151,7 +152,7 @@ export default function PlanejamentoLotePage() {
           const [evento_id, uc_id] = k.split(":").map(Number);
           return { evento_id, uc_id, professor_id };
         }),
-      }, { timeout: 180_000 }).then((r) => r.data as Proposta),
+      }, { timeout: 600_000 }).then((r) => r.data as Proposta),
     onSuccess: (p) => {
       setProposta(p);
       setDesatualizada(false);
@@ -380,7 +381,7 @@ export default function PlanejamentoLotePage() {
             </button>
           </div>
           {gerar.isPending && (
-            <p className="px-4 pb-3 text-xs text-gray-500">Calculando datas e escolhendo os professores de todas as turmas juntas… pode levar até 1 minuto.</p>
+            <p className="px-4 pb-3 text-xs text-gray-500">Organizando as datas de cada turma com o OR-Tools e escolhendo os professores de todas as turmas juntas… pode levar alguns minutos.</p>
           )}
         </div>
       )}
@@ -403,6 +404,14 @@ export default function PlanejamentoLotePage() {
               <p className="mb-1 font-semibold">Eventos fora da proposta</p>
               {proposta.erros.map((e) => (
                 <p key={e.evento_id}>#{e.evento_id}: {e.erro}</p>
+              ))}
+            </div>
+          )}
+          {(proposta.avisos?.length ?? 0) > 0 && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
+              <p className="mb-1 font-semibold">Avisos</p>
+              {proposta.avisos!.map((a) => (
+                <p key={a.evento_id}>#{a.evento_id}: {a.aviso}</p>
               ))}
             </div>
           )}
@@ -495,7 +504,7 @@ export default function PlanejamentoLotePage() {
                     <button className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-gray-50" onClick={() => alternar(ev.evento_id)}>
                       {aberto ? <ChevronDown className="h-4 w-4 text-gray-400" /> : <ChevronRight className="h-4 w-4 text-gray-400" />}
                       <span className="font-medium text-gray-800">{ev.nome_turma}</span>
-                      <span className="text-xs text-gray-400">{ev.modulo ?? "todas as etapas"} · {ev.alocacoes.length} UC(s)</span>
+                      <span className="text-xs text-gray-400">{ev.modulo ?? "todas as etapas"} · {ev.alocacoes.length} UC(s){ev.motor === "padrao" ? " · datas: padrão" : " · datas: OR-Tools"}</span>
                       {sem > 0 ? <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700">{sem} sem professor</span>
                                : <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-700">completo</span>}
                       {g === "ok" && <span className="ml-auto inline-flex items-center gap-1 text-xs text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> gravado</span>}
@@ -652,7 +661,7 @@ function RelatorioLote({ proposta, eventos, configs, desatualizada, onClose }: {
             const info = evMap.get(ev.evento_id);
             const cfg = configs[ev.evento_id];
             return (
-              <div key={ev.evento_id}>
+              <div key={ev.evento_id} style={{ breakBefore: "page" }}>
                 <h3 className="font-semibold">{ev.nome_turma}</h3>
                 <p className="muted mb-1 text-xs text-gray-500">
                   #{ev.evento_id}{info?.curso_nome ? ` · ${info.curso_codigo} - ${info.curso_nome}` : ""} · etapa {ev.modulo ?? "todas"}
@@ -674,6 +683,7 @@ function RelatorioLote({ proposta, eventos, configs, desatualizada, onClose }: {
                     ))}
                   </tbody>
                 </table>
+                <CalendarioTurma alocacoes={ev.alocacoes} />
               </div>
             );
           })}
@@ -717,6 +727,98 @@ function RelatorioLote({ proposta, eventos, configs, desatualizada, onClose }: {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Calendário da turma (mesmo visual da impressão do Cronograma) ──────────────
+// Estilos inline para que a impressão (que copia o HTML) mantenha o layout.
+
+const MESES_PT = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+const DIAS_CURTOS = ["D", "S", "T", "Q", "Q", "S", "S"];
+const CORES_FUNDO = ["#dbeafe", "#dcfce7", "#fef9c3", "#fce7f3", "#ede9fe", "#ffedd5", "#cffafe", "#d1fae5",
+  "#fef3c7", "#e0e7ff", "#fee2e2", "#f0fdf4", "#f0f9ff", "#fdf4ff", "#fff7ed", "#ecfdf5"];
+const CORES_TEXTO = ["#1e40af", "#15803d", "#92400e", "#9d174d", "#6d28d9", "#c2410c", "#0e7490", "#065f46",
+  "#b45309", "#3730a3", "#b91c1c", "#166534", "#0369a1", "#7e22ce", "#c2410c", "#047857"];
+
+function CalendarioTurma({ alocacoes }: { alocacoes: Alocacao[] }) {
+  const porData = new Map<string, { a: Alocacao; idx: number }[]>();
+  alocacoes.forEach((a, idx) => {
+    for (const d of a.datas_aulas) {
+      const lista = porData.get(d) ?? [];
+      lista.push({ a, idx: idx % CORES_FUNDO.length });
+      porData.set(d, lista);
+    }
+  });
+  const datas = Array.from(porData.keys()).sort();
+  if (!datas.length) return null;
+
+  const meses: { ano: number; mes: number }[] = [];
+  let [y, m] = datas[0].split("-").map(Number);
+  const [fy, fm] = datas[datas.length - 1].split("-").map(Number);
+  while (y < fy || (y === fy && m <= fm)) {
+    meses.push({ ano: y, mes: m });
+    m++; if (m > 12) { m = 1; y++; }
+  }
+
+  const grade: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 };
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", margin: "6px 0 12px" }}>
+        {alocacoes.filter((a) => a.datas_aulas.length).map((a) => {
+          const idx = alocacoes.indexOf(a) % CORES_FUNDO.length;
+          return (
+            <span key={a.uc_id} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10 }}>
+              <span style={{ width: 12, height: 12, borderRadius: 2, background: CORES_FUNDO[idx], border: `1px solid ${CORES_TEXTO[idx]}40` }} />
+              <span style={{ color: CORES_TEXTO[idx], fontWeight: 600 }}>
+                {a.uc_nome} — {a.professor_nome ?? "sem professor"}
+              </span>
+            </span>
+          );
+        })}
+      </div>
+      {meses.map(({ ano, mes }) => {
+        const primeiro = new Date(ano, mes - 1, 1).getDay();
+        const nDias = new Date(ano, mes, 0).getDate();
+        return (
+          <div key={`${ano}-${mes}`} style={{ marginBottom: 16, breakInside: "avoid" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", color: "#1d4ed8",
+                          borderBottom: "2px solid #1d4ed8", paddingBottom: 3, marginBottom: 6 }}>
+              {MESES_PT[mes - 1]} {ano}
+            </div>
+            <div style={grade}>
+              {DIAS_CURTOS.map((d, i) => (
+                <div key={`h${i}`} style={{ textAlign: "center", fontSize: 9, fontWeight: 700, color: "#6b7280", padding: "3px 0" }}>{d}</div>
+              ))}
+              {Array.from({ length: primeiro }, (_, i) => (
+                <div key={`v${i}`} style={{ minHeight: 56, background: "#f9fafb", borderRadius: 3 }} />
+              ))}
+              {Array.from({ length: nDias }, (_, i) => {
+                const dia = i + 1;
+                const dow = (primeiro + i) % 7;
+                const chave = `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+                const aulas = porData.get(chave) ?? [];
+                return (
+                  <div key={chave} style={{ minHeight: 56, border: "1px solid #e5e7eb", borderRadius: 3, padding: 3,
+                                            background: dow === 0 || dow === 6 ? "#f9fafb" : "#fff" }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "#374151", marginBottom: 2 }}>{dia}</div>
+                    {aulas.map(({ a, idx }) => (
+                      <div key={a.uc_id} style={{ background: CORES_FUNDO[idx], color: CORES_TEXTO[idx], borderRadius: 2,
+                                                  padding: "2px 4px", marginBottom: 2, fontSize: 9, lineHeight: 1.35 }}>
+                        <div style={{ fontWeight: 700, wordBreak: "break-word" }}>{a.uc_nome}</div>
+                        <div style={{ color: a.professor_nome ? "#374151" : "#b45309", wordBreak: "break-word" }}>
+                          {a.professor_nome ?? "sem professor"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
